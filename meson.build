@@ -135,6 +135,7 @@ with_gallium_r300 = false
 with_gallium_r600 = false
 with_gallium_nouveau = false
 with_gallium_freedreno = false
+with_gallium_panfrost = false
 with_gallium_softpipe = false
 with_gallium_vc4 = false
 with_gallium_vc5 = false
@@ -156,7 +157,7 @@ if _drivers.contains('auto')
     elif ['arm', 'aarch64'].contains(host_machine.cpu_family())
       _drivers = [
         'pl111', 'vc4', 'vc5', 'freedreno', 'etnaviv', 'imx', 'nouveau',
-        'tegra', 'virgl', 'swrast',
+        'tegra', 'virgl', 'swrast', 'panfrost'
       ]
     else
       error('Unknown architecture. Please pass -Dgallium-drivers to set driver options. Patches gladly accepted to fix this.')
@@ -177,6 +178,7 @@ if _drivers != ['']
   with_gallium_softpipe = _drivers.contains('swrast')
   with_gallium_vc4 = _drivers.contains('vc4')
   with_gallium_vc5 = _drivers.contains('vc5')
+  with_gallium_panfrost = _drivers.contains('panfrost')
   with_gallium_etnaviv = _drivers.contains('etnaviv')
   with_gallium_imx = _drivers.contains('imx')
   with_gallium_tegra = _drivers.contains('tegra')
