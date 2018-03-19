@@ -20,10 +20,10 @@
  * OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
  * USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
-#ifndef NOOP_PUBLIC_H
-#define NOOP_PUBLIC_H
+#ifndef PANFROST_PUBLIC_H
+#define PANFROST_PUBLIC_H
 
 struct pipe_screen;
-struct pipe_screen *noop_screen_create(struct pipe_screen *screen);
+struct pipe_screen *panfrost_screen_create(struct pipe_screen *screen);
 
 #endif
