@@ -1,3 +1,17 @@
+files_libpanfrost = files(
+  'panfrost_pipe.c',
+  'panfrost_state.c'
+  'midgard/midgard_cmdline.c'
+)
+
+libpanfrost = static_library(
+  'panfrost',
+  files_libpanfrost,
+  include_directories : [inc_common, inc_src, inc_include, inc_gallium, inc_gallium_aux, inc_gallium_drivers, include_directories('midgard')],
+  dependencies : [dep_thread, idep_nir],
+  build_by_default : true
+)
+
 midgard_compiler = executable(
   'midgard_compiler',
   'midgard/midgard_cmdline.c',
