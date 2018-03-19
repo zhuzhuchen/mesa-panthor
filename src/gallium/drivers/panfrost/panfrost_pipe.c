@@ -38,7 +38,7 @@ void panfrost_init_state_functions(struct pipe_context *ctx);
 
 struct panfrost_pipe_screen {
    struct pipe_screen	pscreen;
-   struct pipe_screen	*oscreen;
+//   struct pipe_screen	*oscreen;
 };
 
 /*
@@ -125,14 +125,15 @@ static struct pipe_resource *panfrost_resource_from_handle(struct pipe_screen *s
                                                        unsigned usage)
 {
    struct panfrost_pipe_screen *panfrost_screen = (struct panfrost_pipe_screen*)screen;
-   struct pipe_screen *oscreen = panfrost_screen->oscreen;
+//   struct pipe_screen *oscreen = panfrost_screen->oscreen;
    struct pipe_resource *result;
    struct pipe_resource *panfrost_resource;
 
-   result = oscreen->resource_from_handle(oscreen, templ, handle, usage);
-   panfrost_resource = panfrost_resource_create(screen, result);
-   pipe_resource_reference(&result, NULL);
-   return panfrost_resource;
+//   result = oscreen->resource_from_handle(oscreen, templ, handle, usage);
+//   panfrost_resource = panfrost_resource_create(screen, result);
+   //pipe_resource_reference(&result, NULL);
+//   return panfrost_resource;
+   return NULL;
 }
 
 static boolean panfrost_resource_get_handle(struct pipe_screen *pscreen,
@@ -142,7 +143,8 @@ static boolean panfrost_resource_get_handle(struct pipe_screen *pscreen,
                                         unsigned usage)
 {
    struct panfrost_pipe_screen *panfrost_screen = (struct panfrost_pipe_screen*)pscreen;
-   struct pipe_screen *screen = panfrost_screen->oscreen;
+   struct pipe_screen *screen = &panfrost_screen->pscreen;
+
    struct pipe_resource *tex;
    bool result;
 
@@ -378,7 +380,7 @@ static const char *panfrost_get_name(struct pipe_screen* pscreen)
 
 static int panfrost_get_param(struct pipe_screen* pscreen, enum pipe_cap param)
 {
-   struct pipe_screen *screen = ((struct panfrost_pipe_screen*)pscreen)->oscreen;
+   struct pipe_screen *screen = &((struct panfrost_pipe_screen*)pscreen)->pscreen;
 
    return screen->get_param(screen, param);
 }
@@ -386,7 +388,7 @@ static int panfrost_get_param(struct pipe_screen* pscreen, enum pipe_cap param)
 static float panfrost_get_paramf(struct pipe_screen* pscreen,
                              enum pipe_capf param)
 {
-   struct pipe_screen *screen = ((struct panfrost_pipe_screen*)pscreen)->oscreen;
+   struct pipe_screen *screen = &((struct panfrost_pipe_screen*)pscreen)->pscreen;
 
    return screen->get_paramf(screen, param);
 }
@@ -395,7 +397,7 @@ static int panfrost_get_shader_param(struct pipe_screen* pscreen,
                                  enum pipe_shader_type shader,
                                  enum pipe_shader_cap param)
 {
-   struct pipe_screen *screen = ((struct panfrost_pipe_screen*)pscreen)->oscreen;
+   struct pipe_screen *screen = &((struct panfrost_pipe_screen*)pscreen)->pscreen;
 
    return screen->get_shader_param(screen, shader, param);
 }
@@ -405,7 +407,7 @@ static int panfrost_get_compute_param(struct pipe_screen *pscreen,
                                   enum pipe_compute_cap param,
                                   void *ret)
 {
-   struct pipe_screen *screen = ((struct panfrost_pipe_screen*)pscreen)->oscreen;
+   struct pipe_screen *screen = &((struct panfrost_pipe_screen*)pscreen)->pscreen;
 
    return screen->get_compute_param(screen, ir_type, param, ret);
 }
@@ -416,7 +418,7 @@ static boolean panfrost_is_format_supported(struct pipe_screen* pscreen,
                                         unsigned sample_count,
                                         unsigned usage)
 {
-   struct pipe_screen *screen = ((struct panfrost_pipe_screen*)pscreen)->oscreen;
+   struct pipe_screen *screen = &((struct panfrost_pipe_screen*)pscreen)->pscreen;
 
    return screen->is_format_supported(screen, format, target, sample_count, usage);
 }
@@ -429,9 +431,11 @@ static uint64_t panfrost_get_timestamp(struct pipe_screen *pscreen)
 static void panfrost_destroy_screen(struct pipe_screen *screen)
 {
    struct panfrost_pipe_screen *panfrost_screen = (struct panfrost_pipe_screen*)screen;
-   struct pipe_screen *oscreen = panfrost_screen->oscreen;
+#if 0
+   struct pipe_screen *nscreen = panfrost_screen->oscreen;
 
    oscreen->destroy(oscreen);
+#endif
    FREE(screen);
 }
 
@@ -453,25 +457,21 @@ static void panfrost_query_memory_info(struct pipe_screen *pscreen,
                                    struct pipe_memory_info *info)
 {
    struct panfrost_pipe_screen *panfrost_screen = (struct panfrost_pipe_screen*)pscreen;
-   struct pipe_screen *screen = panfrost_screen->oscreen;
+//   struct pipe_screen *screen = panfrost_screen->oscreen;
 
-   screen->query_memory_info(screen, info);
+  // screen->query_memory_info(screen, info);
 }
 
-struct pipe_screen *panfrost_screen_create(struct pipe_screen *oscreen)
+struct pipe_screen *panfrost_screen_create(int fd)
 {
    struct panfrost_pipe_screen *panfrost_screen;
    struct pipe_screen *screen;
-
-   if (!debug_get_option_panfrost()) {
-      return oscreen;
-   }
 
    panfrost_screen = CALLOC_STRUCT(panfrost_pipe_screen);
    if (!panfrost_screen) {
       return NULL;
    }
-   panfrost_screen->oscreen = oscreen;
+   //panfrost_screen->oscreen = oscreen;
    screen = &panfrost_screen->pscreen;
 
    screen->destroy = panfrost_destroy_screen;

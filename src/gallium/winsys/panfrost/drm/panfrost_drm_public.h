@@ -4,6 +4,6 @@
 
 struct pipe_screen;
 
-struct pipe_screen *pan_drm_screen_create(int drmFD);
+struct pipe_screen *panfrost_drm_screen_create(int drmFD);
 
 #endif

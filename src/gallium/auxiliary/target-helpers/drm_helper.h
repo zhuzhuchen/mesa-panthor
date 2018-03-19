@@ -271,7 +271,7 @@ pipe_panfrost_create_screen(int fd, const struct pipe_screen_config *config)
 {
    struct pipe_screen *screen;
 
-   screen = pan_drm_screen_create(fd);
+   screen = panfrost_drm_screen_create(fd);
    return screen ? debug_screen_wrap(screen) : NULL;
 }
 

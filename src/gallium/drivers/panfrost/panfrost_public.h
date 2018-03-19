@@ -24,6 +24,6 @@
 #define PANFROST_PUBLIC_H
 
 struct pipe_screen;
-struct pipe_screen *panfrost_screen_create(struct pipe_screen *screen);
+struct pipe_screen *panfrost_screen_create(int fd);
 
 #endif
