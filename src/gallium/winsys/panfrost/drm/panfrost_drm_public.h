@@ -1,6 +1,6 @@
 
-#ifndef __FREEDRENO_DRM_PUBLIC_H__
-#define __FREEDRENO_DRM_PUBLIC_H__
+#ifndef __PANFROST_DRM_PUBLIC_H__
+#define __PANFROST_DRM_PUBLIC_H__
 
 struct pipe_screen;
 

@@ -36,9 +36,9 @@
 #include "util/u_hash_table.h"
 #include "os/os_thread.h"
 
-#include "freedreno_drm_public.h"
+#include "panfrost_drm_public.h"
 
-#include "freedreno/freedreno_screen.h"
+#include "panfrost/panfrost_screen.h"
 
 static struct util_hash_table *fd_tab = NULL;
 
