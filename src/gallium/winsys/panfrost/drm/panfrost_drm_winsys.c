@@ -40,23 +40,23 @@
 
 #include "panfrost/panfrost_screen.h"
 
-static struct util_hash_table *fd_tab = NULL;
+static struct util_hash_table *pan_tab = NULL;
 
-static mtx_t fd_screen_mutex = _MTX_INITIALIZER_NP;
+static mtx_t pan_screen_mutex = _MTX_INITIALIZER_NP;
 
 static void
-fd_drm_screen_destroy(struct pipe_screen *pscreen)
+pan_drm_screen_destroy(struct pipe_screen *pscreen)
 {
-	struct fd_screen *screen = fd_screen(pscreen);
+	struct pan_screen *screen = pan_screen(pscreen);
 	boolean destroy;
 
-	mtx_lock(&fd_screen_mutex);
+	mtx_lock(&pan_screen_mutex);
 	destroy = --screen->refcnt == 0;
 	if (destroy) {
-		int fd = fd_device_fd(screen->dev);
-		util_hash_table_remove(fd_tab, intptr_to_pointer(fd));
+		int fd = pan_device_fd(screen->dev);
+		util_hash_table_remove(pan_tab, intptr_to_pointer(fd));
 	}
-	mtx_unlock(&fd_screen_mutex);
+	mtx_unlock(&pan_screen_mutex);
 
 	if (destroy) {
 		pscreen->destroy = screen->winsys_priv;
@@ -87,41 +87,41 @@ static int compare_fd(void *key1, void *key2)
 }
 
 struct pipe_screen *
-fd_drm_screen_create(int fd)
+pan_drm_screen_create(int fd)
 {
 	struct pipe_screen *pscreen = NULL;
 
-	mtx_lock(&fd_screen_mutex);
-	if (!fd_tab) {
-		fd_tab = util_hash_table_create(hash_fd, compare_fd);
-		if (!fd_tab)
+	mtx_lock(&pan_screen_mutex);
+	if (!pan_tab) {
+		pan_tab = util_hash_table_create(hash_fd, compare_fd);
+		if (!pan_tab)
 			goto unlock;
 	}
 
-	pscreen = util_hash_table_get(fd_tab, intptr_to_pointer(fd));
+	pscreen = util_hash_table_get(pan_tab, intptr_to_pointer(fd));
 	if (pscreen) {
-		fd_screen(pscreen)->refcnt++;
+		pan_screen(pscreen)->refcnt++;
 	} else {
-		struct fd_device *dev = fd_device_new_dup(fd);
+		struct pan_device *dev = pan_device_new_dup(fd);
 		if (!dev)
 			goto unlock;
 
-		pscreen = fd_screen_create(dev);
+		pscreen = pan_screen_create(dev);
 		if (pscreen) {
-			int fd = fd_device_fd(dev);
+			int fd = pan_device_fd(dev);
 
-			util_hash_table_set(fd_tab, intptr_to_pointer(fd), pscreen);
+			util_hash_table_set(pan_tab, intptr_to_pointer(fd), pscreen);
 
 			/* Bit of a hack, to avoid circular linkage dependency,
 			 * ie. pipe driver having to call in to winsys, we
 			 * override the pipe drivers screen->destroy():
 			 */
-			fd_screen(pscreen)->winsys_priv = pscreen->destroy;
-			pscreen->destroy = fd_drm_screen_destroy;
+			pan_screen(pscreen)->winsys_priv = pscreen->destroy;
+			pscreen->destroy = pan_drm_screen_destroy;
 		}
 	}
 
 unlock:
-	mtx_unlock(&fd_screen_mutex);
+	mtx_unlock(&pan_screen_mutex);
 	return pscreen;
 }
