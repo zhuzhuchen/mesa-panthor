@@ -14,7 +14,7 @@ libpanfrost = static_library(
 
 driver_panfrost = declare_dependency(
   compile_args : '-DGALLIUM_PANFROST',
-  link_with : [libpanfrost],
+  link_with : [libpanfrost, libpanfrostwinsys],
   dependencies : idep_nir
 )
 
