@@ -38,25 +38,25 @@
 
 #include "panfrost_drm_public.h"
 
-#include "panfrost/panfrost_screen.h"
+#include "panfrost/panfrost_public.h"
 
-static struct util_hash_table *pan_tab = NULL;
+static struct util_hash_table *panfrost_tab = NULL;
 
-static mtx_t pan_screen_mutex = _MTX_INITIALIZER_NP;
+static mtx_t panfrost_screen_mutex = _MTX_INITIALIZER_NP;
 
 static void
-pan_drm_screen_destroy(struct pipe_screen *pscreen)
+panfrost_drm_screen_destroy(struct pipe_screen *pscreen)
 {
-	struct pan_screen *screen = pan_screen(pscreen);
+	struct panfrost_screen *screen = panfrost_screen(pscreen);
 	boolean destroy;
 
-	mtx_lock(&pan_screen_mutex);
+	mtx_lock(&panfrost_screen_mutex);
 	destroy = --screen->refcnt == 0;
 	if (destroy) {
-		int fd = pan_device_fd(screen->dev);
-		util_hash_table_remove(pan_tab, intptr_to_pointer(fd));
+		int fd = panfrost_device_fd(screen->dev);
+		util_hash_table_remove(panfrost_tab, intptr_to_pointer(fd));
 	}
-	mtx_unlock(&pan_screen_mutex);
+	mtx_unlock(&panfrost_screen_mutex);
 
 	if (destroy) {
 		pscreen->destroy = screen->winsys_priv;
@@ -87,41 +87,41 @@ static int compare_fd(void *key1, void *key2)
 }
 
 struct pipe_screen *
-pan_drm_screen_create(int fd)
+panfrost_drm_screen_create(int fd)
 {
 	struct pipe_screen *pscreen = NULL;
 
-	mtx_lock(&pan_screen_mutex);
-	if (!pan_tab) {
-		pan_tab = util_hash_table_create(hash_fd, compare_fd);
-		if (!pan_tab)
+	mtx_lock(&panfrost_screen_mutex);
+	if (!panfrost_tab) {
+		panfrost_tab = util_hash_table_create(hash_fd, compare_fd);
+		if (!panfrost_tab)
 			goto unlock;
 	}
 
-	pscreen = util_hash_table_get(pan_tab, intptr_to_pointer(fd));
+	pscreen = util_hash_table_get(panfrost_tab, intptr_to_pointer(fd));
 	if (pscreen) {
-		pan_screen(pscreen)->refcnt++;
+		panfrost_screen(pscreen)->refcnt++;
 	} else {
-		struct pan_device *dev = pan_device_new_dup(fd);
+		struct panfrost_device *dev = panfrost_device_new_dup(fd);
 		if (!dev)
 			goto unlock;
 
-		pscreen = pan_screen_create(dev);
+		pscreen = panfrost_screen_create(dev);
 		if (pscreen) {
-			int fd = pan_device_fd(dev);
+			int fd = panfrost_device_fd(dev);
 
-			util_hash_table_set(pan_tab, intptr_to_pointer(fd), pscreen);
+			util_hash_table_set(panfrost_tab, intptr_to_pointer(fd), pscreen);
 
 			/* Bit of a hack, to avoid circular linkage dependency,
 			 * ie. pipe driver having to call in to winsys, we
 			 * override the pipe drivers screen->destroy():
 			 */
-			pan_screen(pscreen)->winsys_priv = pscreen->destroy;
-			pscreen->destroy = pan_drm_screen_destroy;
+			panfrost_screen(pscreen)->winsys_priv = pscreen->destroy;
+			pscreen->destroy = panfrost_drm_screen_destroy;
 		}
 	}
 
 unlock:
-	mtx_unlock(&pan_screen_mutex);
+	mtx_unlock(&panfrost_screen_mutex);
 	return pscreen;
 }
