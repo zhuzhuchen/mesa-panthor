@@ -92,6 +92,7 @@ else
   driver_freedreno = declare_dependency()
 endif
 if with_gallium_panfrost
+  subdir('winsys/panfrost/drm')
   subdir('drivers/panfrost')
 else
   driver_panfrost = declare_dependency()
