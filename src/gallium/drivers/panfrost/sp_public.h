@@ -9,7 +9,7 @@ struct pipe_screen;
 struct sw_winsys;
 
 struct pipe_screen *
-softpipe_create_screen(struct sw_winsys *winsys);
+panfrost_create_screen(struct sw_winsys *winsys);
 
 #ifdef __cplusplus
 }

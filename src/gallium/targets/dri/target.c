@@ -11,6 +11,14 @@ PUBLIC const __DRIextension **__driDriverGetExtensions_##drivername(void) \
    return galliumdrm_driver_extensions;                                   \
 }
 
+const __DRIextension **__driDriverGetExtensions_swrast(void);
+
+PUBLIC const __DRIextension **__driDriverGetExtensions_swrast(void)
+{
+   globalDriverAPI = &galliumsw_driver_api;
+   return galliumsw_driver_extensions;
+}
+
 #if defined(GALLIUM_SOFTPIPE)
 
 const __DRIextension **__driDriverGetExtensions_swrast(void);

@@ -506,7 +506,7 @@ softpipe_get_timestamp(struct pipe_screen *_screen)
  * Note: we're not presently subclassing pipe_screen (no softpipe_screen).
  */
 struct pipe_screen *
-softpipe_create_screen(struct sw_winsys *winsys)
+panfrost_create_screen(struct sw_winsys *winsys)
 {
    struct softpipe_screen *screen = CALLOC_STRUCT(softpipe_screen);
 

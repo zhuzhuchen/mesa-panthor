@@ -63,7 +63,7 @@ libgallium_dri = shared_library(
     driver_swrast, driver_r300, driver_r600, driver_radeonsi, driver_nouveau,
     driver_pl111, driver_vc4, driver_vc5, driver_freedreno, driver_etnaviv,
     driver_imx, driver_tegra, driver_i915, driver_svga, driver_virgl,
-    driver_swr,
+    driver_swr, driver_panfrost
   ],
 )
 
