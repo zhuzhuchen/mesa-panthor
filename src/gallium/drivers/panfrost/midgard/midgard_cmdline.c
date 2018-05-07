@@ -40,6 +40,8 @@
 #include "main/imports.h"
 #include "compiler/nir/nir_builder.h"
 #include "util/half_float.h"
+#include "util/u_dynarray.h"
+#include "main/mtypes.h"
 
 bool c_do_mat_op_to_vec(struct exec_list *instructions);
 
