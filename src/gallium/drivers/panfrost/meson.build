@@ -60,7 +60,7 @@ files_panfrost = files(
 libpanfrost = static_library(
   'panfrost',
   files_panfrost,
-  dependencies: [cc.find_library('X11', required: true)],
+  dependencies: [cc.find_library('X11', required: true), dep_thread, idep_nir],
   include_directories : [inc_gallium_aux, inc_gallium, inc_include, inc_src, include_directories('/home/guest/panloader/trans'), include_directories('/home/guest/panloader/include'), include_directories('/home/guest/panloader/build/include')],
   c_args : [c_vis_args, c_msvc_compat_args],
 )
@@ -83,7 +83,8 @@ midgard_nir_algebraic_c = custom_target(
 )
 
 files_midgard = files(
-  'midgard/midgard_cmdline.c',
+  'midgard/midgard_compile.c',
+  'midgard/cmdline.c',
   'midgard/cppwrap.cpp',
 )
 

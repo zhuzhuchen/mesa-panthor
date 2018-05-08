@@ -34,7 +34,6 @@
 #include <stdio.h>
 #include <err.h>
 
-#include "compiler/glsl/standalone.h"
 #include "compiler/glsl/glsl_to_nir.h"
 #include "compiler/nir_types.h"
 #include "main/imports.h"
@@ -43,10 +42,9 @@
 #include "util/u_dynarray.h"
 #include "main/mtypes.h"
 
-bool c_do_mat_op_to_vec(struct exec_list *instructions);
-
 #include "midgard.h"
 #include "midgard_nir.h"
+#include "midgard_compile.h"
 #include "helpers.h"
 
 #define NIR_DEBUG
@@ -1887,7 +1885,7 @@ emit_fragment_epilogue(compiler_context *ctx)
 	EMIT(alu_br_compact_cond, midgard_jmp_writeout_op_writeout, TAG_ALU_4, -1, COND_FBWRITE);
 }
 
-static int
+int
 midgard_compile_shader_nir(nir_shader *nir, struct util_dynarray *compiled)
 {
 	bool progress;
@@ -2033,69 +2031,4 @@ midgard_compile_shader_nir(nir_shader *nir, struct util_dynarray *compiled)
 	return 0;
 }
 
-static void
-finalise_to_disk(const char *filename, struct util_dynarray *data)
-{
-	FILE *fp;
-	fp = fopen(filename, "wb");
-	fwrite(data->data, 1, data->size, fp);
-	fclose(fp);
 
-	util_dynarray_fini(data);
-}
-
-static const nir_shader_compiler_options nir_options = {
-	.lower_sub = true,
-	.lower_fpow = true,
-	.lower_scmp = true,
-	.lower_flrp32 = true,
-	.lower_flrp64 = true,
-	.lower_ffract = true,
-	.lower_fmod32 = true,
-	.lower_fmod64 = true,
-	.lower_fdiv = true,
-	.lower_idiv = true,
-	.lower_b2f = true,
-
-	.vertex_id_zero_based = true,
-	.lower_extract_byte = true,
-	.lower_extract_word = true,
-
-	.native_integers = true
-};
-
-int main(int argc, char **argv)
-{
-	struct gl_shader_program *prog;
-	nir_shader *nir;
-
-	struct standalone_options options = {
-		.glsl_version = 140,
-		.do_link = true,
-	};
-
-	if (argc != 3) {
-		printf("Must pass exactly two GLSL files\n");
-		exit(1);
-	}
-
-	prog = standalone_compile_shader(&options, 2, &argv[1]);
-	prog->_LinkedShaders[MESA_SHADER_FRAGMENT]->Program->info.stage = MESA_SHADER_FRAGMENT;
-
-	for (unsigned i = 0; i < MESA_SHADER_STAGES; ++i) {
-		if (prog->_LinkedShaders[i] == NULL)
-			continue;
-
-		c_do_mat_op_to_vec(prog->_LinkedShaders[i]->ir);
-	}
-
-	struct util_dynarray compiled;
-
-	nir = glsl_to_nir(prog, MESA_SHADER_VERTEX, &nir_options);
-	midgard_compile_shader_nir(nir, &compiled);
-	finalise_to_disk("/dev/shm/vertex.bin", &compiled);
-
-	nir = glsl_to_nir(prog, MESA_SHADER_FRAGMENT, &nir_options);
-	midgard_compile_shader_nir(nir, &compiled);
-	finalise_to_disk("/dev/shm/fragment.bin", &compiled);
-}
