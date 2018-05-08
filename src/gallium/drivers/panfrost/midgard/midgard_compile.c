@@ -347,6 +347,8 @@ optimise_nir(nir_shader *nir)
 {
 	bool progress;
 
+	NIR_PASS(progress, nir, nir_lower_regs_to_ssa);
+
 	do {
 		progress = false;
 
@@ -401,9 +403,9 @@ static void
 alias_ssa(compiler_context *ctx, int dest, int src, bool literal_dest)
 {
 	if (literal_dest) {
-		_mesa_hash_table_u64_insert(ctx->register_to_ssa, src, (void *) (uintptr_t) dest + 1);
+		_mesa_hash_table_u64_insert(ctx->register_to_ssa, src, (void *) ((uintptr_t) dest + 1));
 	} else {
-		_mesa_hash_table_u64_insert(ctx->ssa_to_alias, dest, (void *) (uintptr_t) src + 1);
+		_mesa_hash_table_u64_insert(ctx->ssa_to_alias, dest, (void *) ((uintptr_t) src + 1));
 		_mesa_set_add(ctx->leftover_ssa_to_alias, (void *) (uintptr_t) dest);
 	}
 }
@@ -969,7 +971,7 @@ emit_instr(compiler_context *ctx, struct nir_instr *instr)
 /* XXX: This has really awful asymptomatic complexity. Fix it or switch to
  * anholt's RA or something */
 
-#define IN_ARRAY(n, arr) (n < (arr.data + arr.size))
+#define IN_ARRAY(n, arr) (n < (((char *) arr.data) + arr.size))
 
 static bool
 is_ssa_used_later(compiler_context *ctx, midgard_instruction *ins, int ssa)

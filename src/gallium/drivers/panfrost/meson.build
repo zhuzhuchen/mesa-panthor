@@ -50,24 +50,14 @@ files_panfrost = files(
   'sp_texture.c',
   'sp_texture.h',
 
+  'midgard/midgard_compile.c',
+  'midgard/cppwrap.cpp',
+
     '/home/guest/panloader/trans/pandev.c',
     '/home/guest/panloader/trans/allocate.c',
     '/home/guest/panloader/trans/assemble.c',
     '/home/guest/panloader/trans/slow-framebuffer.c',
     '/home/guest/panloader/trans/trans-builder.c',
-)
-
-libpanfrost = static_library(
-  'panfrost',
-  files_panfrost,
-  dependencies: [cc.find_library('X11', required: true), dep_thread, idep_nir],
-  include_directories : [inc_gallium_aux, inc_gallium, inc_include, inc_src, include_directories('/home/guest/panloader/trans'), include_directories('/home/guest/panloader/include'), include_directories('/home/guest/panloader/build/include')],
-  c_args : [c_vis_args, c_msvc_compat_args],
-)
-
-driver_panfrost = declare_dependency(
-  compile_args : '-DGALLIUM_PANFROST',
-  link_with : libpanfrost
 )
 
 midgard_nir_algebraic_c = custom_target(
@@ -82,10 +72,23 @@ midgard_nir_algebraic_c = custom_target(
   depend_files : nir_algebraic_py,
 )
 
+libpanfrost = static_library(
+  'panfrost',
+  [files_panfrost, midgard_nir_algebraic_c],
+  dependencies: [cc.find_library('X11', required: true), dep_thread, idep_nir],
+  include_directories : [inc_common, inc_gallium_aux, inc_gallium, inc_include, inc_src, include_directories('midgard'), include_directories('/home/guest/panloader/trans'), include_directories('/home/guest/panloader/include'), include_directories('/home/guest/panloader/build/include')],
+  c_args : [c_vis_args, c_msvc_compat_args],
+)
+
+driver_panfrost = declare_dependency(
+  compile_args : ['-DGALLIUM_PANFROST', '-Wno-pointer-arith'],
+  link_with : libpanfrost
+)
+
 files_midgard = files(
   'midgard/midgard_compile.c',
-  'midgard/cmdline.c',
   'midgard/cppwrap.cpp',
+  'midgard/cmdline.c',
 )
 
 midgard_compiler = executable(
