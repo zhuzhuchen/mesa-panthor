@@ -1794,8 +1794,10 @@ actualise_register_to_ssa(compiler_context *ctx)
  * */
 
 static void
-write_transformed_position(nir_builder *b, nir_ssa_def *input_point)
+write_transformed_position(nir_builder *b, nir_src input_point_src)
 {
+	nir_ssa_def *input_point = nir_ssa_for_src(b, input_point_src, 4);
+
 	/* XXX: From uniforms? */
 
 	float w = 400.0f;
@@ -1853,26 +1855,48 @@ transform_position_writes(nir_shader *shader)
 	nir_foreach_function(func, shader) {
 		nir_foreach_block(block, func->impl) {
 			nir_foreach_instr_safe(instr, block) {
-				if (instr->type == nir_instr_type_intrinsic) {
-					nir_intrinsic_instr *intr = nir_instr_as_intrinsic(instr);
+				if (instr->type != nir_instr_type_intrinsic) continue;
 
-					if (intr->intrinsic == nir_intrinsic_store_var) {
-						nir_variable *out = intr->variables[0]->var;
+				nir_intrinsic_instr *intr = nir_instr_as_intrinsic(instr);
+				nir_variable *out = NULL;
 
-						if (out->data.mode != nir_var_shader_out)
-							continue;
+				switch (intr->intrinsic) {
+					case nir_intrinsic_store_var:
+						out = intr->variables[0]->var;
+						break;
+					case nir_intrinsic_store_output:
+						/* already had i/o lowered.. lookup the matching output var: */
+						printf("SO\n");
+						nir_foreach_variable(var, &shader->outputs) {
+							int drvloc = var->data.driver_location;
+							printf("Base %d, loc %d\n", nir_intrinsic_base(intr), drvloc);
+							if (nir_intrinsic_base(intr) == drvloc) {
+								printf("Var: %p\n", var);
+								out = var;
+								break;
+							}
+						}
 
-						if (out->data.location != VARYING_SLOT_POS)
-							continue;
-
-						nir_builder b;
-						nir_builder_init(&b, func->impl);
-						b.cursor = nir_before_instr(&intr->instr);
-
-						write_transformed_position(&b, intr->src[0].ssa);
-						nir_instr_remove(instr);
-					}
+						break;
+					default:
+						break;
 				}
+
+				if (!out) continue;
+				printf("Out: %p\n", out);
+
+				if (out->data.mode != nir_var_shader_out)
+					continue;
+
+				if (out->data.location != VARYING_SLOT_POS)
+					continue;
+
+				nir_builder b;
+				nir_builder_init(&b, func->impl);
+				b.cursor = nir_before_instr(instr);
+
+				write_transformed_position(&b, intr->src[0]);
+				nir_instr_remove(instr);
 			}
 		}
 	}
@@ -1917,8 +1941,12 @@ midgard_compile_shader_nir(nir_shader *nir, struct util_dynarray *compiled)
 	/* Append vertex epilogue before optimisation, so the epilogue itself
 	 * is optimised */
 
-	if (ctx->stage == MESA_SHADER_VERTEX)
+	if (ctx->stage == MESA_SHADER_VERTEX) {
+		printf("trans\n");
 		transform_position_writes(nir);
+	} else {
+		printf("No trans\n");
+	}
 
 	/* Optimisation passes */
 

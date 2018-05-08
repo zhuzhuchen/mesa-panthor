@@ -1,6 +1,7 @@
 /**************************************************************************
  *
  * Copyright 2008 VMware, Inc.
+ * Copyright 2014 Broadcom
  * All Rights Reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -44,6 +45,8 @@
 #include "sp_context.h"
 #include "sp_fence.h"
 #include "sp_public.h"
+
+#include "midgard/midgard_compile.h"
 
 static const char *
 softpipe_get_name(struct pipe_screen *screen)
@@ -128,6 +131,7 @@ softpipe_get_param(struct pipe_screen *screen, enum pipe_cap param)
       return 1;
    case PIPE_CAP_SHADER_STENCIL_EXPORT:
       return 1;
+
    case PIPE_CAP_TGSI_INSTANCEID:
    case PIPE_CAP_VERTEX_ELEMENT_INSTANCE_DIVISOR:
    case PIPE_CAP_START_INSTANCE:
@@ -190,6 +194,7 @@ softpipe_get_param(struct pipe_screen *screen, enum pipe_cap param)
    case PIPE_CAP_TEXTURE_BUFFER_OFFSET_ALIGNMENT:
       return 0;
    case PIPE_CAP_TGSI_TEXCOORD:
+      return 1; /* XXX: What should this me exactly? */
    case PIPE_CAP_PREFER_BLIT_BASED_TEXTURE_TRANSFER:
       return 0;
    case PIPE_CAP_MAX_VIEWPORTS:
@@ -330,19 +335,76 @@ softpipe_get_shader_param(struct pipe_screen *screen,
                           enum pipe_shader_type shader,
                           enum pipe_shader_cap param)
 {
-   struct softpipe_screen *sp_screen = softpipe_screen(screen);
-   switch(shader)
-   {
-   case PIPE_SHADER_FRAGMENT:
-      return tgsi_exec_get_shader_param(param);
-   case PIPE_SHADER_VERTEX:
-      if (sp_screen->use_llvm)
-         return draw_get_shader_param(shader, param);
-      else
-         return draw_get_shader_param_no_llvm(shader, param);
-   default:
-      return 0;
-   }
+        if (shader != PIPE_SHADER_VERTEX &&
+            shader != PIPE_SHADER_FRAGMENT) {
+                return 0;
+        }
+
+        /* this is probably not totally correct.. but it's a start: */
+        switch (param) {
+        case PIPE_SHADER_CAP_MAX_INSTRUCTIONS:
+        case PIPE_SHADER_CAP_MAX_ALU_INSTRUCTIONS:
+        case PIPE_SHADER_CAP_MAX_TEX_INSTRUCTIONS:
+        case PIPE_SHADER_CAP_MAX_TEX_INDIRECTIONS:
+                return 16384;
+
+        case PIPE_SHADER_CAP_MAX_CONTROL_FLOW_DEPTH:
+                return 0; /* XXX */
+
+        case PIPE_SHADER_CAP_MAX_INPUTS:
+                return 8;
+        case PIPE_SHADER_CAP_MAX_OUTPUTS:
+                return shader == PIPE_SHADER_FRAGMENT ? 1 : 8;
+        case PIPE_SHADER_CAP_MAX_TEMPS:
+                return 256; /* GL_MAX_PROGRAM_TEMPORARIES_ARB */
+        case PIPE_SHADER_CAP_MAX_CONST_BUFFER_SIZE:
+                return 16 * 1024 * sizeof(float);
+        case PIPE_SHADER_CAP_MAX_CONST_BUFFERS:
+                return 1;
+        case PIPE_SHADER_CAP_TGSI_CONT_SUPPORTED:
+                return 0;
+        case PIPE_SHADER_CAP_INDIRECT_INPUT_ADDR:
+        case PIPE_SHADER_CAP_INDIRECT_OUTPUT_ADDR:
+        case PIPE_SHADER_CAP_INDIRECT_TEMP_ADDR:
+                return 0;
+        case PIPE_SHADER_CAP_INDIRECT_CONST_ADDR:
+                return 1;
+        case PIPE_SHADER_CAP_SUBROUTINES:
+                return 0;
+        case PIPE_SHADER_CAP_TGSI_SQRT_SUPPORTED:
+                return 0;
+        case PIPE_SHADER_CAP_INTEGERS:
+                return 1;
+        case PIPE_SHADER_CAP_INT64_ATOMICS:
+        case PIPE_SHADER_CAP_FP16:
+        case PIPE_SHADER_CAP_TGSI_DROUND_SUPPORTED:
+        case PIPE_SHADER_CAP_TGSI_DFRACEXP_DLDEXP_SUPPORTED:
+        case PIPE_SHADER_CAP_TGSI_LDEXP_SUPPORTED:
+        case PIPE_SHADER_CAP_TGSI_FMA_SUPPORTED:
+        case PIPE_SHADER_CAP_TGSI_ANY_INOUT_DECL_RANGE:
+                return 0;
+        case PIPE_SHADER_CAP_MAX_TEXTURE_SAMPLERS:
+        case PIPE_SHADER_CAP_MAX_SAMPLER_VIEWS:
+                return 16; /* XXX: How many? */
+        case PIPE_SHADER_CAP_PREFERRED_IR:
+                return PIPE_SHADER_IR_TGSI;
+        case PIPE_SHADER_CAP_SUPPORTED_IRS:
+                return 0;
+        case PIPE_SHADER_CAP_MAX_UNROLL_ITERATIONS_HINT:
+                return 32;
+        case PIPE_SHADER_CAP_MAX_SHADER_BUFFERS:
+        case PIPE_SHADER_CAP_MAX_SHADER_IMAGES:
+        case PIPE_SHADER_CAP_LOWER_IF_THRESHOLD:
+        case PIPE_SHADER_CAP_TGSI_SKIP_MERGE_REGISTERS:
+        case PIPE_SHADER_CAP_MAX_HW_ATOMIC_COUNTERS:
+        case PIPE_SHADER_CAP_MAX_HW_ATOMIC_COUNTER_BUFFERS:
+                return 0;
+        default:
+                fprintf(stderr, "unknown shader param %d\n", param);
+                return 0;
+        }
+        return 0;
+
 }
 
 static float
@@ -501,6 +563,14 @@ softpipe_get_timestamp(struct pipe_screen *_screen)
    return os_time_get_nano();
 }
 
+static const void *
+softpipe_screen_get_compiler_options(struct pipe_screen *pscreen,
+                                enum pipe_shader_ir ir,
+                                enum pipe_shader_type shader)
+{
+        return &midgard_nir_options;
+}
+
 /**
  * Create a new pipe_screen object
  * Note: we're not presently subclassing pipe_screen (no softpipe_screen).
@@ -527,6 +597,7 @@ panfrost_create_screen(struct sw_winsys *winsys)
    screen->base.is_format_supported = softpipe_is_format_supported;
    screen->base.context_create = softpipe_create_context;
    screen->base.flush_frontbuffer = softpipe_flush_frontbuffer;
+   screen->base.get_compiler_options = softpipe_screen_get_compiler_options;
 
    softpipe_init_screen_texture_funcs(&screen->base);
    softpipe_init_screen_fence_funcs(&screen->base);

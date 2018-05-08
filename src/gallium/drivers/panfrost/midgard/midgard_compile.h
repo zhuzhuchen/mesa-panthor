@@ -21,9 +21,11 @@
  * SOFTWARE.
  */
 
+
+#include "compiler/nir/nir.h"
+
 /* Forward declaration to avoid large #includes */
 
-struct nir_shader;
 struct util_dynarray;
 
 /* Define the general compiler entry point */
