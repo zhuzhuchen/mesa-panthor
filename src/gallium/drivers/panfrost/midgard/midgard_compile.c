@@ -861,12 +861,11 @@ static void
 emit_tex(compiler_context *ctx, nir_tex_instr *instr)
 {
 	/* TODO */
-	assert (instr->texture);
 	//assert (!instr->sampler);
 	assert (!instr->texture_array_size);
 	assert (instr->op == nir_texop_tex);
 
-	int texture_index = instr->texture->var->data.location;
+	int texture_index = instr->texture ? instr->texture->var->data.location : instr->texture_index;
 
 	/* TODO: Vulkan, where texture =/= sampler */
 	int sampler_index = texture_index;
