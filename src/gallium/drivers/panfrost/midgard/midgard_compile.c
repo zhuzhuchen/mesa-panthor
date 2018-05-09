@@ -605,7 +605,7 @@ emit_alu(compiler_context *ctx, nir_alu_instr *instr)
 
 		default:
 			printf("Unhandled ALU op\n");
-			break;
+			return;
 	}
 
 	/* slut doesn't exist; lower to vlut which acts as scalar
@@ -1979,7 +1979,7 @@ midgard_compile_shader_nir(nir_shader *nir, struct util_dynarray *compiled)
 			inline_alu_constants(ctx);
 			embedded_to_inline_constant(ctx);
 
-			eliminate_varying_mov(ctx);
+			//eliminate_varying_mov(ctx);
 
 			/* Perform heavylifting for aliasing */
 			actualise_ssa_to_alias(ctx);
