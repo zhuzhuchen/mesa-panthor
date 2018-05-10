@@ -58,6 +58,7 @@ files_panfrost = files(
     '/home/guest/panloader/trans/assemble.c',
     '/home/guest/panloader/trans/slow-framebuffer.c',
     '/home/guest/panloader/trans/trans-builder.c',
+    '/home/guest/panloader/trans/limare-swizzle.c',
 )
 
 midgard_nir_algebraic_c = custom_target(
