@@ -45,44 +45,31 @@
 #include "state_tracker/sw_winsys.h"
 
 static boolean
-softpipe_can_create_resource(struct pipe_screen *screen,
+panfrost_can_create_resource(struct pipe_screen *screen,
                              const struct pipe_resource *res)
 {
    return TRUE;
 }
 
-
 #define __PAN_GALLIUM
 #include <trans-builder.h>
 
-/**
- * Create new pipe_resource given the template information.
- */
 static struct pipe_resource *
-softpipe_resource_create_front(struct pipe_screen *screen,
-                               const struct pipe_resource *templat,
-                               const void *map_front_private)
-{
-	return panfrost_resource_create_front(screen, templat, map_front_private);
-}
-
-static struct pipe_resource *
-softpipe_resource_create(struct pipe_screen *screen,
+panfrost_resource_create(struct pipe_screen *screen,
                          const struct pipe_resource *templat)
 {
-   return softpipe_resource_create_front(screen, templat, NULL);
+   return panfrost_resource_create_front(screen, templat, NULL);
 }
 
 static void
-softpipe_resource_destroy(struct pipe_screen *pscreen,
+panfrost_resource_destroy(struct pipe_screen *pscreen,
 			  struct pipe_resource *pt)
 {
    FREE(pt);
 }
 
-
 static struct pipe_resource *
-softpipe_resource_from_handle(struct pipe_screen *screen,
+panfrost_resource_from_handle(struct pipe_screen *screen,
                               const struct pipe_resource *templat,
                               struct winsys_handle *whandle,
                               unsigned usage)
@@ -92,7 +79,7 @@ softpipe_resource_from_handle(struct pipe_screen *screen,
 
 
 static boolean
-softpipe_resource_get_handle(struct pipe_screen *screen,
+panfrost_resource_get_handle(struct pipe_screen *screen,
                              struct pipe_context *ctx,
                              struct pipe_resource *pt,
                              struct winsys_handle *whandle,
@@ -103,12 +90,12 @@ softpipe_resource_get_handle(struct pipe_screen *screen,
 }
 
 void
-softpipe_init_screen_texture_funcs(struct pipe_screen *screen)
+panfrost_init_screen_texture_funcs(struct pipe_screen *screen)
 {
-   screen->resource_create = softpipe_resource_create;
-   screen->resource_create_front = softpipe_resource_create_front;
-   screen->resource_destroy = softpipe_resource_destroy;
-   screen->resource_from_handle = softpipe_resource_from_handle;
-   screen->resource_get_handle = softpipe_resource_get_handle;
-   screen->can_create_resource = softpipe_can_create_resource;
+   screen->resource_create = panfrost_resource_create;
+   screen->resource_create_front = panfrost_resource_create_front;
+   screen->resource_destroy = panfrost_resource_destroy;
+   screen->resource_from_handle = panfrost_resource_from_handle;
+   screen->resource_get_handle = panfrost_resource_get_handle;
+   screen->can_create_resource = panfrost_can_create_resource;
 }

@@ -38,7 +38,6 @@
 #include "draw/draw_context.h"
 
 #include "state_tracker/sw_winsys.h"
-#include "tgsi/tgsi_exec.h"
 
 #include "sp_texture.h"
 #include "sp_screen.h"
@@ -48,25 +47,25 @@
 #include "midgard/midgard_compile.h"
 
 static const char *
-softpipe_get_name(struct pipe_screen *screen)
+panfrost_get_name(struct pipe_screen *screen)
 {
    return "panfrost";
 }
 
 static const char *
-softpipe_get_vendor(struct pipe_screen *screen)
+panfrost_get_vendor(struct pipe_screen *screen)
 {
    return "panfrost";
 }
 
 static const char *
-softpipe_get_device_vendor(struct pipe_screen *screen)
+panfrost_get_device_vendor(struct pipe_screen *screen)
 {
    return "ARM";
 }
 
 static int
-softpipe_get_param(struct pipe_screen *screen, enum pipe_cap param)
+panfrost_get_param(struct pipe_screen *screen, enum pipe_cap param)
 {
    switch (param) {
    case PIPE_CAP_NPOT_TEXTURES:
@@ -240,7 +239,7 @@ softpipe_get_param(struct pipe_screen *screen, enum pipe_cap param)
          return 0;
 
       if (sizeof(void *) == 4)
-         /* Cap to 2 GB on 32 bits system. We do this because softpipe does
+         /* Cap to 2 GB on 32 bits system. We do this because panfrost does
           * eat application memory, which is quite limited on 32 bits. App
           * shouldn't expect too much available memory. */
          system_memory = MIN2(system_memory, 2048 << 20);
@@ -330,7 +329,7 @@ softpipe_get_param(struct pipe_screen *screen, enum pipe_cap param)
 }
 
 static int
-softpipe_get_shader_param(struct pipe_screen *screen,
+panfrost_get_shader_param(struct pipe_screen *screen,
                           enum pipe_shader_type shader,
                           enum pipe_shader_cap param)
 {
@@ -403,11 +402,10 @@ softpipe_get_shader_param(struct pipe_screen *screen,
                 return 0;
         }
         return 0;
-
 }
 
 static float
-softpipe_get_paramf(struct pipe_screen *screen, enum pipe_capf param)
+panfrost_get_paramf(struct pipe_screen *screen, enum pipe_capf param)
 {
    switch (param) {
    case PIPE_CAPF_MAX_LINE_WIDTH:
@@ -434,13 +432,13 @@ softpipe_get_paramf(struct pipe_screen *screen, enum pipe_capf param)
  * \param type  one of PIPE_TEXTURE, PIPE_SURFACE
  */
 static boolean
-softpipe_is_format_supported( struct pipe_screen *screen,
+panfrost_is_format_supported( struct pipe_screen *screen,
                               enum pipe_format format,
                               enum pipe_texture_target target,
                               unsigned sample_count,
                               unsigned bind)
 {
-   struct sw_winsys *winsys = softpipe_screen(screen)->winsys;
+   struct sw_winsys *winsys = panfrost_screen(screen)->winsys;
    const struct util_format_description *format_desc;
 
    assert(target == PIPE_BUFFER ||
@@ -459,13 +457,6 @@ softpipe_is_format_supported( struct pipe_screen *screen,
 
    if (sample_count > 1)
       return FALSE;
-
-   if (bind & (PIPE_BIND_DISPLAY_TARGET |
-               PIPE_BIND_SCANOUT |
-               PIPE_BIND_SHARED)) {
-      if(!winsys->is_displaytarget_format_supported(winsys, bind, format))
-         return FALSE;
-   }
 
    if (bind & PIPE_BIND_RENDER_TARGET) {
       if (format_desc->colorspace == UTIL_FORMAT_COLORSPACE_ZS)
@@ -510,25 +501,14 @@ softpipe_is_format_supported( struct pipe_screen *screen,
       }
    }
 
-   if (format_desc->layout == UTIL_FORMAT_LAYOUT_ETC &&
-       format != PIPE_FORMAT_ETC1_RGB8)
-      return FALSE;
-
-   /*
-    * All other operations (sampling, transfer, etc).
-    */
-
-   /*
-    * Everything else should be supported by u_format.
-    */
    return TRUE;
 }
 
 
 static void
-softpipe_destroy_screen( struct pipe_screen *screen )
+panfrost_destroy_screen( struct pipe_screen *screen )
 {
-   struct softpipe_screen *sp_screen = softpipe_screen(screen);
+   struct panfrost_screen *sp_screen = panfrost_screen(screen);
    struct sw_winsys *winsys = sp_screen->winsys;
 
    if(winsys->destroy)
@@ -537,28 +517,25 @@ softpipe_destroy_screen( struct pipe_screen *screen )
    FREE(screen);
 }
 
-
-/* This is often overriden by the co-state tracker.
- */
 static void
-softpipe_flush_frontbuffer(struct pipe_screen *_screen,
+panfrost_flush_frontbuffer(struct pipe_screen *_screen,
                            struct pipe_resource *resource,
                            unsigned level, unsigned layer,
                            void *context_private,
                            struct pipe_box *sub_box)
 {
-   struct softpipe_screen *screen = softpipe_screen(_screen);
+   struct panfrost_screen *screen = panfrost_screen(_screen);
    /* Flush */
 }
 
 static uint64_t
-softpipe_get_timestamp(struct pipe_screen *_screen)
+panfrost_get_timestamp(struct pipe_screen *_screen)
 {
    return os_time_get_nano();
 }
 
 static void
-softpipe_fence_reference(struct pipe_screen *screen,
+panfrost_fence_reference(struct pipe_screen *screen,
                          struct pipe_fence_handle **ptr,
                          struct pipe_fence_handle *fence)
 {
@@ -566,7 +543,7 @@ softpipe_fence_reference(struct pipe_screen *screen,
 }
 
 static boolean
-softpipe_fence_finish(struct pipe_screen *screen,
+panfrost_fence_finish(struct pipe_screen *screen,
                       struct pipe_context *ctx,
                       struct pipe_fence_handle *fence,
                       uint64_t timeout)
@@ -575,47 +552,41 @@ softpipe_fence_finish(struct pipe_screen *screen,
    return TRUE;
 }
 
-
-
 static const void *
-softpipe_screen_get_compiler_options(struct pipe_screen *pscreen,
+panfrost_screen_get_compiler_options(struct pipe_screen *pscreen,
                                 enum pipe_shader_ir ir,
                                 enum pipe_shader_type shader)
 {
         return &midgard_nir_options;
 }
 
-/**
- * Create a new pipe_screen object
- * Note: we're not presently subclassing pipe_screen (no softpipe_screen).
- */
 struct pipe_screen *
 panfrost_create_screen(struct sw_winsys *winsys)
 {
-   struct softpipe_screen *screen = CALLOC_STRUCT(softpipe_screen);
+   struct panfrost_screen *screen = CALLOC_STRUCT(panfrost_screen);
 
    if (!screen)
       return NULL;
 
    screen->winsys = winsys;
 
-   screen->base.destroy = softpipe_destroy_screen;
+   screen->base.destroy = panfrost_destroy_screen;
 
-   screen->base.get_name = softpipe_get_name;
-   screen->base.get_vendor = softpipe_get_vendor;
-   screen->base.get_device_vendor = softpipe_get_device_vendor; 
-   screen->base.get_param = softpipe_get_param;
-   screen->base.get_shader_param = softpipe_get_shader_param;
-   screen->base.get_paramf = softpipe_get_paramf;
-   screen->base.get_timestamp = softpipe_get_timestamp;
-   screen->base.is_format_supported = softpipe_is_format_supported;
+   screen->base.get_name = panfrost_get_name;
+   screen->base.get_vendor = panfrost_get_vendor;
+   screen->base.get_device_vendor = panfrost_get_device_vendor; 
+   screen->base.get_param = panfrost_get_param;
+   screen->base.get_shader_param = panfrost_get_shader_param;
+   screen->base.get_paramf = panfrost_get_paramf;
+   screen->base.get_timestamp = panfrost_get_timestamp;
+   screen->base.is_format_supported = panfrost_is_format_supported;
    screen->base.context_create = panfrost_create_context;
-   screen->base.flush_frontbuffer = softpipe_flush_frontbuffer;
-   screen->base.get_compiler_options = softpipe_screen_get_compiler_options;
-   screen->base.fence_reference = softpipe_fence_reference;
-   screen->base.fence_finish = softpipe_fence_finish;
+   screen->base.flush_frontbuffer = panfrost_flush_frontbuffer;
+   screen->base.get_compiler_options = panfrost_screen_get_compiler_options;
+   screen->base.fence_reference = panfrost_fence_reference;
+   screen->base.fence_finish = panfrost_fence_finish;
 
-   softpipe_init_screen_texture_funcs(&screen->base);
+   panfrost_init_screen_texture_funcs(&screen->base);
 
    return &screen->base;
 }

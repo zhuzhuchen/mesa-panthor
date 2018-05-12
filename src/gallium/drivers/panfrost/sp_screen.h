@@ -36,16 +36,16 @@
 
 struct sw_winsys;
 
-struct softpipe_screen {
+struct panfrost_screen {
    struct pipe_screen base;
 
    struct sw_winsys *winsys;
 };
 
-static inline struct softpipe_screen *
-softpipe_screen( struct pipe_screen *pipe )
+static inline struct panfrost_screen *
+panfrost_screen( struct pipe_screen *pipe )
 {
-   return (struct softpipe_screen *)pipe;
+   return (struct panfrost_screen *)pipe;
 }
 
 #endif /* SP_SCREEN_H */

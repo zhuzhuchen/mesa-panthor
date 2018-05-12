@@ -31,6 +31,6 @@
 #include "pipe/p_state.h"
 
 extern void
-softpipe_init_screen_texture_funcs(struct pipe_screen *screen);
+panfrost_init_screen_texture_funcs(struct pipe_screen *screen);
 
 #endif /* SP_TEXTURE */
