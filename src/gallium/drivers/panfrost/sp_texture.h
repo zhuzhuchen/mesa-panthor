@@ -28,94 +28,9 @@
 #ifndef SP_TEXTURE_H
 #define SP_TEXTURE_H
 
-
 #include "pipe/p_state.h"
-
-
-struct pipe_context;
-struct pipe_screen;
-struct softpipe_context;
-
-
-/**
- * Subclass of pipe_resource.
- */
-struct softpipe_resource
-{
-   struct pipe_resource base;
-
-   unsigned long level_offset[8];
-   unsigned stride[8];
-   unsigned img_stride[8];
-
-   /**
-    * Display target, only valid for PIPE_TEXTURE_2D with the
-    * PIPE_BIND_DISPLAY_TARGET usage.
-    */
-   struct sw_displaytarget *dt;
-
-   /**
-    * Malloc'ed data for regular buffers and textures, or a mapping to dt above.
-    */
-   void *data;
-
-   /* True if texture images are power-of-two in all dimensions:
-    */
-   boolean pot;
-   boolean userBuffer;
-
-   unsigned timestamp;
-};
-
-
-/**
- * Subclass of pipe_transfer.
- */
-struct softpipe_transfer
-{
-   struct pipe_transfer base;
-
-   unsigned long offset;
-};
-
-
-/** cast wrappers */
-static inline struct softpipe_resource *
-softpipe_resource(struct pipe_resource *pt)
-{
-   return (struct softpipe_resource *) pt;
-}
-
-static inline struct softpipe_transfer *
-softpipe_transfer(struct pipe_transfer *pt)
-{
-   return (struct softpipe_transfer *) pt;
-}
-
-
-/**
- * Return pointer to a resource's actual data.
- * This is a short-cut instead of using map()/unmap(), which should
- * probably be fixed.
- */
-static inline void *
-softpipe_resource_data(struct pipe_resource *pt)
-{
-   if (!pt)
-      return NULL;
-
-   assert(softpipe_resource(pt)->dt == NULL);
-   return softpipe_resource(pt)->data;
-}
-
 
 extern void
 softpipe_init_screen_texture_funcs(struct pipe_screen *screen);
 
-extern void
-softpipe_init_texture_funcs(struct pipe_context *pipe);
-
-unsigned
-softpipe_get_tex_image_offset(const struct softpipe_resource *spr,
-                              unsigned level, unsigned layer);
 #endif /* SP_TEXTURE */

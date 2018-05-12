@@ -52,31 +52,6 @@ softpipe_can_create_resource(struct pipe_screen *screen,
 }
 
 
-/**
- * Texture layout for simple color buffers.
- */
-static boolean
-softpipe_displaytarget_layout(struct pipe_screen *screen,
-                              struct softpipe_resource *spr,
-                              const void *map_front_private)
-{
-   struct sw_winsys *winsys = softpipe_screen(screen)->winsys;
-
-   /* Round up the surface size to a multiple of the tile size?
-    */
-   printf("Surface created\n");
-   spr->dt = winsys->displaytarget_create(winsys,
-                                          spr->base.bind,
-                                          spr->base.format,
-                                          spr->base.width0, 
-                                          spr->base.height0,
-                                          64,
-                                          map_front_private,
-                                          &spr->stride[0] );
-
-   return spr->dt != NULL;
-}
-
 #define __PAN_GALLIUM
 #include <trans-builder.h>
 
@@ -88,36 +63,7 @@ softpipe_resource_create_front(struct pipe_screen *screen,
                                const struct pipe_resource *templat,
                                const void *map_front_private)
 {
-	if (!(templat->bind & PIPE_BIND_DISPLAY_TARGET))
-		return panfrost_resource_create_front(screen, templat, map_front_private);
-
-	printf("Disp\n");
-   struct softpipe_resource *spr = CALLOC_STRUCT(softpipe_resource);
-   if (!spr)
-      return NULL;
-
-   assert(templat->format != PIPE_FORMAT_NONE);
-
-   spr->base = *templat;
-   pipe_reference_init(&spr->base.reference, 1);
-   spr->base.screen = screen;
-
-   spr->pot = (util_is_power_of_two_or_zero(templat->width0) &&
-               util_is_power_of_two_or_zero(templat->height0) &&
-               util_is_power_of_two_or_zero(templat->depth0));
-
-   if (spr->base.bind & (PIPE_BIND_DISPLAY_TARGET |
-			 PIPE_BIND_SCANOUT |
-			 PIPE_BIND_SHARED)) {
-      if (!softpipe_displaytarget_layout(screen, spr, map_front_private))
-         goto fail;
-   }
-    
-   return &spr->base;
-
- fail:
-   FREE(spr);
-   return NULL;
+	return panfrost_resource_create_front(screen, templat, map_front_private);
 }
 
 static struct pipe_resource *
@@ -131,23 +77,7 @@ static void
 softpipe_resource_destroy(struct pipe_screen *pscreen,
 			  struct pipe_resource *pt)
 {
-   struct softpipe_screen *screen = softpipe_screen(pscreen);
-   struct softpipe_resource *spr = softpipe_resource(pt);
-
-#if 0
-   if (spr->dt) {
-      /* display target */
-      struct sw_winsys *winsys = screen->winsys;
-      winsys->displaytarget_destroy(winsys, spr->dt);
-   }
-   else if (!spr->userBuffer) {
-      /* regular texture */
-      align_free(spr->data);
-   }
-#endif
-   printf("Resource destroy...\n");
-
-   FREE(spr);
+   FREE(pt);
 }
 
 
@@ -157,32 +87,7 @@ softpipe_resource_from_handle(struct pipe_screen *screen,
                               struct winsys_handle *whandle,
                               unsigned usage)
 {
-   struct sw_winsys *winsys = softpipe_screen(screen)->winsys;
-   struct softpipe_resource *spr = CALLOC_STRUCT(softpipe_resource);
-   if (!spr)
-      return NULL;
-
-   spr->base = *templat;
-   pipe_reference_init(&spr->base.reference, 1);
-   spr->base.screen = screen;
-
-   spr->pot = (util_is_power_of_two_or_zero(templat->width0) &&
-               util_is_power_of_two_or_zero(templat->height0) &&
-               util_is_power_of_two_or_zero(templat->depth0));
-
-   printf("Create from handle\n");
-   spr->dt = winsys->displaytarget_from_handle(winsys,
-                                               templat,
-                                               whandle,
-                                               &spr->stride[0]);
-   if (!spr->dt)
-      goto fail;
-
-   return &spr->base;
-
- fail:
-   FREE(spr);
-   return NULL;
+	assert(0);
 }
 
 
@@ -193,30 +98,8 @@ softpipe_resource_get_handle(struct pipe_screen *screen,
                              struct winsys_handle *whandle,
                              unsigned usage)
 {
-   struct sw_winsys *winsys = softpipe_screen(screen)->winsys;
-   struct softpipe_resource *spr = softpipe_resource(pt);
-
-   assert(spr->dt);
-   if (!spr->dt)
-      return FALSE;
-
-   return winsys->displaytarget_get_handle(winsys, spr->dt, whandle);
-}
-
-
-/**
- * Helper function to compute offset (in bytes) for a particular
- * texture level/face/slice from the start of the buffer.
- */
-unsigned
-softpipe_get_tex_image_offset(const struct softpipe_resource *spr,
-                              unsigned level, unsigned layer)
-{
-   unsigned offset = spr->level_offset[level];
-
-   offset += layer * spr->img_stride[level];
-
-   return offset;
+	assert(0);
+	return FALSE;
 }
 
 void
