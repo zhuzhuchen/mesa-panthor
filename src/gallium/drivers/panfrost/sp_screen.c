@@ -42,7 +42,6 @@
 
 #include "sp_texture.h"
 #include "sp_screen.h"
-#include "sp_fence.h"
 #include "sp_public.h"
 
 #include "trans-builder.h"
@@ -563,6 +562,26 @@ softpipe_get_timestamp(struct pipe_screen *_screen)
    return os_time_get_nano();
 }
 
+static void
+softpipe_fence_reference(struct pipe_screen *screen,
+                         struct pipe_fence_handle **ptr,
+                         struct pipe_fence_handle *fence)
+{
+   *ptr = fence;
+}
+
+static boolean
+softpipe_fence_finish(struct pipe_screen *screen,
+                      struct pipe_context *ctx,
+                      struct pipe_fence_handle *fence,
+                      uint64_t timeout)
+{
+   assert(fence);
+   return TRUE;
+}
+
+
+
 static const void *
 softpipe_screen_get_compiler_options(struct pipe_screen *pscreen,
                                 enum pipe_shader_ir ir,
@@ -598,9 +617,10 @@ panfrost_create_screen(struct sw_winsys *winsys)
    screen->base.context_create = panfrost_create_context;
    screen->base.flush_frontbuffer = softpipe_flush_frontbuffer;
    screen->base.get_compiler_options = softpipe_screen_get_compiler_options;
+   screen->base.fence_reference = softpipe_fence_reference;
+   screen->base.fence_finish = softpipe_fence_finish;
 
    softpipe_init_screen_texture_funcs(&screen->base);
-   softpipe_init_screen_fence_funcs(&screen->base);
 
    return &screen->base;
 }

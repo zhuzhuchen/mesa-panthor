@@ -20,8 +20,6 @@
 # SOFTWARE.
 
 files_panfrost = files(
-  'sp_fence.c',
-  'sp_fence.h',
   'sp_public.h',
   'sp_screen.c',
   'sp_screen.h',
