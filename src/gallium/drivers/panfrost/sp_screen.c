@@ -46,6 +46,7 @@
 #include "sp_fence.h"
 #include "sp_public.h"
 
+#include "trans-builder.h"
 #include "midgard/midgard_compile.h"
 
 static const char *
@@ -595,7 +596,7 @@ panfrost_create_screen(struct sw_winsys *winsys)
    screen->base.get_paramf = softpipe_get_paramf;
    screen->base.get_timestamp = softpipe_get_timestamp;
    screen->base.is_format_supported = softpipe_is_format_supported;
-   screen->base.context_create = softpipe_create_context;
+   screen->base.context_create = panfrost_create_context;
    screen->base.flush_frontbuffer = softpipe_flush_frontbuffer;
    screen->base.get_compiler_options = softpipe_screen_get_compiler_options;
 
