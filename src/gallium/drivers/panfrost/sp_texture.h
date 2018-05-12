@@ -30,7 +30,6 @@
 
 
 #include "pipe/p_state.h"
-#include "sp_limits.h"
 
 
 struct pipe_context;
@@ -45,9 +44,9 @@ struct softpipe_resource
 {
    struct pipe_resource base;
 
-   unsigned long level_offset[SP_MAX_TEXTURE_2D_LEVELS];
-   unsigned stride[SP_MAX_TEXTURE_2D_LEVELS];
-   unsigned img_stride[SP_MAX_TEXTURE_2D_LEVELS];
+   unsigned long level_offset[8];
+   unsigned stride[8];
+   unsigned img_stride[8];
 
    /**
     * Display target, only valid for PIPE_TEXTURE_2D with the
