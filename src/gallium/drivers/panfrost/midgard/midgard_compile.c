@@ -876,7 +876,11 @@ emit_tex(compiler_context *ctx, nir_tex_instr *instr)
 				int index = nir_src_index(&instr->src[i].src);
 
 				/* Emit a move for it TODO eliminate */
-				EMIT(fmov, index, blank_alu_src, REGISTER_TEXTURE_BASE, true, midgard_outmod_none);
+				const midgard_vector_alu_src src = {
+					.swizzle = SWIZZLE(COMPONENT_X, COMPONENT_Y, COMPONENT_X, COMPONENT_Y)
+				};
+
+				EMIT(fmov, index, src, REGISTER_TEXTURE_BASE, true, midgard_outmod_none);
 
 				break;
 			}
@@ -921,9 +925,9 @@ emit_tex(compiler_context *ctx, nir_tex_instr *instr)
 		ins.texture.in_reg_swizzle_left = COMPONENT_Y;
 		ins.texture.in_reg_swizzle_third = COMPONENT_Z;
 	} else {
-		ins.texture.in_reg_swizzle_left = COMPONENT_X;
-		ins.texture.in_reg_swizzle_right = COMPONENT_Y;
-		ins.texture.in_reg_swizzle_third = COMPONENT_Y;
+		ins.texture.in_reg_swizzle_left = COMPONENT_Z;
+		ins.texture.in_reg_swizzle_right = COMPONENT_W;
+		ins.texture.in_reg_swizzle_third = COMPONENT_Z;
 	}
 
 	util_dynarray_append(&ctx->current_block, midgard_instruction, ins);
