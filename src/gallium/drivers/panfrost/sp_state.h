@@ -32,112 +32,6 @@
 #define SP_STATE_H
 
 #include "pipe/p_state.h"
-#include "tgsi/tgsi_scan.h"
-
-
-#define SP_NEW_VIEWPORT      0x1
-#define SP_NEW_RASTERIZER    0x2
-#define SP_NEW_FS            0x4
-#define SP_NEW_BLEND         0x8
-#define SP_NEW_CLIP          0x10
-#define SP_NEW_SCISSOR       0x20
-#define SP_NEW_STIPPLE       0x40
-#define SP_NEW_FRAMEBUFFER   0x80
-#define SP_NEW_DEPTH_STENCIL_ALPHA 0x100
-#define SP_NEW_CONSTANTS     0x200
-#define SP_NEW_SAMPLER       0x400
-#define SP_NEW_TEXTURE       0x800
-#define SP_NEW_VERTEX        0x1000
-#define SP_NEW_VS            0x2000
-#define SP_NEW_QUERY         0x4000
-#define SP_NEW_GS            0x8000
-#define SP_NEW_SO            0x10000
-#define SP_NEW_SO_BUFFERS    0x20000
-
-
-struct tgsi_sampler;
-struct tgsi_image;
-struct tgsi_buffer;
-struct tgsi_exec_machine;
-struct vertex_info;
-
-
-struct sp_fragment_shader_variant_key
-{
-   boolean polygon_stipple;
-};
-
-
-struct sp_fragment_shader_variant
-{
-   const struct tgsi_token *tokens;
-   struct sp_fragment_shader_variant_key key;
-   struct tgsi_shader_info info;
-
-   unsigned stipple_sampler_unit;
-
-   /* See comments about this elsewhere */
-#if 0
-   struct draw_fragment_shader *draw_shader;
-#endif
-
-   void (*prepare)(const struct sp_fragment_shader_variant *shader,
-		   struct tgsi_exec_machine *machine,
-		   struct tgsi_sampler *sampler,
-		   struct tgsi_image *image,
-		   struct tgsi_buffer *buffer);
-
-   unsigned (*run)(const struct sp_fragment_shader_variant *shader,
-		   struct tgsi_exec_machine *machine,
-		   struct quad_header *quad,
-		   bool early_depth_test);
-
-   /* Deletes this instance of the object */
-   void (*delete)(struct sp_fragment_shader_variant *shader,
-                  struct tgsi_exec_machine *machine);
-
-   struct sp_fragment_shader_variant *next;
-};
-
-
-/** Subclass of pipe_shader_state */
-struct sp_fragment_shader {
-   struct pipe_shader_state shader;
-   struct sp_fragment_shader_variant *variants;
-   struct draw_fragment_shader *draw_shader;
-};
-
-
-/** Subclass of pipe_shader_state */
-struct sp_vertex_shader {
-   struct pipe_shader_state shader;
-   struct draw_vertex_shader *draw_data;
-   int max_sampler;             /* -1 if no samplers */
-};
-
-/** Subclass of pipe_shader_state */
-struct sp_geometry_shader {
-   struct pipe_shader_state shader;
-   struct draw_geometry_shader *draw_data;
-   int max_sampler;
-};
-
-struct sp_velems_state {
-   unsigned count;
-   struct pipe_vertex_element velem[PIPE_MAX_ATTRIBS];
-};
-
-struct sp_so_state {
-   struct pipe_stream_output_info base;
-};
-
-/** Subclass of pipe_compute_state */
-struct sp_compute_shader {
-   struct pipe_compute_state shader;
-   struct tgsi_token *tokens;
-   struct tgsi_shader_info info;
-   int max_sampler;             /* -1 if no samplers */
-};
 
 void
 softpipe_init_blend_funcs(struct pipe_context *pipe);
@@ -191,12 +85,6 @@ softpipe_unmap_texture_surfaces(struct softpipe_context *sp);
 
 struct vertex_info *
 softpipe_get_vbuf_vertex_info(struct softpipe_context *softpipe);
-
-
-struct sp_fragment_shader_variant *
-softpipe_find_fs_variant(struct softpipe_context *softpipe,
-                         struct sp_fragment_shader *fs,
-                         const struct sp_fragment_shader_variant_key *key);
 
 
 struct sp_fragment_shader_variant *
