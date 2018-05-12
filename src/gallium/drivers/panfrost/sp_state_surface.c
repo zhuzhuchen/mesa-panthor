@@ -42,12 +42,6 @@
 /* XXX: Header */
 void trans_setup_framebuffer(void *, void *, int, int);
 
-/**
- * XXX this might get moved someday
- * Set the framebuffer surface info: color buffers, zbuffer, stencil buffer.
- * Here, we flush the old surfaces and update the tile cache to point to the new
- * surfaces.
- */
 void
 softpipe_set_framebuffer_state(struct pipe_context *pipe,
                                const struct pipe_framebuffer_state *fb)
@@ -72,7 +66,6 @@ softpipe_set_framebuffer_state(struct pipe_context *pipe,
 	 struct sw_winsys *winsys = scr->winsys;
 	 struct pipe_surface *surf = sp->framebuffer.cbufs[i];
 
-	 printf("Map...\n");
 	 uint8_t *map = winsys->displaytarget_map(winsys, ((struct softpipe_resource*) surf->texture)->dt, PIPE_TRANSFER_WRITE);
 	 trans_setup_framebuffer(sp->panfrost, map, fb->width, fb->height);
       }
@@ -84,6 +77,4 @@ softpipe_set_framebuffer_state(struct pipe_context *pipe,
    sp->framebuffer.height = fb->height;
    sp->framebuffer.samples = fb->samples;
    sp->framebuffer.layers = fb->layers;
-
-   sp->dirty |= SP_NEW_FRAMEBUFFER;
 }

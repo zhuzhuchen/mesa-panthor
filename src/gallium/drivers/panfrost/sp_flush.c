@@ -131,7 +131,6 @@ softpipe_flush_resource(struct pipe_context *pipe,
 void softpipe_texture_barrier(struct pipe_context *pipe, unsigned flags)
 {
    struct softpipe_context *softpipe = softpipe_context(pipe);
-   softpipe->dirty_render_cache = FALSE;
 }
 
 void softpipe_memory_barrier(struct pipe_context *pipe, unsigned flags)

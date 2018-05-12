@@ -53,32 +53,8 @@ softpipe_destroy( struct pipe_context *pipe )
    struct softpipe_context *softpipe = softpipe_context( pipe );
    uint i, sh;
 
-   if (softpipe->blitter) {
-      util_blitter_destroy(softpipe->blitter);
-   }
-
-   if (softpipe->draw)
-      draw_destroy( softpipe->draw );
-
-   if (softpipe->pipe.stream_uploader)
-      u_upload_destroy(softpipe->pipe.stream_uploader);
-
    for (i = 0; i < PIPE_MAX_COLOR_BUFS; i++) {
       pipe_surface_reference(&softpipe->framebuffer.cbufs[i], NULL);
-   }
-
-   pipe_surface_reference(&softpipe->framebuffer.zsbuf, NULL);
-
-   for (sh = 0; sh < ARRAY_SIZE(softpipe->constants); sh++) {
-      for (i = 0; i < ARRAY_SIZE(softpipe->constants[0]); i++) {
-         if (softpipe->constants[sh][i]) {
-            pipe_resource_reference(&softpipe->constants[sh][i], NULL);
-         }
-      }
-   }
-
-   for (i = 0; i < softpipe->num_vertex_buffers; i++) {
-      pipe_vertex_buffer_unreference(&softpipe->vertex_buffer[i]);
    }
 
    FREE( softpipe );
@@ -97,43 +73,7 @@ softpipe_is_resource_referenced( struct pipe_context *pipe,
                                  struct pipe_resource *texture,
                                  unsigned level, int layer)
 {
-   struct softpipe_context *softpipe = softpipe_context( pipe );
-   unsigned i, sh;
-
-   if (texture->target == PIPE_BUFFER)
-      return SP_UNREFERENCED;
-
-   /* check if any of the bound drawing surfaces are this texture */
-   if (softpipe->dirty_render_cache) {
-      for (i = 0; i < softpipe->framebuffer.nr_cbufs; i++) {
-         if (softpipe->framebuffer.cbufs[i] && 
-             softpipe->framebuffer.cbufs[i]->texture == texture) {
-            return SP_REFERENCED_FOR_WRITE;
-         }
-      }
-      if (softpipe->framebuffer.zsbuf && 
-          softpipe->framebuffer.zsbuf->texture == texture) {
-         return SP_REFERENCED_FOR_WRITE;
-      }
-   }
-   
    return SP_UNREFERENCED;
-}
-
-
-
-
-static void
-softpipe_render_condition(struct pipe_context *pipe,
-                          struct pipe_query *query,
-                          boolean condition,
-                          enum pipe_render_cond_flag mode)
-{
-   struct softpipe_context *softpipe = softpipe_context( pipe );
-
-   softpipe->render_cond_query = query;
-   softpipe->render_cond_mode = mode;
-   softpipe->render_cond_cond = condition;
 }
 
 #include <trans-builder.h>
@@ -173,7 +113,6 @@ softpipe_create_context(struct pipe_screen *screen,
    softpipe->pipe.flush = softpipe_flush_wrapped;
    softpipe->pipe.texture_barrier = softpipe_texture_barrier;
    softpipe->pipe.memory_barrier = softpipe_memory_barrier;
-   softpipe->pipe.render_condition = softpipe_render_condition;
    
    softpipe->pipe.stream_uploader = u_upload_create_default(&softpipe->pipe);
    if (!softpipe->pipe.stream_uploader)

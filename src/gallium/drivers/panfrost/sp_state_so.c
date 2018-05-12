@@ -67,16 +67,6 @@ softpipe_set_so_targets(struct pipe_context *pipe,
 {
    struct softpipe_context *softpipe = softpipe_context(pipe);
    unsigned i;
-
-   for (i = 0; i < num_targets; i++) {
-      pipe_so_target_reference((struct pipe_stream_output_target **)&softpipe->so_targets[i], targets[i]);
-   }
-
-   for (; i < softpipe->num_so_targets; i++) {
-      pipe_so_target_reference((struct pipe_stream_output_target **)&softpipe->so_targets[i], NULL);
-   }
-
-   softpipe->num_so_targets = num_targets;
 }
 
 void
