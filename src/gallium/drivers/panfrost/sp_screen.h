@@ -34,19 +34,12 @@
 #include "pipe/p_screen.h"
 #include "pipe/p_defines.h"
 
-
 struct sw_winsys;
 
 struct softpipe_screen {
    struct pipe_screen base;
 
    struct sw_winsys *winsys;
-
-   /* Increments whenever textures are modified.  Contexts can track
-    * this.
-    */
-   unsigned timestamp;
-   boolean use_llvm;
 };
 
 static inline struct softpipe_screen *
@@ -54,7 +47,5 @@ softpipe_screen( struct pipe_screen *pipe )
 {
    return (struct softpipe_screen *)pipe;
 }
-
-
 
 #endif /* SP_SCREEN_H */
