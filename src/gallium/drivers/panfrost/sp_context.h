@@ -55,7 +55,6 @@ struct softpipe_context {
    struct pipe_context pipe;  /**< base class */
 
    struct pipe_context* panfrost;  /** Hacked in driver context */
-   struct pipe_framebuffer_state framebuffer;
 };
 
 

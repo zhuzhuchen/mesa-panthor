@@ -39,42 +39,41 @@
 #include "util/u_format.h"
 #include "util/u_inlines.h"
 
-/* XXX: Header */
-void trans_setup_framebuffer(void *, void *, int, int);
+#include "trans-builder.h"
 
 void
 softpipe_set_framebuffer_state(struct pipe_context *pipe,
                                const struct pipe_framebuffer_state *fb)
 {
-   struct softpipe_context *sp = softpipe_context(pipe);
+   struct panfrost_context *sp = softpipe_context(pipe)->panfrost;
    int i;
 
    for (i = 0; i < PIPE_MAX_COLOR_BUFS; i++) {
       struct pipe_surface *cb = i < fb->nr_cbufs ? fb->cbufs[i] : NULL;
 
       /* check if changing cbuf */
-      if (sp->framebuffer.cbufs[i] != cb) {
+      if (sp->pipe_framebuffer.cbufs[i] != cb) {
 	      if (i != 0) {
 		      printf("XXX: Multiple render targets not supported before t7xx!\n");
 		      break;
 	      }
 
          /* assign new */
-         pipe_surface_reference(&sp->framebuffer.cbufs[i], cb);
+         pipe_surface_reference(&sp->pipe_framebuffer.cbufs[i], cb);
 	 
 	 struct softpipe_screen* scr = pipe->screen;
 	 struct sw_winsys *winsys = scr->winsys;
-	 struct pipe_surface *surf = sp->framebuffer.cbufs[i];
+	 struct pipe_surface *surf = sp->pipe_framebuffer.cbufs[i];
 
 	 uint8_t *map = winsys->displaytarget_map(winsys, ((struct softpipe_resource*) surf->texture)->dt, PIPE_TRANSFER_WRITE);
-	 trans_setup_framebuffer(sp->panfrost, map, fb->width, fb->height);
+	 trans_setup_framebuffer(sp, map, fb->width, fb->height);
       }
    }
 
-   sp->framebuffer.nr_cbufs = fb->nr_cbufs;
+   sp->pipe_framebuffer.nr_cbufs = fb->nr_cbufs;
 
-   sp->framebuffer.width = fb->width;
-   sp->framebuffer.height = fb->height;
-   sp->framebuffer.samples = fb->samples;
-   sp->framebuffer.layers = fb->layers;
+   sp->pipe_framebuffer.width = fb->width;
+   sp->pipe_framebuffer.height = fb->height;
+   sp->pipe_framebuffer.samples = fb->samples;
+   sp->pipe_framebuffer.layers = fb->layers;
 }

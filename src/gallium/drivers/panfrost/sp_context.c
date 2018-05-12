@@ -53,9 +53,11 @@ softpipe_destroy( struct pipe_context *pipe )
    struct softpipe_context *softpipe = softpipe_context( pipe );
    uint i, sh;
 
+#if 0
    for (i = 0; i < PIPE_MAX_COLOR_BUFS; i++) {
       pipe_surface_reference(&softpipe->framebuffer.cbufs[i], NULL);
    }
+#endif
 
    FREE( softpipe );
 }
