@@ -25,7 +25,7 @@
 #endif
 
 #ifdef GALLIUM_PANFROST
-#include "panfrost/sp_public.h"
+#include "panfrost/pan_public.h"
 #endif
 
 #ifdef GALLIUM_VIRGL

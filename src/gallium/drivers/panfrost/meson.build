@@ -20,11 +20,11 @@
 # SOFTWARE.
 
 files_panfrost = files(
-  'sp_public.h',
-  'sp_screen.c',
-  'sp_screen.h',
-  'sp_texture.c',
-  'sp_texture.h',
+  'pan_public.h',
+  'pan_screen.c',
+  'pan_screen.h',
+  'pan_texture.c',
+  'pan_texture.h',
 
   'midgard/midgard_compile.c',
   'midgard/cppwrap.cpp',

@@ -39,8 +39,8 @@
 #include "util/u_transfer.h"
 #include "util/u_surface.h"
 
-#include "sp_texture.h"
-#include "sp_screen.h"
+#include "pan_texture.h"
+#include "pan_screen.h"
 
 #include "state_tracker/sw_winsys.h"
 

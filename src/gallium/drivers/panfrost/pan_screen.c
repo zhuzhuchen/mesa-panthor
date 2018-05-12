@@ -39,9 +39,9 @@
 
 #include "state_tracker/sw_winsys.h"
 
-#include "sp_texture.h"
-#include "sp_screen.h"
-#include "sp_public.h"
+#include "pan_texture.h"
+#include "pan_screen.h"
+#include "pan_public.h"
 
 #include "trans-builder.h"
 #include "midgard/midgard_compile.h"
@@ -508,8 +508,8 @@ panfrost_is_format_supported( struct pipe_screen *screen,
 static void
 panfrost_destroy_screen( struct pipe_screen *screen )
 {
-   struct panfrost_screen *sp_screen = panfrost_screen(screen);
-   struct sw_winsys *winsys = sp_screen->winsys;
+   struct panfrost_screen *pan_screen = panfrost_screen(screen);
+   struct sw_winsys *winsys = pan_screen->winsys;
 
    if(winsys->destroy)
       winsys->destroy(winsys);
