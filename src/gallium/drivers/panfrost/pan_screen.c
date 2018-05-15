@@ -114,7 +114,7 @@ panfrost_get_param(struct pipe_screen *screen, enum pipe_cap param)
    case PIPE_CAP_DEPTH_CLIP_DISABLE:
       return 1;
    case PIPE_CAP_MAX_STREAM_OUTPUT_BUFFERS:
-      return PIPE_MAX_SO_BUFFERS;
+      return 0; /* no streamout */
    case PIPE_CAP_MAX_STREAM_OUTPUT_SEPARATE_COMPONENTS:
    case PIPE_CAP_MAX_STREAM_OUTPUT_INTERLEAVED_COMPONENTS:
       return 16*4;
