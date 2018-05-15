@@ -517,6 +517,8 @@ panfrost_destroy_screen( struct pipe_screen *screen )
    FREE(screen);
 }
 
+#include "trans-builder.h"
+
 static void
 panfrost_flush_frontbuffer(struct pipe_screen *_screen,
                            struct pipe_resource *resource,
@@ -525,7 +527,13 @@ panfrost_flush_frontbuffer(struct pipe_screen *_screen,
                            struct pipe_box *sub_box)
 {
    struct panfrost_screen *screen = panfrost_screen(_screen);
-   /* Flush */
+
+   struct sw_winsys *winsys = screen->winsys;
+   struct panfrost_resource *texture = (struct panfrost_resource *) resource;
+
+   assert(texture->dt);
+   if (texture->dt)
+      winsys->displaytarget_display(winsys, texture->dt, context_private, sub_box);
 }
 
 static uint64_t
@@ -564,11 +572,14 @@ struct pipe_screen *
 panfrost_create_screen(struct sw_winsys *winsys)
 {
    struct panfrost_screen *screen = CALLOC_STRUCT(panfrost_screen);
+   printf("Size pan: %d\n", sizeof(*screen));
 
    if (!screen)
       return NULL;
 
    screen->winsys = winsys;
+   printf("Base %p\n", &screen->base);
+   printf("Winsys %p\n", winsys);
 
    screen->base.destroy = panfrost_destroy_screen;
 
