@@ -95,7 +95,7 @@ panfrost_get_param(struct pipe_screen *screen, enum pipe_cap param)
    case PIPE_CAP_TEXTURE_BORDER_COLOR_QUIRK:
       return 0;
    case PIPE_CAP_MAX_TEXTURE_2D_LEVELS:
-      return 8;
+      return 13;
    case PIPE_CAP_MAX_TEXTURE_3D_LEVELS:
       return 8;
    case PIPE_CAP_MAX_TEXTURE_CUBE_LEVELS:
