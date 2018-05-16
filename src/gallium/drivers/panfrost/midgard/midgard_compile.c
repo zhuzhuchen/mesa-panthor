@@ -745,7 +745,7 @@ static void
 emit_intrinsic(compiler_context *ctx, nir_intrinsic_instr *instr)
 {
         nir_const_value *const_offset;
-        unsigned offset, reg;
+        unsigned offset, reg, nr_components;
 
 	switch(instr->intrinsic) {
 		case nir_intrinsic_load_uniform:
@@ -756,6 +756,7 @@ emit_intrinsic(compiler_context *ctx, nir_intrinsic_instr *instr)
 			offset = nir_intrinsic_base(instr) + const_offset->u32[0];
 
 			reg = instr->dest.ssa.index;
+			nr_components = instr->dest.ssa.num_components;
 
 			if (instr->intrinsic == nir_intrinsic_load_uniform) {
 				/* TODO: half-floats */
@@ -781,6 +782,13 @@ emit_intrinsic(compiler_context *ctx, nir_intrinsic_instr *instr)
 			} else if (ctx->stage == MESA_SHADER_VERTEX) {
 				midgard_instruction ins = m_load_attr_32(reg, offset);
 				ins.load_store.unknown = 0x1E1E; /* XXX: What is this? */
+
+				/* TODO: Generalise, and is this necessary? */
+				if (nr_components == 2) {
+					ins.load_store.mask = 0x3;
+					ins.load_store.swizzle = SWIZZLE(COMPONENT_X, COMPONENT_Y, COMPONENT_X, COMPONENT_X);
+				}
+
 				util_dynarray_append(&ctx->current_block, midgard_instruction, ins);
 			} else {
 				printf("Unknown load\n");
