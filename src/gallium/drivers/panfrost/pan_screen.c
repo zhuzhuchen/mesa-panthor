@@ -74,8 +74,6 @@ panfrost_get_param(struct pipe_screen *screen, enum pipe_cap param)
       return 1;
    case PIPE_CAP_SM3:
       return 1;
-   case PIPE_CAP_ANISOTROPIC_FILTER:
-      return 1;
    case PIPE_CAP_POINT_SPRITE:
       return 1;
    case PIPE_CAP_MAX_RENDER_TARGETS:
@@ -83,11 +81,9 @@ panfrost_get_param(struct pipe_screen *screen, enum pipe_cap param)
    case PIPE_CAP_MAX_DUAL_SOURCE_RENDER_TARGETS:
       return 1;
    case PIPE_CAP_OCCLUSION_QUERY:
-      return 1;
    case PIPE_CAP_QUERY_TIME_ELAPSED:
-      return 1;
    case PIPE_CAP_QUERY_PIPELINE_STATISTICS:
-      return 1;
+      return 0; /* TODO: Queries */
    case PIPE_CAP_TEXTURE_MIRROR_CLAMP:
       return 1;
    case PIPE_CAP_TEXTURE_SWIZZLE:
@@ -95,11 +91,9 @@ panfrost_get_param(struct pipe_screen *screen, enum pipe_cap param)
    case PIPE_CAP_TEXTURE_BORDER_COLOR_QUIRK:
       return 0;
    case PIPE_CAP_MAX_TEXTURE_2D_LEVELS:
-      return 13;
    case PIPE_CAP_MAX_TEXTURE_3D_LEVELS:
-      return 8;
    case PIPE_CAP_MAX_TEXTURE_CUBE_LEVELS:
-      return 8;
+      return 13;
    case PIPE_CAP_BLEND_EQUATION_SEPARATE:
       return 1;
    case PIPE_CAP_INDEP_BLEND_ENABLE:
@@ -126,14 +120,14 @@ panfrost_get_param(struct pipe_screen *screen, enum pipe_cap param)
    case PIPE_CAP_MAX_VERTEX_ATTRIB_STRIDE:
       return 2048;
    case PIPE_CAP_PRIMITIVE_RESTART:
-      return 1;
+      return 0; /* We don't understand this yet */
    case PIPE_CAP_SHADER_STENCIL_EXPORT:
       return 1;
 
    case PIPE_CAP_TGSI_INSTANCEID:
    case PIPE_CAP_VERTEX_ELEMENT_INSTANCE_DIVISOR:
    case PIPE_CAP_START_INSTANCE:
-      return 1;
+      return 0; /* TODO: Instances */
    case PIPE_CAP_SEAMLESS_CUBE_MAP:
    case PIPE_CAP_SEAMLESS_CUBE_MAP_PER_TEXTURE:
       return 1;
@@ -266,6 +260,7 @@ panfrost_get_param(struct pipe_screen *screen, enum pipe_cap param)
       return 1;
    case PIPE_CAP_CLEAR_TEXTURE:
       return 1;
+   case PIPE_CAP_ANISOTROPIC_FILTER:
    case PIPE_CAP_MULTISAMPLE_Z_RESOLVE:
    case PIPE_CAP_DEVICE_RESET_STATUS_QUERY:
    case PIPE_CAP_MAX_SHADER_PATCH_VARYINGS:
