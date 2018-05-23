@@ -1006,7 +1006,7 @@ is_ssa_used_later(compiler_context *ctx, midgard_instruction *ins, int ssa)
 static int
 allocate_first_free_register(compiler_context *ctx)
 {
-	for (int i = 0; i < MAX_WORK_REGISTERS; ++i) {
+	for (int i = 1; i < MAX_WORK_REGISTERS; ++i) {
 		bool used = ctx->used_registers & (1 << i);
 
 		if (used) continue;
