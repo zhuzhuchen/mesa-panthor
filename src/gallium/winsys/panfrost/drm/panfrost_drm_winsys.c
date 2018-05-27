@@ -26,7 +26,7 @@
 
 #include "renderonly/renderonly.h"
 #include "panfrost_drm_public.h"
-#include "panfrost/panfrost_screen.h"
+#include "panfrost/pan_screen.h"
 
 struct pipe_screen *
 panfrost_drm_screen_create(int fd)
