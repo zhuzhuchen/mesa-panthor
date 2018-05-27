@@ -84,6 +84,7 @@ else
   driver_freedreno = declare_dependency()
 endif
 if with_gallium_panfrost
+  subdir('winsys/panfrost/drm')
   subdir('drivers/panfrost')
 else
   driver_panfrost = declare_dependency()
@@ -98,6 +99,11 @@ if with_gallium_pl111
   subdir('winsys/pl111/drm')
 else
   driver_pl111 = declare_dependency()
+endif
+if with_gallium_rockchip
+  subdir('winsys/rockchip/drm')
+else
+  driver_rockchip = declare_dependency()
 endif
 if with_gallium_vc5
   subdir('winsys/vc5/drm')
