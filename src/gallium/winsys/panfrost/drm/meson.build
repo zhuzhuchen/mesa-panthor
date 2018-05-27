@@ -18,9 +18,9 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-libvc4winsys = static_library(
-  'vc4winsys',
-  files('vc4_drm_winsys.c'),
+libpanfrostwinsys = static_library(
+  'panfrostwinsys',
+  files('panfrost_drm_winsys.c'),
   include_directories : [
     inc_src, inc_include,
     inc_gallium, inc_gallium_aux, inc_gallium_drivers,

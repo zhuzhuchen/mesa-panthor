@@ -18,19 +18,19 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-libpl111winsys = static_library(
-  'pl111winsys',
-  files('pl111_drm_winsys.c'),
+librockchipwinsys = static_library(
+  'rockchipwinsys',
+  files('rockchip_drm_winsys.c'),
   include_directories : [
     inc_src, inc_include,
     inc_gallium, inc_gallium_aux, inc_gallium_winsys,
   ],
   c_args : [c_vis_args],
   dependencies: dep_libdrm,
-  link_with : libvc4winsys,
+  link_with : libpanfrostwinsys,
 )
 
-driver_pl111 = declare_dependency(
-  compile_args : '-DGALLIUM_PL111',
-  link_with : libpl111winsys,
+driver_rockchip = declare_dependency(
+  compile_args : '-DGALLIUM_ROCKCHIP',
+  link_with : librockchipwinsys,
 )
