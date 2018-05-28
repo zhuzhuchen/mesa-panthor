@@ -598,7 +598,7 @@ driswDestroyScreen(struct glx_screen *base)
    free(psc);
 }
 
-#define SWRAST_DRIVER_NAME "panfrost"
+#define SWRAST_DRIVER_NAME "swrast"
 
 static void *
 driOpenSwrast(void)

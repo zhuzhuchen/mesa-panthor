@@ -26,16 +26,16 @@
 
 #include "renderonly/renderonly.h"
 #include "panfrost_drm_public.h"
-#include "panfrost/pan_screen.h"
+#include "panfrost/pan_public.h"
 
 struct pipe_screen *
 panfrost_drm_screen_create(int fd)
 {
-   return panfrost_screen_create(fcntl(fd, F_DUPFD_CLOEXEC, 3), NULL);
+   return panfrost_create_screen(fcntl(fd, F_DUPFD_CLOEXEC, 3), NULL);
 }
 
 struct pipe_screen *
 panfrost_drm_screen_create_renderonly(struct renderonly *ro)
 {
-   return panfrost_screen_create(fcntl(ro->gpu_fd, F_DUPFD_CLOEXEC, 3), ro);
+   return panfrost_create_screen(fcntl(ro->gpu_fd, F_DUPFD_CLOEXEC, 3), ro);
 }

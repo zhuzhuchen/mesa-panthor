@@ -130,6 +130,7 @@ static const struct drm_driver_descriptor driver_descriptors[] = {
         .create_screen = pipe_vc5_create_screen,
         .configuration = pipe_default_configuration_query,
     },
+    {
         .driver_name = "panfrost",
         .create_screen = pipe_panfrost_create_screen,
         .configuration = pipe_default_configuration_query,
