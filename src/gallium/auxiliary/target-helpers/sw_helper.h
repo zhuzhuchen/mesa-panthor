@@ -63,7 +63,7 @@ sw_screen_create_named(struct sw_winsys *winsys, const char *driver)
 
 #if defined(GALLIUM_PANFROST)
    if (screen == NULL && strcmp(driver, "panfrost") == 0)
-      screen = panfrost_create_screen(-1, NULL);
+      screen = panfrost_create_screen(-1, (struct renderonly *) winsys);
 #endif
 
    return screen;
