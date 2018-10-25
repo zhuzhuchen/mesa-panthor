@@ -95,10 +95,10 @@ if with_gallium_vc4
 else
   driver_vc4 = declare_dependency()
 endif
-if with_gallium_pl111
-  subdir('winsys/pl111/drm')
+if with_gallium_kmsro
+  subdir('winsys/kmsro/drm')
 else
-  driver_pl111 = declare_dependency()
+  driver_kmsro = declare_dependency()
 endif
 if with_gallium_rockchip
   subdir('winsys/rockchip/drm')
