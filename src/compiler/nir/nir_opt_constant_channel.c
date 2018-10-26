@@ -1,5 +1,6 @@
 /*
  * Copyright © 2018 Alyssa Rosenzweig
+ * Copyright © 2014 Intel Corporation
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -56,7 +57,7 @@ get_operation_identity(nir_op op, bool *incomplete)
 }
 
 static bool
-nir_opt_constant_channel_block(nir_builder *b, nir_block *block)
+nir_opt_constant_channel_block(nir_builder *b, nir_block *block, nir_function_impl *impl)
 {
    printf("Nopping\n");
    nir_foreach_instr_safe(instr, block) {
@@ -92,9 +93,12 @@ nir_opt_constant_channel_block(nir_builder *b, nir_block *block)
 
             load_const = nir_instr_as_load_const(src_instr);
 
-            /* TODO: Handle non-fp32 cases */
+            /* TODO: Handle non-SSA, non-fp32 cases */
+
             if (load_const->def.bit_size != 32)
                continue;
+
+            if (!alu->dest.dest.is_ssa) continue;
 
             printf("Found a fp32 constant <");
 
@@ -122,7 +126,19 @@ nir_opt_constant_channel_block(nir_builder *b, nir_block *block)
          if (active_writemask == ((1 << components) - 1))
             continue;
 
-         /* We're using a writemask */
+         /* We need to mask out some components, which conflicts with SSA.
+          * Switch to a register destination instead. */
+
+         if (alu->dest.dest.is_ssa) {
+            nir_register *reg = nir_local_reg_create(impl);
+            reg->num_components = alu->dest.dest.ssa.num_components;
+            reg->bit_size = alu->dest.dest.ssa.bit_size;
+
+            nir_ssa_def_rewrite_uses(&alu->dest.dest.ssa, nir_src_for_reg(reg));
+
+            nir_instr_rewrite_dest(&alu->instr, &alu->dest.dest,
+                                   nir_dest_for_reg(reg));
+         }
 
          printf("Writemask %X\n", active_writemask);
       }
@@ -141,7 +157,7 @@ nir_opt_constant_channel(nir_shader *shader)
       if (function->impl) {
          nir_builder_init(&builder, function->impl);
          nir_foreach_block_safe(block, function->impl) {
-            progress |= nir_opt_constant_channel_block(&builder, block);
+            progress |= nir_opt_constant_channel_block(&builder, block, function->impl);
          }
       }
    }
