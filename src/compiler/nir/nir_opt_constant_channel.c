@@ -34,6 +34,27 @@
  * scheduling on vector backends.
  */
 
+/* Returns the identity magic number for a given op, where performing the
+ * operation is a no-op. For instance, for addition this is zero, per the
+ * additive identity.
+ */
+
+static int
+get_operation_identity(nir_op op, bool *incomplete)
+{
+   switch (op) {
+      case nir_op_fadd:
+         return 0;
+
+      case nir_op_fmul:
+         return 1;
+
+      default:
+         *incomplete = true;
+         return -1;
+   }
+}
+
 static bool
 nir_opt_constant_channel_block(nir_builder *b, nir_block *block)
 {
@@ -42,14 +63,11 @@ nir_opt_constant_channel_block(nir_builder *b, nir_block *block)
       if (instr->type == nir_instr_type_alu) {
          nir_alu_instr *alu = nir_instr_as_alu(instr);
 
-         /* Check if it's a binary ALU instruction we know */
-         if (alu->op != nir_op_fadd) continue;
+         /* Check if it's a binary ALU instruction we know. If we know it, find the identity */
 
-         /* Identity number for the corresponding ALU, for which applying the
-          * operation is a no-op and can be eliminated. */
-
-         int identity = 0;
-         printf("Found an add\n");
+         bool unknown_op = false;
+         int identity = get_operation_identity(alu->op, &unknown_op);
+         if (unknown_op) continue;
 
          /* We need one of the operands to be a constant; otherwise, there's
           * nothing to do. Search for the constan. Practically, there is only
@@ -58,6 +76,8 @@ nir_opt_constant_channel_block(nir_builder *b, nir_block *block)
          assert(nir_op_infos[alu->op].num_inputs == 2);
 
          nir_load_const_instr* load_const  = NULL;
+
+         unsigned active_writemask = 0, components = 0;
 
          for (unsigned i = 0; i < 2; i++) {
             if (!alu->src[i].src.is_ssa)
@@ -78,24 +98,18 @@ nir_opt_constant_channel_block(nir_builder *b, nir_block *block)
 
             printf("Found a fp32 constant <");
 
-            /* We have the constant: scan it for redundant (identity) components */
+            /* We have the constant: scan it for redundant (identity) components in order to construct a writemask */
 
-            bool active_component[4] = { false };
-            int components = nir_ssa_alu_instr_src_components(alu, i);
+            components = nir_ssa_alu_instr_src_components(alu, i);
 
             for (unsigned j = 0; j < components; ++j) {
                float v = load_const->value.f32[alu->src[i].swizzle[j]];
                printf("%f, ",  v);
 
-               active_component[j] = (v != identity);
+               if (v != identity)
+                  active_writemask |= (1 << j);
             }
             printf(">\n");
-
-            /* Dump activity */
-            for (unsigned j = 0; j < components; ++j) {
-               printf("%d, ", active_component[j]);
-            }
-            printf("\n");
 
             break;
          }
@@ -103,6 +117,14 @@ nir_opt_constant_channel_block(nir_builder *b, nir_block *block)
          if (!load_const)
             continue;
 
+         /* If all components are used, there's nothing to do */
+
+         if (active_writemask == ((1 << components) - 1))
+            continue;
+
+         /* We're using a writemask */
+
+         printf("Writemask %X\n", active_writemask);
       }
    }
    return false;
