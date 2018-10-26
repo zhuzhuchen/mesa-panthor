@@ -38,6 +38,55 @@ static bool
 nir_opt_constant_channel_block(nir_builder *b, nir_block *block)
 {
    printf("Nopping\n");
+   nir_foreach_instr_safe(instr, block) {
+      if (instr->type == nir_instr_type_alu) {
+         nir_alu_instr *alu = nir_instr_as_alu(instr);
+
+         /* Check if it's a binary ALU instruction we know */
+         if (alu->op != nir_op_fadd) continue;
+         printf("Found an add\n");
+
+         /* We need one of the operands to be a constant; otherwise, there's
+          * nothing to do. Search for the constan. Practically, there is only
+          * one due to constant folding. */
+
+         assert(nir_op_infos[alu->op].num_inputs == 2);
+
+         nir_load_const_instr* load_const  = NULL;
+
+         for (unsigned i = 0; i < 2; i++) {
+            if (!alu->src[i].src.is_ssa)
+               continue;
+
+            nir_instr *src_instr = alu->src[i].src.ssa->parent_instr;
+
+            if (src_instr->type != nir_instr_type_load_const)
+               continue;
+
+            assert(!alu->src[i].abs && !alu->src[i].negate);
+
+            load_const = nir_instr_as_load_const(src_instr);
+
+            /* TODO: Handle non-fp32 cases */
+            if (load_const->def.bit_size != 32)
+               continue;
+
+            printf("Found a fp32 constant <");
+
+            for (unsigned j = 0; j < nir_ssa_alu_instr_src_components(alu, i);
+                  ++j) {
+               printf("%f, ", load_const->value.f32[alu->src[i].swizzle[j]]);
+            }
+            printf(">\n");
+
+            break;
+         }
+
+         if (!load_const)
+            continue;
+
+      }
+   }
    return false;
 }
 
@@ -58,5 +107,3 @@ nir_opt_constant_channel(nir_shader *shader)
    }
    return progress;
 }
-
-

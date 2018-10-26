@@ -3059,6 +3059,7 @@ bool nir_rematerialize_derefs_in_use_blocks_impl(nir_function_impl *impl);
 bool nir_opt_algebraic(nir_shader *shader);
 bool nir_opt_algebraic_before_ffma(nir_shader *shader);
 bool nir_opt_algebraic_late(nir_shader *shader);
+bool nir_opt_constant_channel(nir_shader *shader);
 bool nir_opt_constant_folding(nir_shader *shader);
 
 bool nir_opt_global_to_local(nir_shader *shader);
