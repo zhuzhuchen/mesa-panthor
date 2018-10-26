@@ -44,6 +44,11 @@ nir_opt_constant_channel_block(nir_builder *b, nir_block *block)
 
          /* Check if it's a binary ALU instruction we know */
          if (alu->op != nir_op_fadd) continue;
+
+         /* Identity number for the corresponding ALU, for which applying the
+          * operation is a no-op and can be eliminated. */
+
+         int identity = 0;
          printf("Found an add\n");
 
          /* We need one of the operands to be a constant; otherwise, there's
@@ -73,11 +78,24 @@ nir_opt_constant_channel_block(nir_builder *b, nir_block *block)
 
             printf("Found a fp32 constant <");
 
-            for (unsigned j = 0; j < nir_ssa_alu_instr_src_components(alu, i);
-                  ++j) {
-               printf("%f, ", load_const->value.f32[alu->src[i].swizzle[j]]);
+            /* We have the constant: scan it for redundant (identity) components */
+
+            bool active_component[4] = { false };
+            int components = nir_ssa_alu_instr_src_components(alu, i);
+
+            for (unsigned j = 0; j < components; ++j) {
+               float v = load_const->value.f32[alu->src[i].swizzle[j]];
+               printf("%f, ",  v);
+
+               active_component[j] = (v != identity);
             }
             printf(">\n");
+
+            /* Dump activity */
+            for (unsigned j = 0; j < components; ++j) {
+               printf("%d, ", active_component[j]);
+            }
+            printf("\n");
 
             break;
          }
