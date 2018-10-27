@@ -56,10 +56,22 @@ get_operation_identity(nir_op op, bool *incomplete)
    }
 }
 
+/* Tiny helper to find destination of instruction to be rewritten */
+
+static nir_dest*
+get_dest_for_instr(nir_instr *instr)
+{
+   if (instr->type == nir_instr_type_alu)
+      return &nir_instr_as_alu(instr)->dest.dest;
+   else if (instr->type == nir_instr_type_intrinsic)
+      return &nir_instr_as_intrinsic(instr)->dest;
+   else
+      return NULL;
+}
+
 static bool
 nir_opt_constant_channel_block(nir_builder *b, nir_block *block, nir_function_impl *impl)
 {
-   printf("Nopping\n");
    nir_foreach_instr_safe(instr, block) {
       if (instr->type == nir_instr_type_alu) {
          nir_alu_instr *alu = nir_instr_as_alu(instr);
@@ -78,7 +90,7 @@ nir_opt_constant_channel_block(nir_builder *b, nir_block *block, nir_function_im
 
          nir_load_const_instr* load_const  = NULL;
 
-         unsigned active_writemask = 0, components = 0;
+         unsigned active_writemask = 0, components = 0, idx = 0;
 
          for (unsigned i = 0; i < 2; i++) {
             if (!alu->src[i].src.is_ssa)
@@ -114,6 +126,7 @@ nir_opt_constant_channel_block(nir_builder *b, nir_block *block, nir_function_im
                   active_writemask |= (1 << j);
             }
             printf(">\n");
+            idx = i;
 
             break;
          }
@@ -127,20 +140,74 @@ nir_opt_constant_channel_block(nir_builder *b, nir_block *block, nir_function_im
             continue;
 
          /* We need to mask out some components, which conflicts with SSA.
-          * Switch to a register destination instead. */
+          * Generate a vec instruction instead, which can be coalesced to a
+          * register later by nir_lower_vec_to_movs etc. */
+
+
+         b->cursor = nir_after_instr(instr); 
+
+         nir_ssa_def *comps[4];
+
+         /* We don't know how to handle registers */
+
+         if (!alu->dest.dest.is_ssa)
+            continue;
+
+         nir_ssa_def *passthrough = alu->src[1 - idx].src.ssa;
+         nir_ssa_def *result = &alu->dest.dest.ssa;
+
+         unsigned active_c = 0;
+
+         for (unsigned c = 0; c < components; ++c) {
+            /* Eliminate the component from the ALU operation */
+            if (active_writemask & (1 << c)) {
+               alu->src[idx].swizzle[active_c] = c;
+               alu->src[1 - idx].swizzle[active_c] = c;
+
+               comps[c] = nir_channel(b, result, active_c);
+
+               ++active_c;
+            } else {
+               comps[c] = nir_channel(b, passthrough, c);
+               result->num_components--;
+            }
+         }
+
+         alu->dest.write_mask = (1 << result->num_components) - 1;
+
+         nir_ssa_def *vec = nir_vec(b, comps, components);
+
+         /* Now rewrite to use our vector instead */
+         nir_ssa_def_rewrite_uses_after(result, nir_src_for_ssa(vec), vec->parent_instr);
+#if 0
+         nir_instr *dynamic_src_instr = alu->src[1 - idx].src.ssa->parent_instr;
+         /* Get the destination to rewrite into a register */
+
+         nir_dest *dest2 = get_dest_for_instr(instr);
+
+         if (!dest2)
+            continue;
 
          if (alu->dest.dest.is_ssa) {
             nir_register *reg = nir_local_reg_create(impl);
             reg->num_components = alu->dest.dest.ssa.num_components;
             reg->bit_size = alu->dest.dest.ssa.bit_size;
 
+#if 0
+            nir_ssa_def_rewrite_uses(alu->src[1 - idx].src.ssa, nir_src_for_reg(reg));
             nir_ssa_def_rewrite_uses(&alu->dest.dest.ssa, nir_src_for_reg(reg));
 
             nir_instr_rewrite_dest(&alu->instr, &alu->dest.dest,
                                    nir_dest_for_reg(reg));
-         }
+#endif
 
-         printf("Writemask %X\n", active_writemask);
+            nir_instr_rewrite_dest(dynamic_src_instr, dest2,
+                                   nir_dest_for_reg(reg));
+
+            printf("Writemask %X\n", active_writemask);
+            alu->dest.write_mask = active_writemask;
+         }
+#endif
       }
    }
    return false;
