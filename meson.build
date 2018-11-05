@@ -1359,6 +1359,9 @@ if with_platform_x11
     dep_xfixes = dependency('xfixes')
     dep_xcb_glx = dependency('xcb-glx', version : '>= 1.8.1')
     dep_xxf86vm = dependency('xxf86vm', required : false)
+  elif with_gallium_panfrost == 'panfrost'
+    dep_x11 = dependency('x11')
+    dep_xext = dependency('xext')
   endif
   if (with_any_vk or with_glx == 'dri' or
        (with_gallium_vdpau or with_gallium_xvmc or with_gallium_va or
