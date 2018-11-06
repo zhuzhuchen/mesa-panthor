@@ -1,5 +1,5 @@
 /*
- * © Copyright 2018 The Panfrost Community
+ * © Copyright 2018 Alyssa Rosenzweig
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
