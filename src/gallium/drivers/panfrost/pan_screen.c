@@ -35,8 +35,8 @@
 #include "pipe/p_defines.h"
 #include "pipe/p_screen.h"
 #include "draw/draw_context.h"
+#include "state_tracker/winsys_handle.h"
 
-#include "pan_texture.h"
 #include "pan_screen.h"
 #include "pan_public.h"
 
@@ -550,6 +550,66 @@ panfrost_screen_get_compiler_options(struct pipe_screen *pscreen,
         return &midgard_nir_options;
 }
 
+
+static boolean
+panfrost_can_create_resource(struct pipe_screen *screen,
+                             const struct pipe_resource *res)
+{
+   return TRUE;
+}
+
+static struct pipe_resource *
+panfrost_resource_create(struct pipe_screen *screen,
+                         const struct pipe_resource *templat)
+{
+   return panfrost_resource_create_front(screen, templat, NULL);
+}
+
+static void
+panfrost_resource_destroy(struct pipe_screen *pscreen,
+			  struct pipe_resource *pt)
+{
+   FREE(pt);
+}
+
+static struct pipe_resource *
+panfrost_resource_from_handle(struct pipe_screen *screen,
+                              const struct pipe_resource *templat,
+                              struct winsys_handle *whandle,
+                              unsigned usage)
+{
+	assert(0);
+}
+
+
+static boolean
+panfrost_resource_get_handle(struct pipe_screen *screen,
+                             struct pipe_context *ctx,
+                             struct pipe_resource *pt,
+                             struct winsys_handle *handle,
+                             unsigned usage)
+{
+	struct panfrost_resource *rsrc = (struct panfrost_resource *) pt;
+
+	handle->stride = rsrc->stride;
+
+        /* TODO */
+        assert (0);
+
+	if (handle->type == WINSYS_HANDLE_TYPE_SHARED) {
+		printf("Missed shared handle\n");
+		return FALSE;
+	} else if (handle->type == WINSYS_HANDLE_TYPE_KMS) {
+		printf("Missed nonrenderonly KMS\n");
+		return FALSE;
+	} else if (handle->type == WINSYS_HANDLE_TYPE_FD) {
+		printf("Missed dmabuf\n");
+		return FALSE;
+	}
+
+	return FALSE;
+}
+
 struct pipe_screen *
 panfrost_create_screen(int fd, struct renderonly *ro)
 {
@@ -574,7 +634,12 @@ panfrost_create_screen(int fd, struct renderonly *ro)
    screen->base.fence_reference = panfrost_fence_reference;
    screen->base.fence_finish = panfrost_fence_finish;
 
-   panfrost_init_screen_texture_funcs(&screen->base);
+   screen->base.resource_create = panfrost_resource_create;
+   screen->base.resource_create_front = panfrost_resource_create_front;
+   screen->base.resource_destroy = panfrost_resource_destroy;
+   screen->base.resource_from_handle = panfrost_resource_from_handle;
+   screen->base.resource_get_handle = panfrost_resource_get_handle;
+   screen->base.can_create_resource = panfrost_can_create_resource;
 
    return &screen->base;
 }
