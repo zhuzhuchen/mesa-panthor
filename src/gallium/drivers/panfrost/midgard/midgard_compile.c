@@ -1475,6 +1475,7 @@ midgard_ra_select_callback(struct ra_graph *g, BITSET_WORD *regs, void *data)
         }
 
         assert(0);
+        return 0;
 }
 
 static bool
@@ -1729,6 +1730,7 @@ component_from_mask(unsigned mask)
         }
 
         assert(0);
+        return 0;
 }
 
 static bool
@@ -2236,6 +2238,7 @@ quadword_size(int tag)
 
         default:
                 assert(0);
+                return 0;
         }
 }
 

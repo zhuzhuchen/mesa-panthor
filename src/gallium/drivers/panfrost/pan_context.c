@@ -635,6 +635,7 @@ panfrost_translate_texture_swizzle(enum pipe_swizzle s)
 
         default:
                 assert(0);
+                return 0;
         }
 }
 
@@ -656,6 +657,7 @@ translate_tex_wrap(enum pipe_tex_wrap w)
 
         default:
                 assert(0);
+                return 0;
         }
 }
 
@@ -671,6 +673,7 @@ translate_tex_filter(enum pipe_tex_filter f)
 
         default:
                 assert(0);
+                return 0;
         }
 }
 
@@ -709,6 +712,7 @@ panfrost_translate_compare_func(enum pipe_compare_func in)
                 return MALI_FUNC_ALWAYS;
         }
 
+        assert (0);
         return 0; /* Unreachable */
 }
 
@@ -741,6 +745,7 @@ panfrost_translate_alt_compare_func(enum pipe_compare_func in)
                 return MALI_ALT_FUNC_ALWAYS;
         }
 
+        assert (0);
         return 0; /* Unreachable */
 }
 
@@ -773,6 +778,7 @@ panfrost_translate_stencil_op(enum pipe_stencil_op in)
                 return MALI_STENCIL_INVERT;
         }
 
+        assert (0);
         return 0; /* Unreachable */
 }
 
