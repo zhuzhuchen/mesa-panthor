@@ -1294,6 +1294,7 @@ midgard_tex_format(enum glsl_sampler_dim dim)
         default:
                 printf("Unknown sampler dim type\n");
                 assert(0);
+                return 0;
         }
 }
 
