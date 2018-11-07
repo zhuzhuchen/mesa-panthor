@@ -15,7 +15,7 @@
  */
 
 /**
- * Definitions for all of the ioctls for the original open source bifrost GPU
+ * Definitions for all of the ioctls for the original open source Midgard/Bifrost GPU
  * kernel driver, written by ARM.
  */
 
@@ -89,39 +89,6 @@ enum mali_ioctl_coherency_mode {
 	COHERENCY_ACE      = 1,
 	COHERENCY_NONE     = 31
 };
-
-/*
- * Mali Atom priority
- *
- * Only certain priority levels are actually implemented, as specified by the
- * MALI_JD_PRIO_<...> definitions below. It is undefined to use a priority
- * level that is not one of those defined below.
- *
- * Priority levels only affect scheduling between atoms of the same type within
- * a mali context, and only after the atoms have had dependencies resolved.
- * Fragment atoms does not affect non-frament atoms with lower priorities, and
- * the other way around. For example, a low priority atom that has had its
- * dependencies resolved might run before a higher priority atom that has not
- * had its dependencies resolved.
- *
- * The scheduling between mali contexts/processes and between atoms from
- * different mali contexts/processes is unaffected by atom priority.
- *
- * The atoms are scheduled as follows with respect to their priorities:
- * - Let atoms 'X' and 'Y' be for the same job slot who have dependencies
- *   resolved, and atom 'X' has a higher priority than atom 'Y'
- * - If atom 'Y' is currently running on the HW, then it is interrupted to
- *   allow atom 'X' to run soon after
- * - If instead neither atom 'Y' nor atom 'X' are running, then when choosing
- *   the next atom to run, atom 'X' will always be chosen instead of atom 'Y'
- * - Any two atoms that have the same priority could run in any order with
- *   respect to each other. That is, there is no ordering constraint between
- *   atoms of the same priority.
- */
-typedef u8 mali_jd_prio;
-#define MALI_JD_PRIO_MEDIUM  ((mali_jd_prio)0)
-#define MALI_JD_PRIO_HIGH    ((mali_jd_prio)1)
-#define MALI_JD_PRIO_LOW     ((mali_jd_prio)2)
 
 /**
  * @brief Job dependency type.
@@ -267,66 +234,6 @@ typedef u32 mali_jd_core_req;
  * - Priority is inherited from the replay job.
  */
 #define MALI_JD_REQ_SOFT_REPLAY                 (MALI_JD_REQ_SOFT_JOB | 0x4)
-/**
- * SW only requirement: event wait/trigger job.
- *
- * - MALI_JD_REQ_SOFT_EVENT_WAIT: this job will block until the event is set.
- * - MALI_JD_REQ_SOFT_EVENT_SET: this job sets the event, thus unblocks the
- *   other waiting jobs. It completes immediately.
- * - MALI_JD_REQ_SOFT_EVENT_RESET: this job resets the event, making it
- *   possible for other jobs to wait upon. It completes immediately.
- */
-#define MALI_JD_REQ_SOFT_EVENT_WAIT             (MALI_JD_REQ_SOFT_JOB | 0x5)
-#define MALI_JD_REQ_SOFT_EVENT_SET              (MALI_JD_REQ_SOFT_JOB | 0x6)
-#define MALI_JD_REQ_SOFT_EVENT_RESET            (MALI_JD_REQ_SOFT_JOB | 0x7)
-
-#define MALI_JD_REQ_SOFT_DEBUG_COPY             (MALI_JD_REQ_SOFT_JOB | 0x8)
-
-/**
- * SW only requirement: Just In Time allocation
- *
- * This job requests a JIT allocation based on the request in the
- * @base_jit_alloc_info structure which is passed via the jc element of
- * the atom.
- *
- * It should be noted that the id entry in @base_jit_alloc_info must not
- * be reused until it has been released via @MALI_JD_REQ_SOFT_JIT_FREE.
- *
- * Should this soft job fail it is expected that a @MALI_JD_REQ_SOFT_JIT_FREE
- * soft job to free the JIT allocation is still made.
- *
- * The job will complete immediately.
- */
-#define MALI_JD_REQ_SOFT_JIT_ALLOC              (MALI_JD_REQ_SOFT_JOB | 0x9)
-/**
- * SW only requirement: Just In Time free
- *
- * This job requests a JIT allocation created by @MALI_JD_REQ_SOFT_JIT_ALLOC
- * to be freed. The ID of the JIT allocation is passed via the jc element of
- * the atom.
- *
- * The job will complete immediately.
- */
-#define MALI_JD_REQ_SOFT_JIT_FREE               (MALI_JD_REQ_SOFT_JOB | 0xa)
-
-/**
- * SW only requirement: Map external resource
- *
- * This job requests external resource(s) are mapped once the dependencies
- * of the job have been satisfied. The list of external resources are
- * passed via the jc element of the atom which is a pointer to a
- * @base_external_resource_list.
- */
-#define MALI_JD_REQ_SOFT_EXT_RES_MAP            (MALI_JD_REQ_SOFT_JOB | 0xb)
-/**
- * SW only requirement: Unmap external resource
- *
- * This job requests external resource(s) are unmapped once the dependencies
- * of the job has been satisfied. The list of external resources are
- * passed via the jc element of the atom which is a pointer to a
- * @base_external_resource_list.
- */
-#define MALI_JD_REQ_SOFT_EXT_RES_UNMAP          (MALI_JD_REQ_SOFT_JOB | 0xc)
 
 /**
  * HW Requirement: Requires Compute shaders (but not Vertex or Geometry Shaders)
@@ -771,7 +678,7 @@ struct mali_jd_atom_v2 {
 					      dependency field */
 	mali_atom_id atom_number;	    /**< unique number to identify the
 					      atom */
-	mali_jd_prio prio;                  /**< Atom priority. Refer to @ref
+	u8 prio;                  /**< Atom priority. Refer to @ref
 					      mali_jd_prio for more details */
 	u8 device_nr;			    /**< coregroup when
 					      BASE_JD_REQ_SPECIFIC_COHERENT_GROUP

@@ -128,18 +128,7 @@ ioctl_log_decoded_jd_core_req(mali_jd_core_req req)
 		}
 
 		switch (req) {
-		SOFT_FLAG(DUMP_CPU_GPU_TIME);
-		SOFT_FLAG(FENCE_TRIGGER);
-		SOFT_FLAG(FENCE_WAIT);
 		SOFT_FLAG(REPLAY);
-		SOFT_FLAG(EVENT_WAIT);
-		SOFT_FLAG(EVENT_SET);
-		SOFT_FLAG(EVENT_RESET);
-		SOFT_FLAG(DEBUG_COPY);
-		SOFT_FLAG(JIT_ALLOC);
-		SOFT_FLAG(JIT_FREE);
-		SOFT_FLAG(EXT_RES_MAP);
-		SOFT_FLAG(EXT_RES_UNMAP);
 		default: panwrap_log_cont("0x%010x", req); break;
 		}
 	} else {
