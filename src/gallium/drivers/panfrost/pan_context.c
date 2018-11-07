@@ -1322,7 +1322,7 @@ panfrost_submit_frame(struct panfrost_context *ctx, bool flush_immediate)
 	bool has_draws = ctx->draw_count > 0;
 
 	/* Workaround a bizarre lockup (a hardware errata?) */
-	//if (!has_draws)
+	if (!has_draws)
 		flush_immediate = true;
 
 	/* A number of jobs are batched -- this must be linked and cleared */
@@ -1343,7 +1343,7 @@ panfrost_submit_frame(struct panfrost_context *ctx, bool flush_immediate)
 		{
 			.jc = ctx->set_value_job,
 			.atom_number = vt_atom,
-			.core_req = MALI_JD_REQ_CS | MALI_JD_REQ_T | MALI_JD_REQ_CF | MALI_JD_REQ_COHERENT_GROUP | MALI_JD_REQ_EVENT_NEVER,
+			.core_req = MALI_JD_REQ_CS | MALI_JD_REQ_T | MALI_JD_REQ_CF | MALI_JD_REQ_COHERENT_GROUP | MALI_JD_REQ_EVENT_NEVER | MALI_JD_REQ_SKIP_CACHE_END,
 		},
 		{
 			.jc = panfrost_fragment_job(ctx),
