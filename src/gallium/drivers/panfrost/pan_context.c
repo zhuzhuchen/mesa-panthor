@@ -2574,12 +2574,14 @@ panfrost_set_viewport_states(struct pipe_context *pipe,
 
         ctx->pipe_viewport = *viewports;
 
+#if 0
         /* TODO: What if not centered? */
         float w = abs(viewports->scale[0]) * 2.0;
         float h = abs(viewports->scale[1]) * 2.0;
 
         ctx->viewport.viewport1[0] = MALI_POSITIVE((int) w);
         ctx->viewport.viewport1[1] = MALI_POSITIVE((int) h);
+#endif
 }
 
 static void
