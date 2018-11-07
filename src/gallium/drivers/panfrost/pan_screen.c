@@ -580,6 +580,7 @@ panfrost_resource_from_handle(struct pipe_screen *screen,
                               unsigned usage)
 {
 	assert(0);
+        return NULL;
 }
 
 
