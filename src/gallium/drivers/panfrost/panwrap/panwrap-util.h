@@ -46,9 +46,9 @@
  */
 
 enum panwrap_log_type {
-	PANWRAP_RAW,
-	PANWRAP_MESSAGE,
-	PANWRAP_PROPERTY
+        PANWRAP_RAW,
+        PANWRAP_MESSAGE,
+        PANWRAP_PROPERTY
 };
 
 #define panwrap_log(...)  panwrap_log_typed(PANWRAP_RAW,      __VA_ARGS__)

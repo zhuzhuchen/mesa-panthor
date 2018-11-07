@@ -28,31 +28,31 @@ short panwrap_indent = 0;
 
 void
 panwrap_log_decoded_flags(const struct panwrap_flag_info *flag_info,
-			  u64 flags)
+                          u64 flags)
 {
-	bool decodable_flags_found = false;
+        bool decodable_flags_found = false;
 
-	for (int i = 0; flag_info[i].name; i++) {
-		if ((flags & flag_info[i].flag) != flag_info[i].flag)
-			continue;
+        for (int i = 0; flag_info[i].name; i++) {
+                if ((flags & flag_info[i].flag) != flag_info[i].flag)
+                        continue;
 
-		if (!decodable_flags_found) {
-			decodable_flags_found = true;
-		} else {
-			panwrap_log_cont(" | ");
-		}
+                if (!decodable_flags_found) {
+                        decodable_flags_found = true;
+                } else {
+                        panwrap_log_cont(" | ");
+                }
 
-		panwrap_log_cont("%s", flag_info[i].name);
+                panwrap_log_cont("%s", flag_info[i].name);
 
-		flags &= ~flag_info[i].flag;
-	}
+                flags &= ~flag_info[i].flag;
+        }
 
-	if (decodable_flags_found) {
-		if (flags)
-			panwrap_log_cont(" | 0x%" PRIx64, flags);
-	} else {
-		panwrap_log_cont("0x%" PRIx64, flags);
-	}
+        if (decodable_flags_found) {
+                if (flags)
+                        panwrap_log_cont(" | 0x%" PRIx64, flags);
+        } else {
+                panwrap_log_cont("0x%" PRIx64, flags);
+        }
 }
 
 /**
@@ -62,72 +62,75 @@ panwrap_log_decoded_flags(const struct panwrap_flag_info *flag_info,
 void *
 __rd_dlsym_helper(const char *name)
 {
-	static void *libc_dl;
-	void *func;
+        static void *libc_dl;
+        void *func;
 
-	if (!libc_dl)
-		libc_dl = dlopen("libc.so", RTLD_LAZY);
-	if (!libc_dl)
-		libc_dl = dlopen("libc.so.6", RTLD_LAZY);
-	if (!libc_dl) {
-		fprintf(stderr, "Failed to dlopen libc: %s\n", dlerror());
-		exit(-1);
-	}
+        if (!libc_dl)
+                libc_dl = dlopen("libc.so", RTLD_LAZY);
 
-	func = dlsym(libc_dl, name);
-	if (!func) {
-		fprintf(stderr, "Failed to find %s: %s\n", name, dlerror());
-		exit(-1);
-	}
+        if (!libc_dl)
+                libc_dl = dlopen("libc.so.6", RTLD_LAZY);
 
-	return func;
+        if (!libc_dl) {
+                fprintf(stderr, "Failed to dlopen libc: %s\n", dlerror());
+                exit(-1);
+        }
+
+        func = dlsym(libc_dl, name);
+
+        if (!func) {
+                fprintf(stderr, "Failed to find %s: %s\n", name, dlerror());
+                exit(-1);
+        }
+
+        return func;
 }
 
 void
 panwrap_log_empty()
 {
-	for (int i = 0; i < panwrap_indent; i++) {
-		fputs("  ", log_output);
-	}
+        for (int i = 0; i < panwrap_indent; i++) {
+                fputs("  ", log_output);
+        }
 }
 
 void
 panwrap_log_typed(enum panwrap_log_type type, const char *format, ...)
 {
-	va_list ap;
+        va_list ap;
 
-	panwrap_log_empty();
+        panwrap_log_empty();
 
-	if (type == PANWRAP_MESSAGE)
-		fputs("// ", log_output);
-	else if (type == PANWRAP_PROPERTY)
-		fputs(".", log_output);
+        if (type == PANWRAP_MESSAGE)
+                fputs("// ", log_output);
+        else if (type == PANWRAP_PROPERTY)
+                fputs(".", log_output);
 
-	va_start(ap, format);
-	vfprintf(log_output, format, ap);
-	va_end(ap);
+        va_start(ap, format);
+        vfprintf(log_output, format, ap);
+        va_end(ap);
 
-	if (type == PANWRAP_PROPERTY)
-		fputs(",\n", log_output);
+        if (type == PANWRAP_PROPERTY)
+                fputs(",\n", log_output);
 }
 
 /* Eventually this function might do more */
 void
 panwrap_log_cont(const char *format, ...)
 {
-	va_list ap;
+        va_list ap;
 
-	va_start(ap, format);
-	vfprintf(log_output, format, ap);
-	va_end(ap);
+        va_start(ap, format);
+        vfprintf(log_output, format, ap);
+        va_end(ap);
 }
 
 void
 panwrap_log_flush()
 {
-	fflush(log_output);
+        fflush(log_output);
 }
 
 PANLOADER_CONSTRUCTOR {
-	log_output = stdout;
+        log_output = stdout;
 }

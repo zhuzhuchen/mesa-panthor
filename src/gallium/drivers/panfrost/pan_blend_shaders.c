@@ -37,10 +37,10 @@
  * blend descriptor, as well as in the coresponding fragment shader's work
  * count. This suggests that blend shader invocation is tied to fragment shader
  * execution.
- * 
+ *
  * ---
  *
- * As for blend shaders, they use the standard ISA. 
+ * As for blend shaders, they use the standard ISA.
  *
  * The source pixel colour, including alpha, is preloaded into r0 as a vec4 of
  * float32.
@@ -67,41 +67,41 @@
  * We then hot patch in the color into this shader at attachment / color change
  * time, allowing for CSO create to be the only expensive operation
  * (compilation).
- */ 
+ */
 
 void
 panfrost_make_blend_shader(struct panfrost_context *ctx, struct panfrost_blend_state *cso, const struct pipe_blend_color *blend_color)
 {
-	//const struct pipe_rt_blend_state *blend = &cso->base.rt[0];
-	mali_ptr *out = &cso->blend_shader;
+        //const struct pipe_rt_blend_state *blend = &cso->base.rt[0];
+        mali_ptr *out = &cso->blend_shader;
 
-	/* Upload the shader */
-	midgard_program program = {
-		.work_register_count = 3,
-		.first_tag = 9,
-		.blend_patch_offset = 16
-		//.blend_patch_offset = -1,
-	};
+        /* Upload the shader */
+        midgard_program program = {
+                .work_register_count = 3,
+                .first_tag = 9,
+                .blend_patch_offset = 16
+                //.blend_patch_offset = -1,
+        };
 
-	char dst[4096];
+        char dst[4096];
 
-	FILE *fp = fopen("/home/alyssa/panfrost/midgard/blend.bin", "rb");
-	fread(dst, 1, 2816, fp);
-	fclose(fp);
-	int size = 2816;
+        FILE *fp = fopen("/home/alyssa/panfrost/midgard/blend.bin", "rb");
+        fread(dst, 1, 2816, fp);
+        fclose(fp);
+        int size = 2816;
 
-	/* Hot patch in constant color */
+        /* Hot patch in constant color */
 
-	if (program.blend_patch_offset >= 0) {
-		float *hot_color = (float *) (dst + program.blend_patch_offset);
+        if (program.blend_patch_offset >= 0) {
+                float *hot_color = (float *) (dst + program.blend_patch_offset);
 
-		for (int c = 0; c < 4; ++c)
-			hot_color[c] = blend_color->color[c];
-	}
-	
-	*out = panfrost_upload(&ctx->shaders, dst, size, true) | program.first_tag;
+                for (int c = 0; c < 4; ++c)
+                        hot_color[c] = blend_color->color[c];
+        }
 
-	/* We need to switch to shader mode */
-	cso->has_blend_shader = true;
-	cso->blend_work_count = program.work_register_count;
+        *out = panfrost_upload(&ctx->shaders, dst, size, true) | program.first_tag;
+
+        /* We need to switch to shader mode */
+        cso->has_blend_shader = true;
+        cso->blend_work_count = program.work_register_count;
 }

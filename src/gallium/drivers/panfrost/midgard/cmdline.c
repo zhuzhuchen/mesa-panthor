@@ -34,107 +34,110 @@ bool c_do_mat_op_to_vec(struct exec_list *instructions);
 static void
 finalise_to_disk(const char *filename, struct util_dynarray *data)
 {
-	FILE *fp;
-	printf("%s, %d\n", filename, data->size);
-	fp = fopen(filename, "wb");
-	fwrite(data->data, 1, data->size, fp);
-	fclose(fp);
+        FILE *fp;
+        printf("%s, %d\n", filename, data->size);
+        fp = fopen(filename, "wb");
+        fwrite(data->data, 1, data->size, fp);
+        fclose(fp);
 
-	util_dynarray_fini(data);
+        util_dynarray_fini(data);
 }
 
 static void
 compile_shader(char **argv)
 {
-	struct gl_shader_program *prog;
-	nir_shader *nir;
+        struct gl_shader_program *prog;
+        nir_shader *nir;
 
-	struct standalone_options options = {
-		.glsl_version = 140,
-		.do_link = true,
-	};
+        struct standalone_options options = {
+                .glsl_version = 140,
+                .do_link = true,
+        };
 
-	prog = standalone_compile_shader(&options, 2, argv);
-	prog->_LinkedShaders[MESA_SHADER_FRAGMENT]->Program->info.stage = MESA_SHADER_FRAGMENT;
+        prog = standalone_compile_shader(&options, 2, argv);
+        prog->_LinkedShaders[MESA_SHADER_FRAGMENT]->Program->info.stage = MESA_SHADER_FRAGMENT;
 
-	for (unsigned i = 0; i < MESA_SHADER_STAGES; ++i) {
-		if (prog->_LinkedShaders[i] == NULL)
-			continue;
+        for (unsigned i = 0; i < MESA_SHADER_STAGES; ++i) {
+                if (prog->_LinkedShaders[i] == NULL)
+                        continue;
 
-		c_do_mat_op_to_vec(prog->_LinkedShaders[i]->ir);
-	}
+                c_do_mat_op_to_vec(prog->_LinkedShaders[i]->ir);
+        }
 
-	midgard_program compiled;
-	nir = glsl_to_nir(prog, MESA_SHADER_VERTEX, &midgard_nir_options);
-	midgard_compile_shader_nir(nir, &compiled, false);
-	//finalise_to_disk("/dev/shm/vertex.bin", &compiled);
+        midgard_program compiled;
+        nir = glsl_to_nir(prog, MESA_SHADER_VERTEX, &midgard_nir_options);
+        midgard_compile_shader_nir(nir, &compiled, false);
+        //finalise_to_disk("/dev/shm/vertex.bin", &compiled);
 
-	nir = glsl_to_nir(prog, MESA_SHADER_FRAGMENT, &midgard_nir_options);
-	midgard_compile_shader_nir(nir, &compiled, false);
-	//finalise_to_disk("/dev/shm/fragment.bin", &compiled);
+        nir = glsl_to_nir(prog, MESA_SHADER_FRAGMENT, &midgard_nir_options);
+        midgard_compile_shader_nir(nir, &compiled, false);
+        //finalise_to_disk("/dev/shm/fragment.bin", &compiled);
 }
 
 static void
 compile_blend(char **argv)
 {
-	struct gl_shader_program *prog;
-	nir_shader *nir;
+        struct gl_shader_program *prog;
+        nir_shader *nir;
 
-	struct standalone_options options = {
-		.glsl_version = 140,
-	};
+        struct standalone_options options = {
+                .glsl_version = 140,
+        };
 
-	prog = standalone_compile_shader(&options, 1, argv);
-	prog->_LinkedShaders[MESA_SHADER_FRAGMENT]->Program->info.stage = MESA_SHADER_FRAGMENT;
+        prog = standalone_compile_shader(&options, 1, argv);
+        prog->_LinkedShaders[MESA_SHADER_FRAGMENT]->Program->info.stage = MESA_SHADER_FRAGMENT;
 
 #if 0
-	for (unsigned i = 0; i < MESA_SHADER_STAGES; ++i) {
-		if (prog->_LinkedShaders[i] == NULL)
-			continue;
 
-		c_do_mat_op_to_vec(prog->_LinkedShaders[i]->ir);
-	}
+        for (unsigned i = 0; i < MESA_SHADER_STAGES; ++i) {
+                if (prog->_LinkedShaders[i] == NULL)
+                        continue;
+
+                c_do_mat_op_to_vec(prog->_LinkedShaders[i]->ir);
+        }
+
 #endif
 
-	midgard_program program;
-	nir = glsl_to_nir(prog, MESA_SHADER_FRAGMENT, &midgard_nir_options);
-	midgard_compile_shader_nir(nir, &program, true);
-	finalise_to_disk("blend.bin", &program.compiled);
+        midgard_program program;
+        nir = glsl_to_nir(prog, MESA_SHADER_FRAGMENT, &midgard_nir_options);
+        midgard_compile_shader_nir(nir, &program, true);
+        finalise_to_disk("blend.bin", &program.compiled);
 }
 
 static void
 disassemble(const char *filename)
 {
-	FILE *fp = fopen(filename, "rb");
-	assert(fp);
+        FILE *fp = fopen(filename, "rb");
+        assert(fp);
 
-	fseek(fp, 0, SEEK_END);
-	int filesize = ftell(fp);
-	rewind(fp);
+        fseek(fp, 0, SEEK_END);
+        int filesize = ftell(fp);
+        rewind(fp);
 
-	unsigned char *code = malloc(filesize);
-	fread(code, 1, filesize, fp);
-	fclose(fp);
+        unsigned char *code = malloc(filesize);
+        fread(code, 1, filesize, fp);
+        fclose(fp);
 
-	disassemble_midgard(code, filesize);
-	free(code);
+        disassemble_midgard(code, filesize);
+        free(code);
 }
 
-int main(int argc, char **argv)
+int
+main(int argc, char **argv)
 {
-	if (argc < 2) {
-		printf("Pass a command\n");
-		exit(1);
-	}
+        if (argc < 2) {
+                printf("Pass a command\n");
+                exit(1);
+        }
 
-	if (strcmp(argv[1], "compile") == 0) {
-		compile_shader(&argv[2]);
-	} else if (strcmp(argv[1], "blend") == 0) {
-		compile_blend(&argv[2]);
-	} else if (strcmp(argv[1], "disasm") == 0) {
-		disassemble(argv[2]);
-	} else {
-		printf("Unknown commandn");
-		exit(1);
-	}
+        if (strcmp(argv[1], "compile") == 0) {
+                compile_shader(&argv[2]);
+        } else if (strcmp(argv[1], "blend") == 0) {
+                compile_blend(&argv[2]);
+        } else if (strcmp(argv[1], "disasm") == 0) {
+                disassemble(argv[2]);
+        } else {
+                printf("Unknown commandn");
+                exit(1);
+        }
 }

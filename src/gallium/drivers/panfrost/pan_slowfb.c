@@ -35,53 +35,61 @@ Window w;
 XImage *image;
 GC gc;
 
-struct slowfb_info slowfb_init(uint8_t *framebuffer, int width, int height) {
-	d = XOpenDisplay(NULL);
-	int black = BlackPixel(d, DefaultScreen(d));
-	w = XCreateSimpleWindow(d, DefaultRootWindow(d), 0, 0, 200, 100, 0, black, black);
-	XSelectInput(d, w, StructureNotifyMask);
-	XMapWindow(d, w);
-	gc = XCreateGC(d, w, 0, NULL);
-	for (;;) {
-		XEvent e;
-		XNextEvent(d, &e);
-		if (e.type == MapNotify) break;
-	}
+struct slowfb_info slowfb_init(uint8_t *framebuffer, int width, int height)
+{
+        d = XOpenDisplay(NULL);
+        int black = BlackPixel(d, DefaultScreen(d));
+        w = XCreateSimpleWindow(d, DefaultRootWindow(d), 0, 0, 200, 100, 0, black, black);
+        XSelectInput(d, w, StructureNotifyMask);
+        XMapWindow(d, w);
+        gc = XCreateGC(d, w, 0, NULL);
+
+        for (;;) {
+                XEvent e;
+                XNextEvent(d, &e);
+
+                if (e.type == MapNotify) break;
+        }
 
 
 #ifdef USE_SHM
-	XShmSegmentInfo *shminfo = calloc(1, sizeof(XShmSegmentInfo));
-	image = XShmCreateImage(d, DefaultVisual(d, 0), 24, ZPixmap, NULL, shminfo, width, height);
-	shminfo->shmid = shmget(IPC_PRIVATE, image->bytes_per_line * image->height, IPC_CREAT|0777);
-	shminfo->shmaddr = image->data = shmat(shminfo->shmid, 0, 0);
-	shminfo->readOnly = False;
-	XShmAttach(d, shminfo);
+        XShmSegmentInfo *shminfo = calloc(1, sizeof(XShmSegmentInfo));
+        image = XShmCreateImage(d, DefaultVisual(d, 0), 24, ZPixmap, NULL, shminfo, width, height);
+        shminfo->shmid = shmget(IPC_PRIVATE, image->bytes_per_line * image->height, IPC_CREAT | 0777);
+        shminfo->shmaddr = image->data = shmat(shminfo->shmid, 0, 0);
+        shminfo->readOnly = False;
+        XShmAttach(d, shminfo);
 #else
-	image = XCreateImage(d, DefaultVisual(d, 0), 24, ZPixmap, 0, (char *) framebuffer, 2048, 1280, 32, 0);
+        image = XCreateImage(d, DefaultVisual(d, 0), 24, ZPixmap, 0, (char *) framebuffer, 2048, 1280, 32, 0);
 #endif
 
-	struct slowfb_info info = {
-		.framebuffer = (uint8_t *) image->data,
-		.stride = image->bytes_per_line
-	};
+        struct slowfb_info info = {
+                .framebuffer = (uint8_t *) image->data,
+                .stride = image->bytes_per_line
+        };
 
-	return info;
+        return info;
 }
-void slowfb_update(uint8_t *framebuffer, int width, int height) {
+void
+slowfb_update(uint8_t *framebuffer, int width, int height)
+{
 #ifdef USE_SHM
-	XShmPutImage(d, w, gc, image, 0, 0, 0, 0, 2048, 1280, False);
-	XFlush(d);
+        XShmPutImage(d, w, gc, image, 0, 0, 0, 0, 2048, 1280, False);
+        XFlush(d);
 #else
-	XPutImage(d, w, gc, image, 0, 0, 0, 0, 2048, 1280);
+        XPutImage(d, w, gc, image, 0, 0, 0, 0, 2048, 1280);
 #endif
 }
 
 #else
 
-struct slowfb_info slowfb_init(uint8_t *framebuffer, int width, int height) {
+struct slowfb_info slowfb_init(uint8_t *framebuffer, int width, int height)
+{
 }
 
-void slowfb_update(uint8_t *framebuffer, int width, int height) {
+void
+slowfb_update(uint8_t *framebuffer, int width, int height)
+{
 }
 
 #endif

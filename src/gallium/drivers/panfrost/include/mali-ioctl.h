@@ -1,5 +1,5 @@
 /*
- * © Copyright 2008-2018 ARM Limited. 
+ * © Copyright 2008-2018 ARM Limited.
  * © Copyright 2017-2018 Lyude Paul
  * © Copyright 2017-2018 Alyssa Rosenzweig
  *
@@ -38,37 +38,37 @@ typedef u8 mali_atom_id;
  */
 
 enum mali_ioctl_mem_flags {
-	/* IN */
-	MALI_MEM_PROT_CPU_RD = (1U << 0),      /**< Read access CPU side */
-	MALI_MEM_PROT_CPU_WR = (1U << 1),      /**< Write access CPU side */
-	MALI_MEM_PROT_GPU_RD = (1U << 2),      /**< Read access GPU side */
-	MALI_MEM_PROT_GPU_WR = (1U << 3),      /**< Write access GPU side */
-	MALI_MEM_PROT_GPU_EX = (1U << 4),      /**< Execute allowed on the GPU
+        /* IN */
+        MALI_MEM_PROT_CPU_RD = (1U << 0),      /**< Read access CPU side */
+        MALI_MEM_PROT_CPU_WR = (1U << 1),      /**< Write access CPU side */
+        MALI_MEM_PROT_GPU_RD = (1U << 2),      /**< Read access GPU side */
+        MALI_MEM_PROT_GPU_WR = (1U << 3),      /**< Write access GPU side */
+        MALI_MEM_PROT_GPU_EX = (1U << 4),      /**< Execute allowed on the GPU
 						    side */
 
-	MALI_MEM_GROW_ON_GPF = (1U << 9),      /**< Grow backing store on GPU
+        MALI_MEM_GROW_ON_GPF = (1U << 9),      /**< Grow backing store on GPU
 						    Page Fault */
 
-	MALI_MEM_COHERENT_SYSTEM = (1U << 10), /**< Page coherence Outer
+        MALI_MEM_COHERENT_SYSTEM = (1U << 10), /**< Page coherence Outer
 						    shareable, if available */
-	MALI_MEM_COHERENT_LOCAL = (1U << 11),  /**< Page coherence Inner
+        MALI_MEM_COHERENT_LOCAL = (1U << 11),  /**< Page coherence Inner
 						    shareable */
-	MALI_MEM_CACHED_CPU = (1U << 12),      /**< Should be cached on the
+        MALI_MEM_CACHED_CPU = (1U << 12),      /**< Should be cached on the
 						    CPU */
 
-	/* IN/OUT */
-	MALI_MEM_SAME_VA = (1U << 13), /**< Must have same VA on both the GPU
+        /* IN/OUT */
+        MALI_MEM_SAME_VA = (1U << 13), /**< Must have same VA on both the GPU
 					    and the CPU */
-	/* OUT */
-	MALI_MEM_NEED_MMAP = (1U << 14), /**< Must call mmap to acquire a GPU
+        /* OUT */
+        MALI_MEM_NEED_MMAP = (1U << 14), /**< Must call mmap to acquire a GPU
 					     address for the alloc */
-	/* IN */
-	MALI_MEM_COHERENT_SYSTEM_REQUIRED = (1U << 15), /**< Page coherence
+        /* IN */
+        MALI_MEM_COHERENT_SYSTEM_REQUIRED = (1U << 15), /**< Page coherence
 					     Outer shareable, required. */
-	MALI_MEM_SECURE = (1U << 16),          /**< Secure memory */
-	MALI_MEM_DONT_NEED = (1U << 17),       /**< Not needed physical
+        MALI_MEM_SECURE = (1U << 16),          /**< Secure memory */
+        MALI_MEM_DONT_NEED = (1U << 17),       /**< Not needed physical
 						    memory */
-	MALI_MEM_IMPORT_SHARED = (1U << 18),   /**< Must use shared CPU/GPU zone
+        MALI_MEM_IMPORT_SHARED = (1U << 18),   /**< Must use shared CPU/GPU zone
 						    (SAME_VA zone) but doesn't
 						    require the addresses to
 						    be the same */
@@ -85,9 +85,9 @@ enum mali_ioctl_mem_flags {
 #define MALI_MEM_MAP_TRACKING_HANDLE (3ull << 12)
 
 enum mali_ioctl_coherency_mode {
-	COHERENCY_ACE_LITE = 0,
-	COHERENCY_ACE      = 1,
-	COHERENCY_NONE     = 31
+        COHERENCY_ACE_LITE = 0,
+        COHERENCY_ACE      = 1,
+        COHERENCY_NONE     = 31
 };
 
 /**
@@ -331,48 +331,48 @@ typedef u32 mali_jd_core_req;
  * @brief The payload for a replay job. This must be in GPU memory.
  */
 struct mali_jd_replay_payload {
-	/**
-	 * Pointer to the first entry in the mali_jd_replay_jc list.  These
-	 * will be replayed in @b reverse order (so that extra ones can be added
-	 * to the head in future soft jobs without affecting this soft job)
-	 */
-	u64 tiler_jc_list;
+        /**
+         * Pointer to the first entry in the mali_jd_replay_jc list.  These
+         * will be replayed in @b reverse order (so that extra ones can be added
+         * to the head in future soft jobs without affecting this soft job)
+         */
+        u64 tiler_jc_list;
 
-	/**
-	 * Pointer to the fragment job chain.
-	 */
-	u64 fragment_jc;
+        /**
+         * Pointer to the fragment job chain.
+         */
+        u64 fragment_jc;
 
-	/**
-	 * Pointer to the tiler heap free FBD field to be modified.
-	 */
-	u64 tiler_heap_free;
+        /**
+         * Pointer to the tiler heap free FBD field to be modified.
+         */
+        u64 tiler_heap_free;
 
-	/**
-	 * Hierarchy mask for the replayed fragment jobs. May be zero.
-	 */
-	u16 fragment_hierarchy_mask;
+        /**
+         * Hierarchy mask for the replayed fragment jobs. May be zero.
+         */
+        u16 fragment_hierarchy_mask;
 
-	/**
-	 * Hierarchy mask for the replayed tiler jobs. May be zero.
-	 */
-	u16 tiler_hierarchy_mask;
+        /**
+         * Hierarchy mask for the replayed tiler jobs. May be zero.
+         */
+        u16 tiler_hierarchy_mask;
 
-	/**
-	 * Default weight to be used for hierarchy levels not in the original
-	 * mask.
-	 */
-	u32 hierarchy_default_weight;
+        /**
+         * Default weight to be used for hierarchy levels not in the original
+         * mask.
+         */
+        u32 hierarchy_default_weight;
 
-	/**
-	 * Core requirements for the tiler job chain
-	 */
-	mali_jd_core_req tiler_core_req;
+        /**
+         * Core requirements for the tiler job chain
+         */
+        mali_jd_core_req tiler_core_req;
 
-	/**
-	 * Core requirements for the fragment job chain
-	 */
-	mali_jd_core_req fragment_core_req;
+        /**
+         * Core requirements for the fragment job chain
+         */
+        mali_jd_core_req fragment_core_req;
 };
 
 /**
@@ -380,16 +380,16 @@ struct mali_jd_replay_payload {
  *        be in GPU memory.
  */
 struct mali_jd_replay_jc {
-	/**
-	 * Pointer to next entry in the list. A setting of NULL indicates the
-	 * end of the list.
-	 */
-	u64 next;
+        /**
+         * Pointer to next entry in the list. A setting of NULL indicates the
+         * end of the list.
+         */
+        u64 next;
 
-	/**
-	 * Pointer to the job chain.
-	 */
-	u64 jc;
+        /**
+         * Pointer to the job chain.
+         */
+        u64 jc;
 };
 
 /* Capabilities of a job slot as reported by JS_FEATURES registers */
@@ -405,107 +405,107 @@ struct mali_jd_replay_jc {
 #define JS_FEATURE_FRAGMENT_JOB          (1u << 9)
 
 struct mali_gpu_core_props {
-	/**
-	 * Product specific value.
-	 */
-	u32 product_id;
+        /**
+         * Product specific value.
+         */
+        u32 product_id;
 
-	/**
-	 * Status of the GPU release.
-	 * No defined values, but starts at 0 and increases by one for each
-	 * release status (alpha, beta, EAC, etc.).
-	 * 4 bit values (0-15).
-	 */
-	u16 version_status;
+        /**
+         * Status of the GPU release.
+         * No defined values, but starts at 0 and increases by one for each
+         * release status (alpha, beta, EAC, etc.).
+         * 4 bit values (0-15).
+         */
+        u16 version_status;
 
-	/**
-	 * Minor release number of the GPU. "P" part of an "RnPn" release
-	 * number.
-	 * 8 bit values (0-255).
-	 */
-	u16 minor_revision;
+        /**
+         * Minor release number of the GPU. "P" part of an "RnPn" release
+         * number.
+         * 8 bit values (0-255).
+         */
+        u16 minor_revision;
 
-	/**
-	 * Major release number of the GPU. "R" part of an "RnPn" release
-	 * number.
-	 * 4 bit values (0-15).
-	 */
-	u16 major_revision;
+        /**
+         * Major release number of the GPU. "R" part of an "RnPn" release
+         * number.
+         * 4 bit values (0-15).
+         */
+        u16 major_revision;
 
-	u16 :16;
+        u16 : 16;
 
-	/**
-	 * @usecase GPU clock speed is not specified in the Midgard
-	 * Architecture, but is <b>necessary for OpenCL's clGetDeviceInfo()
-	 * function</b>.
-	 */
-	u32 gpu_speed_mhz;
+        /**
+         * @usecase GPU clock speed is not specified in the Midgard
+         * Architecture, but is <b>necessary for OpenCL's clGetDeviceInfo()
+         * function</b>.
+         */
+        u32 gpu_speed_mhz;
 
-	/**
-	 * @usecase GPU clock max/min speed is required for computing
-	 * best/worst case in tasks as job scheduling ant irq_throttling. (It
-	 * is not specified in the Midgard Architecture).
-	 */
-	u32 gpu_freq_khz_max;
-	u32 gpu_freq_khz_min;
+        /**
+         * @usecase GPU clock max/min speed is required for computing
+         * best/worst case in tasks as job scheduling ant irq_throttling. (It
+         * is not specified in the Midgard Architecture).
+         */
+        u32 gpu_freq_khz_max;
+        u32 gpu_freq_khz_min;
 
-	/**
-	 * Size of the shader program counter, in bits.
-	 */
-	u32 log2_program_counter_size;
+        /**
+         * Size of the shader program counter, in bits.
+         */
+        u32 log2_program_counter_size;
 
-	/**
-	 * TEXTURE_FEATURES_x registers, as exposed by the GPU. This is a
-	 * bitpattern where a set bit indicates that the format is supported.
-	 *
-	 * Before using a texture format, it is recommended that the
-	 * corresponding bit be checked.
-	 */
-	u32 texture_features[MALI_GPU_NUM_TEXTURE_FEATURES_REGISTERS];
+        /**
+         * TEXTURE_FEATURES_x registers, as exposed by the GPU. This is a
+         * bitpattern where a set bit indicates that the format is supported.
+         *
+         * Before using a texture format, it is recommended that the
+         * corresponding bit be checked.
+         */
+        u32 texture_features[MALI_GPU_NUM_TEXTURE_FEATURES_REGISTERS];
 
-	/**
-	 * Theoretical maximum memory available to the GPU. It is unlikely
-	 * that a client will be able to allocate all of this memory for their
-	 * own purposes, but this at least provides an upper bound on the
-	 * memory available to the GPU.
-	 *
-	 * This is required for OpenCL's clGetDeviceInfo() call when
-	 * CL_DEVICE_GLOBAL_MEM_SIZE is requested, for OpenCL GPU devices. The
-	 * client will not be expecting to allocate anywhere near this value.
-	 */
-	u64 gpu_available_memory_size;
+        /**
+         * Theoretical maximum memory available to the GPU. It is unlikely
+         * that a client will be able to allocate all of this memory for their
+         * own purposes, but this at least provides an upper bound on the
+         * memory available to the GPU.
+         *
+         * This is required for OpenCL's clGetDeviceInfo() call when
+         * CL_DEVICE_GLOBAL_MEM_SIZE is requested, for OpenCL GPU devices. The
+         * client will not be expecting to allocate anywhere near this value.
+         */
+        u64 gpu_available_memory_size;
 };
 
 struct mali_gpu_l2_cache_props {
-	u8 log2_line_size;
-	u8 log2_cache_size;
-	u8 num_l2_slices; /* Number of L2C slices. 1 or higher */
-	u64 :40;
+        u8 log2_line_size;
+        u8 log2_cache_size;
+        u8 num_l2_slices; /* Number of L2C slices. 1 or higher */
+        u64 : 40;
 };
 
 struct mali_gpu_tiler_props {
-	u32 bin_size_bytes;	/* Max is 4*2^15 */
-	u32 max_active_levels;	/* Max is 2^15 */
+        u32 bin_size_bytes;	/* Max is 4*2^15 */
+        u32 max_active_levels;	/* Max is 2^15 */
 };
 
 struct mali_gpu_thread_props {
-	u32 max_threads;            /* Max. number of threads per core */
-	u32 max_workgroup_size;     /* Max. number of threads per workgroup */
-	u32 max_barrier_size;       /* Max. number of threads that can
+        u32 max_threads;            /* Max. number of threads per core */
+        u32 max_workgroup_size;     /* Max. number of threads per workgroup */
+        u32 max_barrier_size;       /* Max. number of threads that can
 				       synchronize on a simple barrier */
-	u16 max_registers;          /* Total size [1..65535] of the register
+        u16 max_registers;          /* Total size [1..65535] of the register
 				       file available per core. */
-	u8  max_task_queue;         /* Max. tasks [1..255] which may be sent
+        u8  max_task_queue;         /* Max. tasks [1..255] which may be sent
 				       to a core before it becomes blocked. */
-	u8  max_thread_group_split; /* Max. allowed value [1..15] of the
+        u8  max_thread_group_split; /* Max. allowed value [1..15] of the
 				       Thread Group Split field. */
-	enum {
-		MALI_GPU_IMPLEMENTATION_UNKNOWN = 0,
-		MALI_GPU_IMPLEMENTATION_SILICON = 1,
-		MALI_GPU_IMPLEMENTATION_FPGA    = 2,
-		MALI_GPU_IMPLEMENTATION_SW      = 3,
-	} impl_tech :8;
-	u64 :56;
+        enum {
+                MALI_GPU_IMPLEMENTATION_UNKNOWN = 0,
+                MALI_GPU_IMPLEMENTATION_SILICON = 1,
+                MALI_GPU_IMPLEMENTATION_FPGA    = 2,
+                MALI_GPU_IMPLEMENTATION_SW      = 3,
+        } impl_tech : 8;
+        u64 : 56;
 };
 
 /**
@@ -521,10 +521,10 @@ struct mali_gpu_thread_props {
  * wastage.
  */
 struct mali_ioctl_gpu_coherent_group {
-	u64 core_mask;	       /**< Core restriction mask required for the
+        u64 core_mask;	       /**< Core restriction mask required for the
 				 group */
-	u16 num_cores;	       /**< Number of cores in the group */
-	u64 :48;
+        u16 num_cores;	       /**< Number of cores in the group */
+        u64 : 48;
 };
 
 /**
@@ -538,34 +538,34 @@ struct mali_ioctl_gpu_coherent_group {
  * not intersect.
  */
 struct mali_gpu_coherent_group_info {
-	u32 num_groups;
+        u32 num_groups;
 
-	/**
-	 * Number of core groups (coherent or not) in the GPU. Equivalent to
-	 * the number of L2 Caches.
-	 *
-	 * The GPU Counter dumping writes 2048 bytes per core group,
-	 * regardless of whether the core groups are coherent or not. Hence
-	 * this member is needed to calculate how much memory is required for
-	 * dumping.
-	 *
-	 * @note Do not use it to work out how many valid elements are in the
-	 * group[] member. Use num_groups instead.
-	 */
-	u32 num_core_groups;
+        /**
+         * Number of core groups (coherent or not) in the GPU. Equivalent to
+         * the number of L2 Caches.
+         *
+         * The GPU Counter dumping writes 2048 bytes per core group,
+         * regardless of whether the core groups are coherent or not. Hence
+         * this member is needed to calculate how much memory is required for
+         * dumping.
+         *
+         * @note Do not use it to work out how many valid elements are in the
+         * group[] member. Use num_groups instead.
+         */
+        u32 num_core_groups;
 
-	/**
-	 * Coherency features of the memory, accessed by @ref gpu_mem_features
-	 * methods
-	 */
-	u32 coherency;
+        /**
+         * Coherency features of the memory, accessed by @ref gpu_mem_features
+         * methods
+         */
+        u32 coherency;
 
-	u32 :32;
+        u32 : 32;
 
-	/**
-	 * Descriptors of coherent groups
-	 */
-	struct mali_ioctl_gpu_coherent_group group[MALI_MAX_COHERENT_GROUPS];
+        /**
+         * Descriptors of coherent groups
+         */
+        struct mali_ioctl_gpu_coherent_group group[MALI_MAX_COHERENT_GROUPS];
 };
 
 /**
@@ -585,35 +585,35 @@ struct mali_gpu_coherent_group_info {
  *
  */
 struct mali_gpu_raw_props {
-	u64 shader_present;
-	u64 tiler_present;
-	u64 l2_present;
-	u64 stack_present;
+        u64 shader_present;
+        u64 tiler_present;
+        u64 l2_present;
+        u64 stack_present;
 
-	u32 l2_features;
-	u32 suspend_size; /* API 8.2+ */
-	u32 mem_features;
-	u32 mmu_features;
+        u32 l2_features;
+        u32 suspend_size; /* API 8.2+ */
+        u32 mem_features;
+        u32 mmu_features;
 
-	u32 as_present;
+        u32 as_present;
 
-	u32 js_present;
-	u32 js_features[MALI_GPU_MAX_JOB_SLOTS];
-	u32 tiler_features;
-	u32 texture_features[3];
+        u32 js_present;
+        u32 js_features[MALI_GPU_MAX_JOB_SLOTS];
+        u32 tiler_features;
+        u32 texture_features[3];
 
-	u32 gpu_id;
+        u32 gpu_id;
 
-	u32 thread_max_threads;
-	u32 thread_max_workgroup_size;
-	u32 thread_max_barrier_size;
-	u32 thread_features;
+        u32 thread_max_threads;
+        u32 thread_max_workgroup_size;
+        u32 thread_max_barrier_size;
+        u32 thread_features;
 
-	/*
-	 * Note: This is the _selected_ coherency mode rather than the
-	 * available modes as exposed in the coherency_features register.
-	 */
-	u32 coherency_mode;
+        /*
+         * Note: This is the _selected_ coherency mode rather than the
+         * available modes as exposed in the coherency_features register.
+         */
+        u32 coherency_mode;
 };
 
 
@@ -640,12 +640,12 @@ typedef u64 mali_ptr;
  * by the driver itself
  */
 struct mali_jd_udata {
-	u64 blob[2];
+        u64 blob[2];
 };
 
 struct mali_jd_dependency {
-	mali_atom_id  atom_id;               /**< An atom number */
-	mali_jd_dep_type dependency_type;    /**< Dependency type */
+        mali_atom_id  atom_id;               /**< An atom number */
+        mali_jd_dep_type dependency_type;    /**< Dependency type */
 };
 
 #define MALI_EXT_RES_MAX 10
@@ -655,36 +655,36 @@ struct mali_jd_dependency {
  * actually need to decode here is EXCLUSIVE
  */
 enum mali_external_resource_access {
-	MALI_EXT_RES_ACCESS_SHARED,
-	MALI_EXT_RES_ACCESS_EXCLUSIVE,
+        MALI_EXT_RES_ACCESS_SHARED,
+        MALI_EXT_RES_ACCESS_EXCLUSIVE,
 };
 
 /* An aligned address to the resource | mali_external_resource_access */
 typedef u64 mali_external_resource;
 
 struct mali_jd_atom_v2 {
-	mali_ptr jc;           /**< job-chain GPU address */
-	struct mali_jd_udata udata;	    /**< user data */
-	PAD_CPU_PTR(mali_external_resource *ext_res_list); /**< list of external resources */
-	u16 nr_ext_res;			    /**< nr of external resources */
-	u16 compat_core_req;	            /**< core requirements which
+        mali_ptr jc;           /**< job-chain GPU address */
+        struct mali_jd_udata udata;	    /**< user data */
+        PAD_CPU_PTR(mali_external_resource *ext_res_list); /**< list of external resources */
+        u16 nr_ext_res;			    /**< nr of external resources */
+        u16 compat_core_req;	            /**< core requirements which
 					      correspond to the legacy support
 					      for UK 10.2 */
-	struct mali_jd_dependency pre_dep[2];  /**< pre-dependencies, one need to
+        struct mali_jd_dependency pre_dep[2];  /**< pre-dependencies, one need to
 					      use SETTER function to assign
 					      this field, this is done in
 					      order to reduce possibility of
 					      improper assigment of a
 					      dependency field */
-	mali_atom_id atom_number;	    /**< unique number to identify the
+        mali_atom_id atom_number;	    /**< unique number to identify the
 					      atom */
-	u8 prio;                  /**< Atom priority. Refer to @ref
+        u8 prio;                  /**< Atom priority. Refer to @ref
 					      mali_jd_prio for more details */
-	u8 device_nr;			    /**< coregroup when
+        u8 device_nr;			    /**< coregroup when
 					      BASE_JD_REQ_SPECIFIC_COHERENT_GROUP
 					      specified */
-	u8 :8;
-	mali_jd_core_req core_req;          /**< core requirements */
+        u8 : 8;
+        mali_jd_core_req core_req;          /**< core requirements */
 } __attribute__((packed));
 
 /**
@@ -700,184 +700,184 @@ struct mali_jd_atom_v2 {
  * @MALI_ERROR_FUNCTION_FAILED: Generic error code
  */
 enum mali_error {
-	MALI_ERROR_NONE = 0,
-	MALI_ERROR_OUT_OF_GPU_MEMORY,
-	MALI_ERROR_OUT_OF_MEMORY,
-	MALI_ERROR_FUNCTION_FAILED,
+        MALI_ERROR_NONE = 0,
+        MALI_ERROR_OUT_OF_GPU_MEMORY,
+        MALI_ERROR_OUT_OF_MEMORY,
+        MALI_ERROR_FUNCTION_FAILED,
 };
 
 /**
  * Header used by all ioctls
  */
 union mali_ioctl_header {
-	/* [in] The ID of the UK function being called */
-	u32 id :32;
-	/* [out] The return value of the UK function that was called */
-	enum mali_error rc :32;
+        /* [in] The ID of the UK function being called */
+        u32 id : 32;
+        /* [out] The return value of the UK function that was called */
+        enum mali_error rc : 32;
 
-	u64 :64;
+        u64 : 64;
 } __attribute__((packed));
 
 struct mali_ioctl_get_version {
-	union mali_ioctl_header header;
-	u16 major; /* [out] */
-	u16 minor; /* [out] */
-	u32 :32;
+        union mali_ioctl_header header;
+        u16 major; /* [out] */
+        u16 minor; /* [out] */
+        u32 : 32;
 } __attribute__((packed));
 
 struct mali_ioctl_mem_alloc {
-	union mali_ioctl_header header;
-	/* [in] */
-	u64 va_pages;
-	u64 commit_pages;
-	u64 extent;
-	/* [in/out] */
-	u64 flags;
-	/* [out] */
-	mali_ptr gpu_va;
-	u16 va_alignment;
+        union mali_ioctl_header header;
+        /* [in] */
+        u64 va_pages;
+        u64 commit_pages;
+        u64 extent;
+        /* [in/out] */
+        u64 flags;
+        /* [out] */
+        mali_ptr gpu_va;
+        u16 va_alignment;
 
-	u32 :32;
-	u16 :16;
+        u32 : 32;
+        u16 : 16;
 } __attribute__((packed));
 
 struct mali_mem_import_user_buffer {
-	u64 ptr;
-	u64 length;
+        u64 ptr;
+        u64 length;
 };
 
 struct mali_ioctl_mem_import {
-	union mali_ioctl_header header;
-	/* [in] */
-	u64 phandle;
-	enum {
-		MALI_MEM_IMPORT_TYPE_INVALID = 0,
-		MALI_MEM_IMPORT_TYPE_UMP = 1,
-		MALI_MEM_IMPORT_TYPE_UMM = 2,
-		MALI_MEM_IMPORT_TYPE_USER_BUFFER = 3,
-	} type :32;
-	u32 :32;
-	/* [in/out] */
-	u64 flags;
-	/* [out] */
-	u64 gpu_va;
-	u64 va_pages;
+        union mali_ioctl_header header;
+        /* [in] */
+        u64 phandle;
+        enum {
+                MALI_MEM_IMPORT_TYPE_INVALID = 0,
+                MALI_MEM_IMPORT_TYPE_UMP = 1,
+                MALI_MEM_IMPORT_TYPE_UMM = 2,
+                MALI_MEM_IMPORT_TYPE_USER_BUFFER = 3,
+        } type : 32;
+        u32 : 32;
+        /* [in/out] */
+        u64 flags;
+        /* [out] */
+        u64 gpu_va;
+        u64 va_pages;
 } __attribute__((packed));
 
 struct mali_ioctl_mem_commit {
-	union mali_ioctl_header header;
-	/* [in] */
-	mali_ptr gpu_addr;
-	u64 pages;
-	/* [out] */
-	u32 result_subcode;
-	u32 :32;
+        union mali_ioctl_header header;
+        /* [in] */
+        mali_ptr gpu_addr;
+        u64 pages;
+        /* [out] */
+        u32 result_subcode;
+        u32 : 32;
 } __attribute__((packed));
 
 enum mali_ioctl_mem_query_type {
-	MALI_MEM_QUERY_COMMIT_SIZE = 1,
-	MALI_MEM_QUERY_VA_SIZE     = 2,
-	MALI_MEM_QUERY_FLAGS       = 3
+        MALI_MEM_QUERY_COMMIT_SIZE = 1,
+        MALI_MEM_QUERY_VA_SIZE     = 2,
+        MALI_MEM_QUERY_FLAGS       = 3
 };
 
 struct mali_ioctl_mem_query {
-	union mali_ioctl_header header;
-	/* [in] */
-	mali_ptr gpu_addr;
-	enum mali_ioctl_mem_query_type query : 32;
-	u32 :32;
-	/* [out] */
-	u64 value;
+        union mali_ioctl_header header;
+        /* [in] */
+        mali_ptr gpu_addr;
+        enum mali_ioctl_mem_query_type query : 32;
+        u32 : 32;
+        /* [out] */
+        u64 value;
 } __attribute__((packed));
 
 struct mali_ioctl_mem_free {
-	union mali_ioctl_header header;
-	mali_ptr gpu_addr; /* [in] */
+        union mali_ioctl_header header;
+        mali_ptr gpu_addr; /* [in] */
 } __attribute__((packed));
 /* FIXME: Size unconfirmed (haven't seen in a trace yet) */
 
 struct mali_ioctl_mem_flags_change {
-	union mali_ioctl_header header;
-	/* [in] */
-	mali_ptr gpu_va;
-	u64 flags;
-	u64 mask;
+        union mali_ioctl_header header;
+        /* [in] */
+        mali_ptr gpu_va;
+        u64 flags;
+        u64 mask;
 } __attribute__((packed));
 /* FIXME: Size unconfirmed (haven't seen in a trace yet) */
 
 struct mali_ioctl_mem_alias {
-	union mali_ioctl_header header;
-	/* [in/out] */
-	u64 flags;
-	/* [in] */
-	u64 stride;
-	u64 nents;
-	u64 ai;
-	/* [out] */
-	mali_ptr gpu_va;
-	u64 va_pages;
+        union mali_ioctl_header header;
+        /* [in/out] */
+        u64 flags;
+        /* [in] */
+        u64 stride;
+        u64 nents;
+        u64 ai;
+        /* [out] */
+        mali_ptr gpu_va;
+        u64 va_pages;
 } __attribute__((packed));
 
 struct mali_ioctl_sync {
-	union mali_ioctl_header header;
-	mali_ptr handle;
-	PAD_CPU_PTR(void* user_addr);
-	u64 size;
-	enum {
-		MALI_SYNC_TO_DEVICE = 1,
-		MALI_SYNC_TO_CPU = 2,
-	} type :8;
-	u64 :56;
+        union mali_ioctl_header header;
+        mali_ptr handle;
+        PAD_CPU_PTR(void *user_addr);
+        u64 size;
+        enum {
+                MALI_SYNC_TO_DEVICE = 1,
+                MALI_SYNC_TO_CPU = 2,
+        } type : 8;
+        u64 : 56;
 } __attribute__((packed));
 
 struct mali_ioctl_gpu_props_reg_dump {
-	union mali_ioctl_header header;
-	struct mali_gpu_core_props core;
-	struct mali_gpu_l2_cache_props l2;
-	u64 :64;
-	struct mali_gpu_tiler_props tiler;
-	struct mali_gpu_thread_props thread;
+        union mali_ioctl_header header;
+        struct mali_gpu_core_props core;
+        struct mali_gpu_l2_cache_props l2;
+        u64 : 64;
+        struct mali_gpu_tiler_props tiler;
+        struct mali_gpu_thread_props thread;
 
-	struct mali_gpu_raw_props raw;
+        struct mali_gpu_raw_props raw;
 
-	/** This must be last member of the structure */
-	struct mali_gpu_coherent_group_info coherency_info;
+        /** This must be last member of the structure */
+        struct mali_gpu_coherent_group_info coherency_info;
 } __attribute__((packed));
 
 struct mali_ioctl_set_flags {
-	union mali_ioctl_header header;
-	u32 create_flags; /* [in] */
-	u32 :32;
+        union mali_ioctl_header header;
+        u32 create_flags; /* [in] */
+        u32 : 32;
 } __attribute__((packed));
 
 struct mali_ioctl_stream_create {
-	union mali_ioctl_header header;
-	/* [in] */
-	char name[32];
-	/* [out] */
-	s32 fd;
-	u32 :32;
+        union mali_ioctl_header header;
+        /* [in] */
+        char name[32];
+        /* [out] */
+        s32 fd;
+        u32 : 32;
 } __attribute__((packed));
 
 struct mali_ioctl_job_submit {
-	union mali_ioctl_header header;
-	/* [in] */
-	PAD_CPU_PTR(struct mali_jd_atom_v2 *addr);
-	u32 nr_atoms;
-	u32 stride;
+        union mali_ioctl_header header;
+        /* [in] */
+        PAD_CPU_PTR(struct mali_jd_atom_v2 *addr);
+        u32 nr_atoms;
+        u32 stride;
 } __attribute__((packed));
 
 struct mali_ioctl_get_context_id {
-	union mali_ioctl_header header;
-	/* [out] */
-	s64 id;
+        union mali_ioctl_header header;
+        /* [out] */
+        s64 id;
 } __attribute__((packed));
 
 #undef PAD_PTR
 
 /* For ioctl's we haven't written decoding stuff for yet */
 typedef struct {
-	union mali_ioctl_header header;
+        union mali_ioctl_header header;
 } __ioctl_placeholder;
 
 #define MALI_IOCTL_TYPE_BASE  0x80

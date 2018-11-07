@@ -16,8 +16,8 @@
 #define __SLOW_FRAMEBUFFER_H__
 
 struct slowfb_info {
-	uint8_t *framebuffer;
-	int stride;
+        uint8_t *framebuffer;
+        int stride;
 };
 
 struct slowfb_info slowfb_init(uint8_t *framebuffer, int width, int height);

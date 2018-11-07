@@ -27,7 +27,7 @@ int pandev_open(void);
 
 /* Calls used while replaying */
 int pandev_raw_open(void);
-u8* pandev_map_mtp(int fd);
+u8 *pandev_map_mtp(int fd);
 int pandev_ioctl(int fd, unsigned long request, void *args);
 
 int pandev_standard_allocate(int fd, int va_pages, int flags, u64 *out);
@@ -39,10 +39,10 @@ void
 panfrost_shader_compile(struct panfrost_context *ctx, struct mali_shader_meta *meta, const char *src, int type, struct panfrost_shader_state *state);
 
 struct panfrost_memory {
-	uint8_t* cpu;
-	mali_ptr gpu;
-	int stack_bottom;
-	size_t size;
+        uint8_t *cpu;
+        mali_ptr gpu;
+        int stack_bottom;
+        size_t size;
 };
 
 /* Functions for replay */
@@ -59,8 +59,8 @@ panfrost_allocate_transfer(struct panfrost_memory *mem, size_t sz, mali_ptr *gpu
 static inline mali_ptr
 panfrost_reserve(struct panfrost_memory *mem, size_t sz)
 {
-	mem->stack_bottom += sz;
-	return mem->gpu + (mem->stack_bottom - sz);
+        mem->stack_bottom += sz;
+        return mem->gpu + (mem->stack_bottom - sz);
 }
 
 #include <math.h>

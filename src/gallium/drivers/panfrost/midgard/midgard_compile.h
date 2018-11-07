@@ -28,23 +28,23 @@
 /* Define the general compiler entry point */
 
 typedef struct {
-	int work_register_count;
-	int uniform_count;
-	int uniform_cutoff;
+        int work_register_count;
+        int uniform_count;
+        int uniform_cutoff;
 
-	int attribute_count;
-	int varying_count;
+        int attribute_count;
+        int varying_count;
 
-	bool can_discard;
+        bool can_discard;
 
-	int first_tag;
+        int first_tag;
 
-	struct util_dynarray compiled;
+        struct util_dynarray compiled;
 
-	/* For a blend shader using a constant color -- patch point. If
-	 * negative, there's no constant. */
+        /* For a blend shader using a constant color -- patch point. If
+         * negative, there's no constant. */
 
-	int blend_patch_offset;
+        int blend_patch_offset;
 } midgard_program;
 
 int
@@ -55,22 +55,22 @@ midgard_compile_shader_nir(nir_shader *nir, midgard_program *program, bool is_bl
  * solution. */
 
 static const nir_shader_compiler_options midgard_nir_options = {
-	.lower_ffma = true,
-	.lower_sub = true,
-	.lower_fpow = true,
-	.lower_scmp = true,
-	.lower_flrp32 = true,
-	.lower_flrp64 = true,
-	.lower_ffract = true,
-	.lower_fmod32 = true,
-	.lower_fmod64 = true,
-	.lower_fdiv = true,
-	.lower_idiv = true,
-	.lower_b2f = true,
+        .lower_ffma = true,
+        .lower_sub = true,
+        .lower_fpow = true,
+        .lower_scmp = true,
+        .lower_flrp32 = true,
+        .lower_flrp64 = true,
+        .lower_ffract = true,
+        .lower_fmod32 = true,
+        .lower_fmod64 = true,
+        .lower_fdiv = true,
+        .lower_idiv = true,
+        .lower_b2f = true,
 
-	.vertex_id_zero_based = true,
-	.lower_extract_byte = true,
-	.lower_extract_word = true,
+        .vertex_id_zero_based = true,
+        .lower_extract_byte = true,
+        .lower_extract_word = true,
 
-	.native_integers = true
+        .native_integers = true
 };

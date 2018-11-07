@@ -22,28 +22,28 @@
 #include "util/list.h"
 
 struct panwrap_allocated_memory {
-	struct list_head node;
+        struct list_head node;
 
-	mali_ptr gpu_va;
-	int flags;
-	int allocation_number;
-	size_t length;
+        mali_ptr gpu_va;
+        int flags;
+        int allocation_number;
+        size_t length;
 };
 
 struct panwrap_mapped_memory {
-	struct list_head node;
+        struct list_head node;
 
-	size_t length;
+        size_t length;
 
-	void *addr;
-	mali_ptr gpu_va;
-	int prot;
+        void *addr;
+        mali_ptr gpu_va;
+        int prot;
         int flags;
 
-	int allocation_number;
-	char name[32];
+        int allocation_number;
+        char name[32];
 
-	bool* touched;
+        bool *touched;
 };
 
 /* Set this if you don't want your life to be hell while debugging */
@@ -88,30 +88,30 @@ struct panwrap_mapped_memory *panwrap_find_mapped_gpu_mem(mali_ptr addr);
 struct panwrap_mapped_memory *panwrap_find_mapped_gpu_mem_containing(mali_ptr addr);
 
 void panwrap_assert_gpu_same(const struct panwrap_mapped_memory *mem,
-			     mali_ptr gpu_va, size_t size,
-			     const unsigned char *data);
+                             mali_ptr gpu_va, size_t size,
+                             const unsigned char *data);
 void panwrap_assert_gpu_mem_zero(const struct panwrap_mapped_memory *mem,
-				 mali_ptr gpu_va, size_t size);
+                                 mali_ptr gpu_va, size_t size);
 
 void __attribute__((noreturn))
 __panwrap_fetch_mem_err(const struct panwrap_mapped_memory *mem,
-			mali_ptr gpu_va, size_t size,
-			int line, const char *filename);
+                        mali_ptr gpu_va, size_t size,
+                        int line, const char *filename);
 
 static inline void *
 __panwrap_fetch_gpu_mem(const struct panwrap_mapped_memory *mem,
-			mali_ptr gpu_va, size_t size,
-			int line, const char *filename)
+                        mali_ptr gpu_va, size_t size,
+                        int line, const char *filename)
 {
-	if (!mem)
-		mem = panwrap_find_mapped_gpu_mem_containing(gpu_va);
+        if (!mem)
+                mem = panwrap_find_mapped_gpu_mem_containing(gpu_va);
 
-	if (!mem ||
-	    size + (gpu_va - mem->gpu_va) > mem->length ||
-	    !(mem->prot & MALI_MEM_PROT_CPU_RD))
-		__panwrap_fetch_mem_err(mem, gpu_va, size, line, filename);
+        if (!mem ||
+                        size + (gpu_va - mem->gpu_va) > mem->length ||
+                        !(mem->prot & MALI_MEM_PROT_CPU_RD))
+                __panwrap_fetch_mem_err(mem, gpu_va, size, line, filename);
 
-	return mem->addr + gpu_va - mem->gpu_va;
+        return mem->addr + gpu_va - mem->gpu_va;
 }
 
 #define panwrap_fetch_gpu_mem(mem, gpu_va, size) \

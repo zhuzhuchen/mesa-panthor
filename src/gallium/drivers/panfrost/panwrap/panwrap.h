@@ -28,8 +28,8 @@
 #include "panwrap-decoder.h"
 
 struct panwrap_flag_info {
-	u64 flag;
-	const char *name;
+        u64 flag;
+        const char *name;
 };
 
 #define PROLOG(func) 					\
@@ -43,7 +43,7 @@ void panwrap_log_empty(void);
 void panwrap_log_flush(void);
 
 void panwrap_log_decoded_flags(const struct panwrap_flag_info *flag_info,
-			       u64 flags);
+                               u64 flags);
 void ioctl_log_decoded_jd_core_req(mali_jd_core_req req);
 void panwrap_log_hexdump(const void *data, size_t size);
 void panwrap_log_hexdump_trimmed(const void *data, size_t size);
@@ -52,10 +52,10 @@ void panwrap_timestamp(struct timespec *);
 
 bool panwrap_parse_env_bool(const char *env, bool def);
 long panwrap_parse_env_long(const char *env, long def);
-const char * panwrap_parse_env_string(const char *env, const char *def);
+const char *panwrap_parse_env_string(const char *env, const char *def);
 
 extern short panwrap_indent;
 
-void * __rd_dlsym_helper(const char *name);
+void *__rd_dlsym_helper(const char *name);
 
 #endif /* __WRAP_H__ */

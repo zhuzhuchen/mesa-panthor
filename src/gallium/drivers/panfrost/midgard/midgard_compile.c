@@ -57,32 +57,32 @@
  * registers. Negative values mean unused. */
 
 typedef struct {
-	int src0;
-	int src1;
-	int dest;
+        int src0;
+        int src1;
+        int dest;
 
-	/* The output is -not- SSA -- it's a direct register from I/O -- and
-	 * must not be culled/renamed */
-	bool literal_out;
+        /* The output is -not- SSA -- it's a direct register from I/O -- and
+         * must not be culled/renamed */
+        bool literal_out;
 
-	/* src1 is -not- SSA but instead a 16-bit inline constant to be smudged
-	 * in. Only valid for ALU ops. */
-	bool inline_constant;
+        /* src1 is -not- SSA but instead a 16-bit inline constant to be smudged
+         * in. Only valid for ALU ops. */
+        bool inline_constant;
 } ssa_args;
 
 /* Forward declare so midgard_branch can reference */
 struct midgard_block;
 
 typedef struct midgard_branch {
-	/* If conditional, the condition is specified in r31.w */
-	bool conditional;
-	
-	/* For conditionals, if this is true, we branch on FALSE. If false, we  branch on TRUE. */
-	bool invert_conditional;
+        /* If conditional, the condition is specified in r31.w */
+        bool conditional;
 
-	/* We can either branch to the start or the end of the block */
-	int target_start;
-	int target_after;
+        /* For conditionals, if this is true, we branch on FALSE. If false, we  branch on TRUE. */
+        bool invert_conditional;
+
+        /* We can either branch to the start or the end of the block */
+        int target_start;
+        int target_after;
 } midgard_branch;
 
 /* Generic in-memory data type repesenting a single logical instruction, rather
@@ -96,58 +96,58 @@ typedef struct midgard_branch {
  */
 
 typedef struct midgard_instruction {
-	unsigned type; /* ALU, load/store, texture */
+        unsigned type; /* ALU, load/store, texture */
 
-	/* If the register allocator has not run yet... */
-	bool uses_ssa;
-	ssa_args ssa_args;
+        /* If the register allocator has not run yet... */
+        bool uses_ssa;
+        ssa_args ssa_args;
 
-	/* Special fields for an ALU instruction */
-	bool vector; 
-	midgard_reg_info registers;
+        /* Special fields for an ALU instruction */
+        bool vector;
+        midgard_reg_info registers;
 
-	/* I.e. (1 << alu_bit) */
-	int unit;
+        /* I.e. (1 << alu_bit) */
+        int unit;
 
-	bool has_constants;
-	float constants[4];
-	bool has_blend_constant;
+        bool has_constants;
+        float constants[4];
+        bool has_blend_constant;
 
-	bool compact_branch;
-	bool writeout;
-	bool prepacked_branch;
+        bool compact_branch;
+        bool writeout;
+        bool prepacked_branch;
 
-	/* dynarray's are O(n) to delete from, which makes peephole
-	 * optimisations a little awkward. Instead, just have an unused flag
-	 * which the code gen will skip over */
+        /* dynarray's are O(n) to delete from, which makes peephole
+         * optimisations a little awkward. Instead, just have an unused flag
+         * which the code gen will skip over */
 
-	bool unused;
+        bool unused;
 
-	union {
-		midgard_load_store_word load_store;
-		midgard_vector_alu alu;
-		midgard_texture_word texture;
-		uint16_t br_compact;
+        union {
+                midgard_load_store_word load_store;
+                midgard_vector_alu alu;
+                midgard_texture_word texture;
+                uint16_t br_compact;
 
-		/* General branch, rather than packed br_compact. Higher level
-		 * than the other components */
-		midgard_branch branch;
-	};
+                /* General branch, rather than packed br_compact. Higher level
+                 * than the other components */
+                midgard_branch branch;
+        };
 } midgard_instruction;
 
 typedef struct midgard_block {
-	/* List of midgard_instructions emitted for the current block */
-	struct util_dynarray instructions;
+        /* List of midgard_instructions emitted for the current block */
+        struct util_dynarray instructions;
 
-	bool is_scheduled;
+        bool is_scheduled;
 
-	/* List of midgard_bundles emitted (after the scheduler has run) */
-	struct util_dynarray bundles;
+        /* List of midgard_bundles emitted (after the scheduler has run) */
+        struct util_dynarray bundles;
 
-	/* Number of quadwords _actually_ emitted, as determined after scheduling */
-	unsigned quadword_count;
+        /* Number of quadwords _actually_ emitted, as determined after scheduling */
+        unsigned quadword_count;
 
-	struct midgard_block *next_fallthrough;
+        struct midgard_block *next_fallthrough;
 } midgard_block;
 
 /* Pretty printer for internal Midgard IR */
@@ -155,90 +155,90 @@ typedef struct midgard_block {
 static void
 print_mir_source(int source)
 {
-	if (source >= SSA_FIXED_MINIMUM) {
-		/* Specific register */
-		int reg = SSA_REG_FROM_FIXED(source);
+        if (source >= SSA_FIXED_MINIMUM) {
+                /* Specific register */
+                int reg = SSA_REG_FROM_FIXED(source);
 
-		/* TODO: Moving threshold */
-		if (reg > 16 && reg < 24)
-			printf("u%d", 23 - reg);
-		else
-			printf("r%d", reg);
-	} else {
-		printf("%d", source);
-	}
+                /* TODO: Moving threshold */
+                if (reg > 16 && reg < 24)
+                        printf("u%d", 23 - reg);
+                else
+                        printf("r%d", reg);
+        } else {
+                printf("%d", source);
+        }
 }
 
 static void
 print_mir_instruction(midgard_instruction *ins)
 {
-	if (ins->unused)
-		return;
+        if (ins->unused)
+                return;
 
-	printf("\t");
+        printf("\t");
 
-	switch (ins->type) {
-		case TAG_ALU_4: {
-			midgard_alu_op op = ins->alu.op;
-			const char *name = alu_opcode_names[op];
+        switch (ins->type) {
+        case TAG_ALU_4: {
+                midgard_alu_op op = ins->alu.op;
+                const char *name = alu_opcode_names[op];
 
-			if (ins->unit)
-				printf("%d.", ins->unit);
-			
-			printf("%s", name ? name : "??");
-			break;
-		}
+                if (ins->unit)
+                        printf("%d.", ins->unit);
 
-		case TAG_LOAD_STORE_4: {
-			midgard_load_store_op op = ins->load_store.op;
-			const char *name = load_store_opcode_names[op];
-			
-			assert(name);
-			printf("%s", name);
-			break;
-	        }
+                printf("%s", name ? name : "??");
+                break;
+        }
 
-		case TAG_TEXTURE_4: {
-			printf("texture");
-		       break;
-	        }
+        case TAG_LOAD_STORE_4: {
+                midgard_load_store_op op = ins->load_store.op;
+                const char *name = load_store_opcode_names[op];
 
-		default:
-		    assert(0);
-	}
+                assert(name);
+                printf("%s", name);
+                break;
+        }
 
-	if (ins->uses_ssa) {
-		ssa_args *args = &ins->ssa_args;
+        case TAG_TEXTURE_4: {
+                printf("texture");
+                break;
+        }
 
-		printf(" %s%d, ", args->literal_out ? "r" : "", args->dest);
+        default:
+                assert(0);
+        }
 
-		print_mir_source(args->src0);
-		printf(", ");
+        if (ins->uses_ssa) {
+                ssa_args *args = &ins->ssa_args;
 
-		if (args->inline_constant)
-			printf("#%d", args->src1);
-		else
-			print_mir_source(args->src1);
-	} else {
-		printf(" nonssa");
-	}
+                printf(" %s%d, ", args->literal_out ? "r" : "", args->dest);
 
-	if (ins->has_constants)
-		printf(" <%f, %f, %f, %f>", ins->constants[0], ins->constants[1], ins->constants[2], ins->constants[3]);
+                print_mir_source(args->src0);
+                printf(", ");
 
-	printf("\n");
+                if (args->inline_constant)
+                        printf("#%d", args->src1);
+                else
+                        print_mir_source(args->src1);
+        } else {
+                printf(" nonssa");
+        }
+
+        if (ins->has_constants)
+                printf(" <%f, %f, %f, %f>", ins->constants[0], ins->constants[1], ins->constants[2], ins->constants[3]);
+
+        printf("\n");
 }
 
 static void
 print_mir_block(midgard_block *block)
 {
-	printf("{\n");
+        printf("{\n");
 
-	util_dynarray_foreach(&block->instructions, midgard_instruction, ins) {
-		print_mir_instruction(ins);
-	}
+        util_dynarray_foreach(&block->instructions, midgard_instruction, ins) {
+                print_mir_instruction(ins);
+        }
 
-	printf("}\n");
+        printf("}\n");
 }
 
 /* Helpers to generate midgard_instruction's using macro magic, since every
@@ -272,11 +272,11 @@ print_mir_block(midgard_block *block)
 #define M_STORE(name) M_LOAD_STORE(name, src0, dest)
 
 const midgard_vector_alu_src blank_alu_src = {
-	.swizzle = SWIZZLE(COMPONENT_X, COMPONENT_Y, COMPONENT_Z, COMPONENT_W),
+        .swizzle = SWIZZLE(COMPONENT_X, COMPONENT_Y, COMPONENT_Z, COMPONENT_W),
 };
 
 const midgard_scalar_alu_src blank_scalar_alu_src = {
-	.full = true
+        .full = true
 };
 
 /* Used for encoding the unused source of 1-op instructions */
@@ -287,9 +287,9 @@ const midgard_vector_alu_src zero_alu_src = { 0 };
 static unsigned
 vector_alu_srco_unsigned(midgard_vector_alu_src src)
 {
-	unsigned u;
-	memcpy(&u, &src, sizeof(src));
-	return u;
+        unsigned u;
+        memcpy(&u, &src, sizeof(src));
+        return u;
 }
 
 /* Inputs a NIR ALU source, with modifiers attached if necessary, and outputs
@@ -298,46 +298,46 @@ vector_alu_srco_unsigned(midgard_vector_alu_src src)
 static midgard_vector_alu_src
 vector_alu_modifiers(nir_alu_src *src)
 {
-	if (!src) return blank_alu_src;
+        if (!src) return blank_alu_src;
 
-	midgard_vector_alu_src alu_src = {
-		.abs = src->abs,
-		.negate = src->negate,
-		.rep_low = 0,
-		.rep_high = 0,
-		.half = 0, /* TODO */
-		.swizzle = SWIZZLE_FROM_ARRAY(src->swizzle)
-	};
+        midgard_vector_alu_src alu_src = {
+                .abs = src->abs,
+                .negate = src->negate,
+                .rep_low = 0,
+                .rep_high = 0,
+                .half = 0, /* TODO */
+                .swizzle = SWIZZLE_FROM_ARRAY(src->swizzle)
+        };
 
-	return alu_src;
+        return alu_src;
 }
 
 static midgard_instruction
 m_alu_vector(midgard_alu_op op, int unit, unsigned src0, midgard_vector_alu_src mod1, unsigned src1, midgard_vector_alu_src mod2, unsigned dest, bool literal_out, midgard_outmod outmod)
 {
-	midgard_instruction ins = {
-		.type = TAG_ALU_4,
-		.unused = false,
-		.uses_ssa = true,
-		.ssa_args = {
-			.src0 = src0,
-			.src1 = src1,
-			.dest = dest,
-			.literal_out = literal_out
-		},
-		.vector = true,
-		.alu = {
-			.op = op,
-			.reg_mode = midgard_reg_mode_full,
-			.dest_override = midgard_dest_override_none,
-			.outmod = outmod,
-			.mask = 0xFF,
-			.src1 = vector_alu_srco_unsigned(mod1),
-			.src2 = vector_alu_srco_unsigned(mod2)
-		},
-	};
+        midgard_instruction ins = {
+                .type = TAG_ALU_4,
+                .unused = false,
+                .uses_ssa = true,
+                .ssa_args = {
+                        .src0 = src0,
+                        .src1 = src1,
+                        .dest = dest,
+                        .literal_out = literal_out
+                },
+                .vector = true,
+                .alu = {
+                        .op = op,
+                        .reg_mode = midgard_reg_mode_full,
+                        .dest_override = midgard_dest_override_none,
+                        .outmod = outmod,
+                        .mask = 0xFF,
+                        .src1 = vector_alu_srco_unsigned(mod1),
+                        .src2 = vector_alu_srco_unsigned(mod2)
+                },
+        };
 
-	return ins;
+        return ins;
 }
 
 #define M_ALU_VECTOR_1(unit, name) \
@@ -366,223 +366,223 @@ M_ALU_VECTOR_1(MUL, fmov);
 static midgard_instruction
 v_alu_br_compact_cond(midgard_jmp_writeout_op op, unsigned tag, signed offset, unsigned cond)
 {
-	midgard_branch_cond branch = {
-		.op = op,
-		.dest_tag = tag,
-		.offset = offset,
-		.cond = cond
-	};
+        midgard_branch_cond branch = {
+                .op = op,
+                .dest_tag = tag,
+                .offset = offset,
+                .cond = cond
+        };
 
-	uint16_t compact;
-	memcpy(&compact, &branch, sizeof(branch));
+        uint16_t compact;
+        memcpy(&compact, &branch, sizeof(branch));
 
-	midgard_instruction ins = {
-		.type = TAG_ALU_4,
-		.unit = ALU_ENAB_BR_COMPACT ,
-		.unused = false,
-		.uses_ssa = false,
+        midgard_instruction ins = {
+                .type = TAG_ALU_4,
+                .unit = ALU_ENAB_BR_COMPACT,
+                .unused = false,
+                .uses_ssa = false,
 
-		.prepacked_branch = true,
-		.compact_branch = true, 
-		.br_compact = compact
-	};
+                .prepacked_branch = true,
+                .compact_branch = true,
+                .br_compact = compact
+        };
 
-	if (op == midgard_jmp_writeout_op_writeout)
-		ins.writeout = true;
+        if (op == midgard_jmp_writeout_op_writeout)
+                ins.writeout = true;
 
-	return ins;
+        return ins;
 }
 
 static midgard_instruction
 v_branch(bool conditional, bool invert)
 {
-	midgard_instruction ins = {
-		.type = TAG_ALU_4,
-		.unit = ALU_ENAB_BR_COMPACT,
-		.compact_branch = true,
-		.branch = {
-			.conditional = conditional,
-			.invert_conditional = invert
-		}
-	};
+        midgard_instruction ins = {
+                .type = TAG_ALU_4,
+                .unit = ALU_ENAB_BR_COMPACT,
+                .compact_branch = true,
+                .branch = {
+                        .conditional = conditional,
+                        .invert_conditional = invert
+                }
+        };
 
-	return ins;
+        return ins;
 }
 
 typedef struct midgard_bundle {
-	/* Tag for the overall bundle */
-	int tag;
+        /* Tag for the overall bundle */
+        int tag;
 
-	/* Instructions contained by the bundle */
-	int instruction_count;
-	midgard_instruction instructions[5];
+        /* Instructions contained by the bundle */
+        int instruction_count;
+        midgard_instruction instructions[5];
 
-	/* Bundle-wide ALU configuration */
-	int padding;
-	int control;
-	bool has_embedded_constants;
-	float constants[4];
-	bool has_blend_constant;
+        /* Bundle-wide ALU configuration */
+        int padding;
+        int control;
+        bool has_embedded_constants;
+        float constants[4];
+        bool has_blend_constant;
 
-	uint16_t register_words[8];
-	int register_words_count;
+        uint16_t register_words[8];
+        int register_words_count;
 
-	uint64_t body_words[8];
-	size_t body_size[8];
-	int body_words_count;
+        uint64_t body_words[8];
+        size_t body_size[8];
+        int body_words_count;
 } midgard_bundle;
 
 typedef struct compiler_context {
-	nir_shader *nir;
-	gl_shader_stage stage;
+        nir_shader *nir;
+        gl_shader_stage stage;
 
-	/* Is internally a blend shader? Depends on stage == FRAGMENT */
-	bool is_blend;
+        /* Is internally a blend shader? Depends on stage == FRAGMENT */
+        bool is_blend;
 
-	/* Tracking for blend constant patching */
-	int blend_constant_number;
-	int blend_constant_offset;
+        /* Tracking for blend constant patching */
+        int blend_constant_number;
+        int blend_constant_offset;
 
-	/* Current NIR function */
-	nir_function *func;
+        /* Current NIR function */
+        nir_function *func;
 
-	/* Unordered array of midgard_block */
-	int block_count;
-	struct util_dynarray blocks;
+        /* Unordered array of midgard_block */
+        int block_count;
+        struct util_dynarray blocks;
 
-	midgard_block *initial_block;
-	midgard_block *previous_source_block;
-	midgard_block *final_block;
+        midgard_block *initial_block;
+        midgard_block *previous_source_block;
+        midgard_block *final_block;
 
-	/* List of midgard_instructions emitted for the current block */
-	struct util_dynarray *current_block;
+        /* List of midgard_instructions emitted for the current block */
+        struct util_dynarray *current_block;
 
-	/* Constants which have been loaded, for later inlining */
-	struct hash_table_u64 *ssa_constants;
+        /* Constants which have been loaded, for later inlining */
+        struct hash_table_u64 *ssa_constants;
 
-	/* SSA values / registers which have been aliased. Naively, these
-	 * demand a fmov output; instead, we alias them in a later pass to
-	 * avoid the wasted op.
-	 *
-	 * A note on encoding: to avoid dynamic memory management here, rather
-	 * than ampping to a pointer, we map to the source index; the key
-	 * itself is just the destination index. */
+        /* SSA values / registers which have been aliased. Naively, these
+         * demand a fmov output; instead, we alias them in a later pass to
+         * avoid the wasted op.
+         *
+         * A note on encoding: to avoid dynamic memory management here, rather
+         * than ampping to a pointer, we map to the source index; the key
+         * itself is just the destination index. */
 
-	struct hash_table_u64 *ssa_to_alias;
-	struct set *leftover_ssa_to_alias;
-	
-	/* Actual SSA-to-register for RA */
-	struct hash_table_u64 *ssa_to_register;
+        struct hash_table_u64 *ssa_to_alias;
+        struct set *leftover_ssa_to_alias;
 
-	/* Mapping of hashes computed from NIR indices to the sequential temp indices ultimately used in MIR */
-	struct hash_table_u64 *hash_to_temp;
-	int temp_count;
-	int max_hash;
+        /* Actual SSA-to-register for RA */
+        struct hash_table_u64 *ssa_to_register;
 
-	/* Uniform IDs for mdg */
-	struct hash_table_u64 *uniform_nir_to_mdg;
-	int uniform_count;
+        /* Mapping of hashes computed from NIR indices to the sequential temp indices ultimately used in MIR */
+        struct hash_table_u64 *hash_to_temp;
+        int temp_count;
+        int max_hash;
 
-	struct hash_table_u64 *varying_nir_to_mdg;
-	int varying_count;
+        /* Uniform IDs for mdg */
+        struct hash_table_u64 *uniform_nir_to_mdg;
+        int uniform_count;
 
-	/* Just the count of the max register used. Higher count => higher
-	 * register pressure */
-	int work_registers;
+        struct hash_table_u64 *varying_nir_to_mdg;
+        int varying_count;
 
-	/* Used for cont/last hinting. Increase when a tex op is added.
-	 * Decrease when a tex op is removed. */
-	int texture_op_count;
+        /* Just the count of the max register used. Higher count => higher
+         * register pressure */
+        int work_registers;
 
-	/* Mapping of texture register -> SSA index for unaliasing */
-	int texture_index[2];
+        /* Used for cont/last hinting. Increase when a tex op is added.
+         * Decrease when a tex op is removed. */
+        int texture_op_count;
 
-	/* Count of special uniforms (viewport, etc) in vec4 units */
-	int special_uniforms;
+        /* Mapping of texture register -> SSA index for unaliasing */
+        int texture_index[2];
 
-	/* If any path hits a discard instruction */
-	bool can_discard;
+        /* Count of special uniforms (viewport, etc) in vec4 units */
+        int special_uniforms;
 
-	/* The number of uniforms allowable for the fast path */
-	int uniform_cutoff;
+        /* If any path hits a discard instruction */
+        bool can_discard;
 
-	/* Count of instructions emitted from NIR overall, across all blocks */
-	int instruction_count;
+        /* The number of uniforms allowable for the fast path */
+        int uniform_cutoff;
+
+        /* Count of instructions emitted from NIR overall, across all blocks */
+        int instruction_count;
 } compiler_context;
 
 static void
 attach_constants(compiler_context *ctx, midgard_instruction *ins, void *constants, int name)
 {
-	ins->has_constants = true;
-	memcpy(&ins->constants, constants, 16);
+        ins->has_constants = true;
+        memcpy(&ins->constants, constants, 16);
 
-	/* If this is the special blend constant, mark this instruction */
+        /* If this is the special blend constant, mark this instruction */
 
-	if (ctx->is_blend && ctx->blend_constant_number == name)
-		ins->has_blend_constant = true;
+        if (ctx->is_blend && ctx->blend_constant_number == name)
+                ins->has_blend_constant = true;
 }
 
 static int
 glsl_type_size(const struct glsl_type *type)
 {
-	return glsl_count_attribute_slots(type, false);
+        return glsl_count_attribute_slots(type, false);
 }
 
 static void
 optimise_nir(nir_shader *nir)
 {
-	bool progress;
+        bool progress;
 
-	NIR_PASS(progress, nir, nir_lower_regs_to_ssa);
+        NIR_PASS(progress, nir, nir_lower_regs_to_ssa);
 
-	do {
-		progress = false;
+        do {
+                progress = false;
 
-		NIR_PASS(progress, nir, midgard_nir_lower_algebraic);
-		NIR_PASS(progress, nir, nir_lower_io, nir_var_all, glsl_type_size, 0);
-		NIR_PASS(progress, nir, nir_lower_var_copies);
-		NIR_PASS(progress, nir, nir_lower_vars_to_ssa);
+                NIR_PASS(progress, nir, midgard_nir_lower_algebraic);
+                NIR_PASS(progress, nir, nir_lower_io, nir_var_all, glsl_type_size, 0);
+                NIR_PASS(progress, nir, nir_lower_var_copies);
+                NIR_PASS(progress, nir, nir_lower_vars_to_ssa);
 
-		NIR_PASS(progress, nir, nir_copy_prop);
-		NIR_PASS(progress, nir, nir_opt_dce);
-		NIR_PASS(progress, nir, nir_opt_dead_cf);
-		NIR_PASS(progress, nir, nir_opt_cse);
-		NIR_PASS(progress, nir, nir_opt_peephole_select, 64);
-		NIR_PASS(progress, nir, nir_opt_algebraic);
-		NIR_PASS(progress, nir, nir_opt_constant_folding);
-		NIR_PASS(progress, nir, nir_opt_undef);
-		NIR_PASS(progress, nir, nir_opt_loop_unroll, 
-				nir_var_shader_in |
-				nir_var_shader_out |
-				nir_var_local);
-	} while(progress);
+                NIR_PASS(progress, nir, nir_copy_prop);
+                NIR_PASS(progress, nir, nir_opt_dce);
+                NIR_PASS(progress, nir, nir_opt_dead_cf);
+                NIR_PASS(progress, nir, nir_opt_cse);
+                NIR_PASS(progress, nir, nir_opt_peephole_select, 64);
+                NIR_PASS(progress, nir, nir_opt_algebraic);
+                NIR_PASS(progress, nir, nir_opt_constant_folding);
+                NIR_PASS(progress, nir, nir_opt_undef);
+                NIR_PASS(progress, nir, nir_opt_loop_unroll,
+                         nir_var_shader_in |
+                         nir_var_shader_out |
+                         nir_var_local);
+        } while (progress);
 
-	/* Must be run at the end to prevent creation of fsin/fcos ops */
-	NIR_PASS(progress, nir, midgard_nir_scale_trig);
+        /* Must be run at the end to prevent creation of fsin/fcos ops */
+        NIR_PASS(progress, nir, midgard_nir_scale_trig);
 
-	do {
-		progress = false;
+        do {
+                progress = false;
 
-		NIR_PASS(progress, nir, nir_opt_dce);
-		NIR_PASS(progress, nir, nir_opt_algebraic);
-		NIR_PASS(progress, nir, nir_opt_constant_folding);
-		NIR_PASS(progress, nir, nir_copy_prop);
-	} while(progress);
+                NIR_PASS(progress, nir, nir_opt_dce);
+                NIR_PASS(progress, nir, nir_opt_algebraic);
+                NIR_PASS(progress, nir, nir_opt_constant_folding);
+                NIR_PASS(progress, nir, nir_copy_prop);
+        } while (progress);
 
-	/* Lower mods */
-	NIR_PASS(progress, nir, nir_lower_to_source_mods);
-	NIR_PASS(progress, nir, nir_copy_prop);
-	NIR_PASS(progress, nir, nir_opt_dce);
+        /* Lower mods */
+        NIR_PASS(progress, nir, nir_lower_to_source_mods);
+        NIR_PASS(progress, nir, nir_copy_prop);
+        NIR_PASS(progress, nir, nir_opt_dce);
 
-	/* Take us out of SSA */
-	NIR_PASS(progress, nir, nir_lower_locals_to_regs);
-	NIR_PASS(progress, nir, nir_convert_from_ssa, true);
+        /* Take us out of SSA */
+        NIR_PASS(progress, nir, nir_lower_locals_to_regs);
+        NIR_PASS(progress, nir, nir_convert_from_ssa, true);
 
-	/* We are a vector architecture; write combine where possible */
-	NIR_PASS(progress, nir, nir_move_vec_src_uses_to_dest);
-	NIR_PASS(progress, nir, nir_lower_vec_to_movs);
+        /* We are a vector architecture; write combine where possible */
+        NIR_PASS(progress, nir, nir_move_vec_src_uses_to_dest);
+        NIR_PASS(progress, nir, nir_lower_vec_to_movs);
 
-	NIR_PASS(progress, nir, nir_opt_dce);
+        NIR_PASS(progress, nir, nir_opt_dce);
 }
 
 /* Front-half of aliasing the SSA slots, merely by inserting the flag in the
@@ -592,8 +592,8 @@ optimise_nir(nir_shader *nir)
 static void
 alias_ssa(compiler_context *ctx, int dest, int src)
 {
-	_mesa_hash_table_u64_insert(ctx->ssa_to_alias, dest + 1, (void *) ((uintptr_t) src + 1));
-	_mesa_set_add(ctx->leftover_ssa_to_alias, (void *) (uintptr_t) (dest + 1));
+        _mesa_hash_table_u64_insert(ctx->ssa_to_alias, dest + 1, (void *) ((uintptr_t) src + 1));
+        _mesa_set_add(ctx->leftover_ssa_to_alias, (void *) (uintptr_t) (dest + 1));
 }
 
 /* ...or undo it, after which the original index will be used (dummy move should be emitted alongside this) */
@@ -601,20 +601,20 @@ alias_ssa(compiler_context *ctx, int dest, int src)
 static void
 unalias_ssa(compiler_context *ctx, int dest)
 {
-	_mesa_hash_table_u64_remove(ctx->ssa_to_alias, dest + 1);
-	/* TODO: Remove from leftover or no? */
+        _mesa_hash_table_u64_remove(ctx->ssa_to_alias, dest + 1);
+        /* TODO: Remove from leftover or no? */
 }
 
 static void
 midgard_pin_output(compiler_context *ctx, int index, int reg)
 {
-	_mesa_hash_table_u64_insert(ctx->ssa_to_register, index + 1, (void *) ((uintptr_t) reg + 1));
+        _mesa_hash_table_u64_insert(ctx->ssa_to_register, index + 1, (void *) ((uintptr_t) reg + 1));
 }
 
 static bool
 midgard_is_pinned(compiler_context *ctx, int index)
 {
-	return _mesa_hash_table_u64_search(ctx->ssa_to_register, index + 1) != NULL;
+        return _mesa_hash_table_u64_search(ctx->ssa_to_register, index + 1) != NULL;
 }
 
 /* Do not actually emit a load; instead, cache the constant for inlining */
@@ -622,11 +622,11 @@ midgard_is_pinned(compiler_context *ctx, int index)
 static void
 emit_load_const(compiler_context *ctx, nir_load_const_instr *instr)
 {
-	nir_ssa_def def = instr->def;
+        nir_ssa_def def = instr->def;
 
-	float *v = ralloc_array(NULL, float, 4);
-	memcpy(v, &instr->value.f32, 4 * sizeof(float));
-	_mesa_hash_table_u64_insert(ctx->ssa_constants, def.index + 1, v);
+        float *v = ralloc_array(NULL, float, 4);
+        memcpy(v, &instr->value.f32, 4 * sizeof(float));
+        _mesa_hash_table_u64_insert(ctx->ssa_constants, def.index + 1, v);
 }
 
 /* Duplicate bits to convert sane 4-bit writemask to obscure 8-bit format (or
@@ -635,25 +635,25 @@ emit_load_const(compiler_context *ctx, nir_load_const_instr *instr)
 static unsigned
 expand_writemask(unsigned mask)
 {
-	unsigned o = 0;
+        unsigned o = 0;
 
-	for (int i = 0; i < 4; ++i)
-		if (mask & (1 << i))
-		       o |= (3 << (2*i));
-	
-	return o;
+        for (int i = 0; i < 4; ++i)
+                if (mask & (1 << i))
+                        o |= (3 << (2 * i));
+
+        return o;
 }
 
 static unsigned
 squeeze_writemask(unsigned mask)
 {
-	unsigned o = 0;
+        unsigned o = 0;
 
-	for (int i = 0; i < 4; ++i)
-		if (mask & (3 << (2*i)))
-		       o |= (1 << i);
-	
-	return o;
+        for (int i = 0; i < 4; ++i)
+                if (mask & (3 << (2 * i)))
+                        o |= (1 << i);
+
+        return o;
 
 }
 
@@ -663,56 +663,56 @@ squeeze_writemask(unsigned mask)
 static unsigned
 writemask_for_nr_components(int nr_components)
 {
-	unsigned mask = 0;
-	
-	while(nr_components--)
-		mask = (mask << 1) | 1;
+        unsigned mask = 0;
 
-	return mask;
+        while (nr_components--)
+                mask = (mask << 1) | 1;
+
+        return mask;
 }
 
 static unsigned
 find_or_allocate_temp(compiler_context *ctx, unsigned hash)
 {
-	if ((hash < 0) || (hash >= SSA_FIXED_MINIMUM))
-		return hash;
+        if ((hash < 0) || (hash >= SSA_FIXED_MINIMUM))
+                return hash;
 
-	unsigned temp = (uintptr_t) _mesa_hash_table_u64_search(ctx->hash_to_temp, hash + 1);
+        unsigned temp = (uintptr_t) _mesa_hash_table_u64_search(ctx->hash_to_temp, hash + 1);
 
-	if (temp)
-		return temp - 1;
+        if (temp)
+                return temp - 1;
 
-	/* If no temp is find, allocate one */
-	temp = ctx->temp_count++;
-	ctx->max_hash = MAX2(ctx->max_hash, hash);
+        /* If no temp is find, allocate one */
+        temp = ctx->temp_count++;
+        ctx->max_hash = MAX2(ctx->max_hash, hash);
 
-	_mesa_hash_table_u64_insert(ctx->hash_to_temp, hash + 1, (void *) ((uintptr_t) temp + 1));
+        _mesa_hash_table_u64_insert(ctx->hash_to_temp, hash + 1, (void *) ((uintptr_t) temp + 1));
 
-	return temp;
+        return temp;
 }
 
 static unsigned
 nir_src_index(nir_src *src)
 {
-	if (src->is_ssa)
-		return src->ssa->index;
-	else
-		return 4096 + src->reg.reg->index;
+        if (src->is_ssa)
+                return src->ssa->index;
+        else
+                return 4096 + src->reg.reg->index;
 }
 
 static unsigned
 nir_dest_index(nir_dest *dst)
 {
-	if (dst->is_ssa)
-		return dst->ssa.index;
-	else
-		return 4096 + dst->reg.reg->index;
+        if (dst->is_ssa)
+                return dst->ssa.index;
+        else
+                return 4096 + dst->reg.reg->index;
 }
 
 static unsigned
 nir_alu_src_index(nir_alu_src *src)
 {
-	return nir_src_index(&src->src);
+        return nir_src_index(&src->src);
 }
 
 /* Midgard puts conditionals in r31.w; move an arbitrary source (the output of
@@ -721,39 +721,39 @@ nir_alu_src_index(nir_alu_src *src)
 static void
 emit_condition(compiler_context *ctx, nir_src *src, bool for_branch)
 {
-	/* XXX: Force component correct */
-	int condition = nir_src_index(src);
+        /* XXX: Force component correct */
+        int condition = nir_src_index(src);
 
-	const midgard_vector_alu_src alu_src = {
-		.swizzle = SWIZZLE(COMPONENT_X, COMPONENT_X, COMPONENT_X, COMPONENT_X),
-	};
+        const midgard_vector_alu_src alu_src = {
+                .swizzle = SWIZZLE(COMPONENT_X, COMPONENT_X, COMPONENT_X, COMPONENT_X),
+        };
 
-	/* There is no boolean move instruction. Instead, we simulate a move by
-	 * ANDing the condition with itself to get it into r31.w */
+        /* There is no boolean move instruction. Instead, we simulate a move by
+         * ANDing the condition with itself to get it into r31.w */
 
-	midgard_instruction ins = {
-		.type = TAG_ALU_4,
-		.unit = for_branch ? UNIT_SMUL : UNIT_SADD, /* TODO: DEDUCE THIS */
-		.uses_ssa = true,
-		.ssa_args = {
-			.src0 = condition,
-			.src1 = condition,
-			.dest = 31,
-			.literal_out = true
-		},
-		.vector = true,
-		.alu = {
-			.op = midgard_alu_op_iand,
-			.reg_mode = midgard_reg_mode_full,
-			.dest_override = midgard_dest_override_none,
-			.outmod = midgard_outmod_none,
-			.mask = (0x3 << 6), /* w */
-			.src1 = vector_alu_srco_unsigned(alu_src),
-			.src2 = vector_alu_srco_unsigned(alu_src)
-		},
-	};
+        midgard_instruction ins = {
+                .type = TAG_ALU_4,
+                .unit = for_branch ? UNIT_SMUL : UNIT_SADD, /* TODO: DEDUCE THIS */
+                .uses_ssa = true,
+                .ssa_args = {
+                        .src0 = condition,
+                        .src1 = condition,
+                        .dest = 31,
+                        .literal_out = true
+                },
+                .vector = true,
+                .alu = {
+                        .op = midgard_alu_op_iand,
+                        .reg_mode = midgard_reg_mode_full,
+                        .dest_override = midgard_dest_override_none,
+                        .outmod = midgard_outmod_none,
+                        .mask = (0x3 << 6), /* w */
+                        .src1 = vector_alu_srco_unsigned(alu_src),
+                        .src2 = vector_alu_srco_unsigned(alu_src)
+                },
+        };
 
-	util_dynarray_append(ctx->current_block, midgard_instruction, ins);
+        util_dynarray_append(ctx->current_block, midgard_instruction, ins);
 }
 
 /* Insert a dummy instruction (unused set) to make space for later movement */
@@ -761,8 +761,8 @@ emit_condition(compiler_context *ctx, nir_src *src, bool for_branch)
 static void
 midgard_insert_dummy(compiler_context *ctx)
 {
-	midgard_instruction dummy = { .unused = true, .type = TAG_ALU_4 };
-	util_dynarray_append(ctx->current_block, midgard_instruction, dummy);
+        midgard_instruction dummy = { .unused = true, .type = TAG_ALU_4 };
+        util_dynarray_append(ctx->current_block, midgard_instruction, dummy);
 }
 
 
@@ -784,216 +784,216 @@ midgard_insert_dummy(compiler_context *ctx)
 static void
 emit_alu(compiler_context *ctx, nir_alu_instr *instr)
 {
-	bool is_ssa = instr->dest.dest.is_ssa;
+        bool is_ssa = instr->dest.dest.is_ssa;
 
-	unsigned dest = nir_dest_index(&instr->dest.dest);
-	unsigned nr_components = is_ssa ? instr->dest.dest.ssa.num_components : instr->dest.dest.reg.reg->num_components;
+        unsigned dest = nir_dest_index(&instr->dest.dest);
+        unsigned nr_components = is_ssa ? instr->dest.dest.ssa.num_components : instr->dest.dest.reg.reg->num_components;
 
-	/* ALU ops are unified in NIR between scalar/vector, but partially
-	 * split in Midgard. Reconcile that here, to avoid diverging code paths
-	 */
-	bool is_vector = nr_components != 1;
+        /* ALU ops are unified in NIR between scalar/vector, but partially
+         * split in Midgard. Reconcile that here, to avoid diverging code paths
+         */
+        bool is_vector = nr_components != 1;
 
-	/* Most Midgard ALU ops have a 1:1 correspondance to NIR ops; these are
-	 * supported. A few do not and are commented for now. Also, there are a
-	 * number of NIR ops which Midgard does not support and need to be
-	 * lowered, also TODO. This switch block emits the opcode and calling
-	 * convention of the Midgard instruction; actual packing is done in
-	 * emit_alu below */
+        /* Most Midgard ALU ops have a 1:1 correspondance to NIR ops; these are
+         * supported. A few do not and are commented for now. Also, there are a
+         * number of NIR ops which Midgard does not support and need to be
+         * lowered, also TODO. This switch block emits the opcode and calling
+         * convention of the Midgard instruction; actual packing is done in
+         * emit_alu below */
 
-	unsigned op, components;
+        unsigned op, components;
 
-	switch(instr->op) {
-		ALU_CASE(2, fadd, fadd);
-		ALU_CASE(2, fmul, fmul);
-		ALU_CASE(2, fmin, fmin);
-		ALU_CASE(2, fmax, fmax);
-		ALU_CASE(2, imin, imin);
-		ALU_CASE(2, imax, imax);
-		ALU_CASE(1, fmov, fmov);
-		ALU_CASE(0, ffloor, ffloor);
-		ALU_CASE(0, fceil, fceil);
-		ALU_CASE(2, fdot3, fdot3);
-		//ALU_CASE(2, fdot3r);
-		ALU_CASE(2, fdot4, fdot4);
-		//ALU_CASE(2, freduce);
-		ALU_CASE(2, iadd, iadd);
-		ALU_CASE(2, isub, isub);
-		ALU_CASE(2, imul, imul);
+        switch (instr->op) {
+                ALU_CASE(2, fadd, fadd);
+                ALU_CASE(2, fmul, fmul);
+                ALU_CASE(2, fmin, fmin);
+                ALU_CASE(2, fmax, fmax);
+                ALU_CASE(2, imin, imin);
+                ALU_CASE(2, imax, imax);
+                ALU_CASE(1, fmov, fmov);
+                ALU_CASE(0, ffloor, ffloor);
+                ALU_CASE(0, fceil, fceil);
+                ALU_CASE(2, fdot3, fdot3);
+                //ALU_CASE(2, fdot3r);
+                ALU_CASE(2, fdot4, fdot4);
+                //ALU_CASE(2, freduce);
+                ALU_CASE(2, iadd, iadd);
+                ALU_CASE(2, isub, isub);
+                ALU_CASE(2, imul, imul);
 
-		/* XXX: Use fmov, not imov, since imov was causing major
-		 * issues with texture precision? XXX research */
-		ALU_CASE(1, imov, fmov);
+                /* XXX: Use fmov, not imov, since imov was causing major
+                 * issues with texture precision? XXX research */
+                ALU_CASE(1, imov, fmov);
 
-		ALU_CASE(2, feq, feq);
-		ALU_CASE(2, fne, fne);
-		ALU_CASE(2, flt, flt);
-		ALU_CASE(2, ieq, ieq);
-		ALU_CASE(2, ine, ine);
-		ALU_CASE(2, ilt, ilt);
-		//ALU_CASE(2, icsel, icsel);
-		ALU_CASE(0, frcp, frcp);
-		ALU_CASE(0, frsq, frsqrt);
-		ALU_CASE(0, fsqrt, fsqrt);
-		ALU_CASE(0, fexp2, fexp2);
-		ALU_CASE(0, flog2, flog2);
+                ALU_CASE(2, feq, feq);
+                ALU_CASE(2, fne, fne);
+                ALU_CASE(2, flt, flt);
+                ALU_CASE(2, ieq, ieq);
+                ALU_CASE(2, ine, ine);
+                ALU_CASE(2, ilt, ilt);
+                //ALU_CASE(2, icsel, icsel);
+                ALU_CASE(0, frcp, frcp);
+                ALU_CASE(0, frsq, frsqrt);
+                ALU_CASE(0, fsqrt, fsqrt);
+                ALU_CASE(0, fexp2, fexp2);
+                ALU_CASE(0, flog2, flog2);
 
-		ALU_CASE(3, f2i32, f2i);
-		ALU_CASE(3, f2u32, f2u);
-		ALU_CASE(3, i2f32, i2f);
-		ALU_CASE(3, u2f32, u2f);
+                ALU_CASE(3, f2i32, f2i);
+                ALU_CASE(3, f2u32, f2u);
+                ALU_CASE(3, i2f32, i2f);
+                ALU_CASE(3, u2f32, u2f);
 
-		ALU_CASE(0, fsin, fsin);
-		ALU_CASE(0, fcos, fcos);
+                ALU_CASE(0, fsin, fsin);
+                ALU_CASE(0, fcos, fcos);
 
-		ALU_CASE(2, iand, iand);
-		ALU_CASE(2, ior, ior);
-		ALU_CASE(2, ixor, ixor);
-		ALU_CASE(0, inot, inot);
-		ALU_CASE(2, ishl, ishl);
-		ALU_CASE(2, ishr, iasr);
-		ALU_CASE(2, ushr, ilsr);
-		//ALU_CASE(2, ilsr, ilsr);
+                ALU_CASE(2, iand, iand);
+                ALU_CASE(2, ior, ior);
+                ALU_CASE(2, ixor, ixor);
+                ALU_CASE(0, inot, inot);
+                ALU_CASE(2, ishl, ishl);
+                ALU_CASE(2, ishr, iasr);
+                ALU_CASE(2, ushr, ilsr);
+                //ALU_CASE(2, ilsr, ilsr);
 
-		ALU_CASE(2, ball_fequal4, fball_eq);
-		ALU_CASE(2, bany_fnequal4, fbany_neq);
-		ALU_CASE(2, ball_iequal4, iball_eq);
-		ALU_CASE(2, bany_inequal4, ibany_neq);
+                ALU_CASE(2, ball_fequal4, fball_eq);
+                ALU_CASE(2, bany_fnequal4, fbany_neq);
+                ALU_CASE(2, ball_iequal4, iball_eq);
+                ALU_CASE(2, bany_inequal4, ibany_neq);
 
-		/* For greater-or-equal, we use less-or-equal and flip the
-		 * arguments */
+        /* For greater-or-equal, we use less-or-equal and flip the
+         * arguments */
 
-		case nir_op_ige: {
-			components = 2;
-			op = midgard_alu_op_ile;
+        case nir_op_ige: {
+                components = 2;
+                op = midgard_alu_op_ile;
 
-			/* Swap via temporary */
-			nir_alu_src temp = instr->src[1];
-			instr->src[1] = instr->src[0];
-			instr->src[0] = temp;
+                /* Swap via temporary */
+                nir_alu_src temp = instr->src[1];
+                instr->src[1] = instr->src[0];
+                instr->src[0] = temp;
 
-			break;
-		 }
+                break;
+        }
 
-		case nir_op_bcsel: {
-			components = 2;
-			op = midgard_alu_op_fcsel;
+        case nir_op_bcsel: {
+                components = 2;
+                op = midgard_alu_op_fcsel;
 
-			emit_condition(ctx, &instr->src[0].src, false);
+                emit_condition(ctx, &instr->src[0].src, false);
 
-			/* The condition is the first argument; move the other
-			 * arguments up one to be a binary instruction for
-			 * Midgard */
+                /* The condition is the first argument; move the other
+                 * arguments up one to be a binary instruction for
+                 * Midgard */
 
-			memmove(instr->src, instr->src + 1, 2 * sizeof(nir_alu_src));
-			break;
-		}
+                memmove(instr->src, instr->src + 1, 2 * sizeof(nir_alu_src));
+                break;
+        }
 
-		case 0: {
-			printf("0 ALU op?\n");
-			return;
-		}
+        case 0: {
+                printf("0 ALU op?\n");
+                return;
+        }
 
-		default:
-			printf("Unhandled ALU op %s\n", nir_op_infos[instr->op].name);
-			assert(0);
-			return;
-	}
+        default:
+                printf("Unhandled ALU op %s\n", nir_op_infos[instr->op].name);
+                assert(0);
+                return;
+        }
 
-	int _unit = alu_opcode_unit[op];
+        int _unit = alu_opcode_unit[op];
 
-	/* slut doesn't exist; lower to vlut which acts as scalar
-	 * despite the name */
+        /* slut doesn't exist; lower to vlut which acts as scalar
+         * despite the name */
 
-	if (_unit == UNIT_VLUT)
-		is_vector = true;
+        if (_unit == UNIT_VLUT)
+                is_vector = true;
 
-	/* Certain ops cannot run as scalars */
-	if (!(_unit & UNITS_SCALAR))
-		is_vector = true;
+        /* Certain ops cannot run as scalars */
+        if (!(_unit & UNITS_SCALAR))
+                is_vector = true;
 
-	/* Initialise fields common between scalar/vector instructions */
-	midgard_outmod outmod = instr->dest.saturate ? midgard_outmod_sat : midgard_outmod_none;
+        /* Initialise fields common between scalar/vector instructions */
+        midgard_outmod outmod = instr->dest.saturate ? midgard_outmod_sat : midgard_outmod_none;
 
-	/* src0 will always exist afaik, but src1 will not for 1-argument
-	 * instructions. The latter can only be fetched if the instruction
-	 * needs it, or else we may segfault. */
+        /* src0 will always exist afaik, but src1 will not for 1-argument
+         * instructions. The latter can only be fetched if the instruction
+         * needs it, or else we may segfault. */
 
-	unsigned src0 = nir_alu_src_index(&instr->src[0]);
-	unsigned src1 = components == 2 ? nir_alu_src_index(&instr->src[1]) : SSA_UNUSED_0;
+        unsigned src0 = nir_alu_src_index(&instr->src[0]);
+        unsigned src1 = components == 2 ? nir_alu_src_index(&instr->src[1]) : SSA_UNUSED_0;
 
-	/* Rather than use the instruction generation helpers, we do it
-	 * ourselves here to avoid the mess */
+        /* Rather than use the instruction generation helpers, we do it
+         * ourselves here to avoid the mess */
 
-	midgard_instruction ins = {
-		.type = TAG_ALU_4,
-		.unused = false,
-		.uses_ssa = true,
-		.ssa_args = {
-			.src0 = components == 3 || components == 2 || components == 0 ? src0 : SSA_UNUSED_1,
-			.src1 = components == 2 ? src1 : components == 1 ? src0 : components == 0 ? SSA_UNUSED_0 : SSA_UNUSED_1,
-			.dest = dest,
-			.inline_constant = components == 0
-		},
-		.vector = is_vector
-	};
+        midgard_instruction ins = {
+                .type = TAG_ALU_4,
+                .unused = false,
+                .uses_ssa = true,
+                .ssa_args = {
+                        .src0 = components == 3 || components == 2 || components == 0 ? src0 : SSA_UNUSED_1,
+                        .src1 = components == 2 ? src1 : components == 1 ? src0 : components == 0 ? SSA_UNUSED_0 : SSA_UNUSED_1,
+                        .dest = dest,
+                        .inline_constant = components == 0
+                },
+                .vector = is_vector
+        };
 
-	nir_alu_src *nirmod0 = NULL;
-	nir_alu_src *nirmod1 = NULL;
+        nir_alu_src *nirmod0 = NULL;
+        nir_alu_src *nirmod1 = NULL;
 
-	if (components == 2) {
-		nirmod0 = &instr->src[0];
-		nirmod1 = &instr->src[1];
-	} else if (components == 1) {
-		nirmod1 = &instr->src[0];
-	} else if (components == 0) {
-		nirmod0 = &instr->src[0];
-	}
+        if (components == 2) {
+                nirmod0 = &instr->src[0];
+                nirmod1 = &instr->src[1];
+        } else if (components == 1) {
+                nirmod1 = &instr->src[0];
+        } else if (components == 0) {
+                nirmod0 = &instr->src[0];
+        }
 
-	midgard_vector_alu alu = {
-		.op = op,
-		.reg_mode = midgard_reg_mode_full,
-		.dest_override = midgard_dest_override_none,
-		.outmod = outmod,
+        midgard_vector_alu alu = {
+                .op = op,
+                .reg_mode = midgard_reg_mode_full,
+                .dest_override = midgard_dest_override_none,
+                .outmod = outmod,
 
-		/* Writemask only valid for non-SSA NIR */
-		.mask = expand_writemask(writemask_for_nr_components(nr_components)),
+                /* Writemask only valid for non-SSA NIR */
+                .mask = expand_writemask(writemask_for_nr_components(nr_components)),
 
-		.src1 = vector_alu_srco_unsigned(vector_alu_modifiers(nirmod0)),
-		.src2 = vector_alu_srco_unsigned(vector_alu_modifiers(nirmod1)),
-	};
+                .src1 = vector_alu_srco_unsigned(vector_alu_modifiers(nirmod0)),
+                .src2 = vector_alu_srco_unsigned(vector_alu_modifiers(nirmod1)),
+        };
 
-	/* Apply writemask if non-SSA, keeping in mind that we can't write to components that don't exist */
-	
-	if (!is_ssa)
-		alu.mask &= expand_writemask(instr->dest.write_mask);
+        /* Apply writemask if non-SSA, keeping in mind that we can't write to components that don't exist */
 
-	ins.alu = alu;
+        if (!is_ssa)
+                alu.mask &= expand_writemask(instr->dest.write_mask);
 
-	midgard_insert_dummy(ctx);
+        ins.alu = alu;
 
-	if (_unit == UNIT_VLUT) {
-		/* To avoid duplicating the LUTs (we think?), LUT instructions can only
-		 * operate as if they were scalars. Lower them here by changing the
-		 * component. */
+        midgard_insert_dummy(ctx);
 
-		assert(components == 0);
+        if (_unit == UNIT_VLUT) {
+                /* To avoid duplicating the LUTs (we think?), LUT instructions can only
+                 * operate as if they were scalars. Lower them here by changing the
+                 * component. */
 
-		uint8_t original_swizzle[4];
-		memcpy(original_swizzle, nirmod0->swizzle, sizeof(nirmod0->swizzle));
+                assert(components == 0);
 
-		for (int i = 0; i < nr_components; ++i) {
-			ins.alu.mask = (0x3) << (2 * i); /* Mask the associated component */
+                uint8_t original_swizzle[4];
+                memcpy(original_swizzle, nirmod0->swizzle, sizeof(nirmod0->swizzle));
 
-			for (int j = 0; j < 4; ++j)
-				nirmod0->swizzle[j] = original_swizzle[i]; /* Pull from the correct component */
+                for (int i = 0; i < nr_components; ++i) {
+                        ins.alu.mask = (0x3) << (2 * i); /* Mask the associated component */
 
-			ins.alu.src1 = vector_alu_srco_unsigned(vector_alu_modifiers(nirmod0));
-			util_dynarray_append(ctx->current_block, midgard_instruction, ins);
-		}
-	} else {
-		util_dynarray_append(ctx->current_block, midgard_instruction, ins);
-	}
+                        for (int j = 0; j < 4; ++j)
+                                nirmod0->swizzle[j] = original_swizzle[i]; /* Pull from the correct component */
+
+                        ins.alu.src1 = vector_alu_srco_unsigned(vector_alu_modifiers(nirmod0));
+                        util_dynarray_append(ctx->current_block, midgard_instruction, ins);
+                }
+        } else {
+                util_dynarray_append(ctx->current_block, midgard_instruction, ins);
+        }
 }
 
 static void
@@ -1002,431 +1002,434 @@ emit_intrinsic(compiler_context *ctx, nir_intrinsic_instr *instr)
         nir_const_value *const_offset;
         unsigned offset, reg;
 
-	switch(instr->intrinsic) {
-		case nir_intrinsic_discard_if:
-			emit_condition(ctx, &instr->src[0], true);
-			/* fallthrough */
+        switch (instr->intrinsic) {
+        case nir_intrinsic_discard_if:
+                emit_condition(ctx, &instr->src[0], true);
 
-		case nir_intrinsic_discard: {
-			midgard_condition cond = instr->intrinsic == nir_intrinsic_discard_if ? 
-				midgard_condition_true : midgard_condition_always;
+        /* fallthrough */
 
-			EMIT(alu_br_compact_cond, midgard_jmp_writeout_op_discard, 0, 2, cond);
-			ctx->can_discard = true;
-			break;
-		}
+        case nir_intrinsic_discard: {
+                midgard_condition cond = instr->intrinsic == nir_intrinsic_discard_if ?
+                                         midgard_condition_true : midgard_condition_always;
 
-		case nir_intrinsic_load_uniform:
-		case nir_intrinsic_load_input:
-			const_offset = nir_src_as_const_value(instr->src[0]);
-			assert (const_offset && "no indirect inputs");
+                EMIT(alu_br_compact_cond, midgard_jmp_writeout_op_discard, 0, 2, cond);
+                ctx->can_discard = true;
+                break;
+        }
 
-			offset = nir_intrinsic_base(instr) + const_offset->u32[0];
+        case nir_intrinsic_load_uniform:
+        case nir_intrinsic_load_input:
+                const_offset = nir_src_as_const_value(instr->src[0]);
+                assert (const_offset && "no indirect inputs");
 
-			reg = nir_dest_index(&instr->dest);
+                offset = nir_intrinsic_base(instr) + const_offset->u32[0];
 
-			if (instr->intrinsic == nir_intrinsic_load_uniform && !ctx->is_blend) {
-				/* TODO: half-floats */
+                reg = nir_dest_index(&instr->dest);
 
-				int uniform_offset = 0;
+                if (instr->intrinsic == nir_intrinsic_load_uniform && !ctx->is_blend) {
+                        /* TODO: half-floats */
 
-				if (offset >= SPECIAL_UNIFORM_BASE) {
-					/* XXX: Resolve which uniform */
-					uniform_offset = 0;
-				} else {
-					/* Offset away from the special
-					 * uniform block */
+                        int uniform_offset = 0;
 
-					void *entry = _mesa_hash_table_u64_search(ctx->uniform_nir_to_mdg, offset + 1);
-					assert(entry);
+                        if (offset >= SPECIAL_UNIFORM_BASE) {
+                                /* XXX: Resolve which uniform */
+                                uniform_offset = 0;
+                        } else {
+                                /* Offset away from the special
+                                 * uniform block */
 
-					uniform_offset = (uintptr_t) (entry) - 1;
-					uniform_offset += ctx->special_uniforms;
-				}
+                                void *entry = _mesa_hash_table_u64_search(ctx->uniform_nir_to_mdg, offset + 1);
+                                assert(entry);
 
-				if (uniform_offset < ctx->uniform_cutoff) {
-					/* Fast path: For the first 16 uniform,
-					 * accesses are 0-cycle, since they're
-					 * just a register fetch in the usual
-					 * case.  So, we alias the registers
-					 * while we're still in SSA-space */
+                                uniform_offset = (uintptr_t) (entry) - 1;
+                                uniform_offset += ctx->special_uniforms;
+                        }
 
-					int reg_slot = 23 - uniform_offset;
-					alias_ssa(ctx, reg, SSA_FIXED_REGISTER(reg_slot));
-				} else {
-					/* Otherwise, read from the 'special'
-					 * UBO to access higher-indexed
-					 * uniforms, at a performance cost */
+                        if (uniform_offset < ctx->uniform_cutoff) {
+                                /* Fast path: For the first 16 uniform,
+                                 * accesses are 0-cycle, since they're
+                                 * just a register fetch in the usual
+                                 * case.  So, we alias the registers
+                                 * while we're still in SSA-space */
 
-					midgard_instruction ins = m_load_uniform_32(reg, uniform_offset);
+                                int reg_slot = 23 - uniform_offset;
+                                alias_ssa(ctx, reg, SSA_FIXED_REGISTER(reg_slot));
+                        } else {
+                                /* Otherwise, read from the 'special'
+                                 * UBO to access higher-indexed
+                                 * uniforms, at a performance cost */
 
-					/* TODO: Don't split */
-					ins.load_store.varying_parameters = (uniform_offset & 7) << 7;
-					ins.load_store.address = uniform_offset >> 3;
+                                midgard_instruction ins = m_load_uniform_32(reg, uniform_offset);
 
-					ins.load_store.unknown = 0x1E00; /* xxx: what is this? */
-					util_dynarray_append(ctx->current_block, midgard_instruction, ins);
-				}
-			} else if (ctx->stage == MESA_SHADER_FRAGMENT && !ctx->is_blend) {
-				/* XXX: Half-floats? */
-				/* TODO: swizzle, mask */
+                                /* TODO: Don't split */
+                                ins.load_store.varying_parameters = (uniform_offset & 7) << 7;
+                                ins.load_store.address = uniform_offset >> 3;
 
-				midgard_instruction ins = m_load_vary_32(reg, offset);
+                                ins.load_store.unknown = 0x1E00; /* xxx: what is this? */
+                                util_dynarray_append(ctx->current_block, midgard_instruction, ins);
+                        }
+                } else if (ctx->stage == MESA_SHADER_FRAGMENT && !ctx->is_blend) {
+                        /* XXX: Half-floats? */
+                        /* TODO: swizzle, mask */
 
-				midgard_varying_parameter p = {
-					.is_varying = 1,
-					.interpolation = midgard_interp_default,
-					.flat = /*var->data.interpolation == INTERP_MODE_FLAT*/ 0
-				};
+                        midgard_instruction ins = m_load_vary_32(reg, offset);
 
-				unsigned u;
-				memcpy(&u, &p, sizeof(p));
-				ins.load_store.varying_parameters = u;
+                        midgard_varying_parameter p = {
+                                .is_varying = 1,
+                                .interpolation = midgard_interp_default,
+                                .flat = /*var->data.interpolation == INTERP_MODE_FLAT*/ 0
+                        };
 
-				ins.load_store.unknown = 0x1e9e; /* xxx: what is this? */
-				util_dynarray_append(ctx->current_block, midgard_instruction, ins);
-			} else if (ctx->is_blend && instr->intrinsic == nir_intrinsic_load_uniform) {
-				/* Constant encoded as a pinned constant */	
+                        unsigned u;
+                        memcpy(&u, &p, sizeof(p));
+                        ins.load_store.varying_parameters = u;
 
-				midgard_instruction ins = v_fmov(SSA_FIXED_REGISTER(REGISTER_CONSTANT), blank_alu_src, reg, false, midgard_outmod_none);
-				ins.has_constants = true;
-				ins.has_blend_constant = true;
-				util_dynarray_append(ctx->current_block, midgard_instruction, ins);
-			} else if (ctx->is_blend) {
-				/* For blend shaders, a load might be
-				 * translated various ways depending on what
-				 * we're loading. Figure out how this is used */
+                        ins.load_store.unknown = 0x1e9e; /* xxx: what is this? */
+                        util_dynarray_append(ctx->current_block, midgard_instruction, ins);
+                } else if (ctx->is_blend && instr->intrinsic == nir_intrinsic_load_uniform) {
+                        /* Constant encoded as a pinned constant */
 
-				nir_variable *out = NULL;
+                        midgard_instruction ins = v_fmov(SSA_FIXED_REGISTER(REGISTER_CONSTANT), blank_alu_src, reg, false, midgard_outmod_none);
+                        ins.has_constants = true;
+                        ins.has_blend_constant = true;
+                        util_dynarray_append(ctx->current_block, midgard_instruction, ins);
+                } else if (ctx->is_blend) {
+                        /* For blend shaders, a load might be
+                         * translated various ways depending on what
+                         * we're loading. Figure out how this is used */
 
-				nir_foreach_variable(var, &ctx->nir->inputs) {
-					int drvloc = var->data.driver_location;
-					if (nir_intrinsic_base(instr) == drvloc) {
-						out = var;
-						break;
-					}
-				}
+                        nir_variable *out = NULL;
 
-				assert(out);
+                        nir_foreach_variable(var, &ctx->nir->inputs) {
+                                int drvloc = var->data.driver_location;
 
-				if (out->data.location == VARYING_SLOT_COL0) {
-					/* Source color preloaded to r0 */
+                                if (nir_intrinsic_base(instr) == drvloc) {
+                                        out = var;
+                                        break;
+                                }
+                        }
 
-					//alias_ssa(ctx, reg, SSA_FIXED_REGISTER(0));
-					midgard_pin_output(ctx, reg, 0);
-				} else if (out->data.location == VARYING_SLOT_COL1) {
-					/* Destination color must be read from framebuffer */
+                        assert(out);
 
-					midgard_instruction ins = m_load_color_buffer_8(reg, 0);
-					ins.load_store.swizzle = 0; /* xxxx */
+                        if (out->data.location == VARYING_SLOT_COL0) {
+                                /* Source color preloaded to r0 */
 
-					/* Read each component sequentially */
+                                //alias_ssa(ctx, reg, SSA_FIXED_REGISTER(0));
+                                midgard_pin_output(ctx, reg, 0);
+                        } else if (out->data.location == VARYING_SLOT_COL1) {
+                                /* Destination color must be read from framebuffer */
 
-					for (int c = 0; c < 4; ++c) {
-						ins.load_store.mask = (1 << c);
-						ins.load_store.unknown = c;
-						util_dynarray_append(ctx->current_block, midgard_instruction, ins);
-						midgard_insert_dummy(ctx);
-					}
+                                midgard_instruction ins = m_load_color_buffer_8(reg, 0);
+                                ins.load_store.swizzle = 0; /* xxxx */
 
-					/* vadd.u2f hr2, abs(hr2), #0 */
+                                /* Read each component sequentially */
 
-					midgard_vector_alu_src alu_src = blank_alu_src;
-					alu_src.abs = true;
-					alu_src.half = true;
+                                for (int c = 0; c < 4; ++c) {
+                                        ins.load_store.mask = (1 << c);
+                                        ins.load_store.unknown = c;
+                                        util_dynarray_append(ctx->current_block, midgard_instruction, ins);
+                                        midgard_insert_dummy(ctx);
+                                }
 
-					midgard_instruction u2f = {
-						.type = TAG_ALU_4,
-						.vector = true,
-						.uses_ssa = true,
-						.ssa_args = {
-							.src0 = reg,
-							.dest = reg,
-							.inline_constant = true
-						},
-						.alu = {
-							.op = midgard_alu_op_u2f,
-							.reg_mode = midgard_reg_mode_half,
-							.dest_override = midgard_dest_override_none,
-							.outmod = midgard_outmod_none,
-							.mask = 0xF,
-							.src1 = vector_alu_srco_unsigned(alu_src),
-							.src2 = vector_alu_srco_unsigned(blank_alu_src),
-						}
-					};
+                                /* vadd.u2f hr2, abs(hr2), #0 */
 
-					util_dynarray_append(ctx->current_block, midgard_instruction, u2f);
-					midgard_insert_dummy(ctx);
+                                midgard_vector_alu_src alu_src = blank_alu_src;
+                                alu_src.abs = true;
+                                alu_src.half = true;
 
-					/* vmul.fmul r1, hr2, #0.00392151 */
+                                midgard_instruction u2f = {
+                                        .type = TAG_ALU_4,
+                                        .vector = true,
+                                        .uses_ssa = true,
+                                        .ssa_args = {
+                                                .src0 = reg,
+                                                .dest = reg,
+                                                .inline_constant = true
+                                        },
+                                        .alu = {
+                                                .op = midgard_alu_op_u2f,
+                                                .reg_mode = midgard_reg_mode_half,
+                                                .dest_override = midgard_dest_override_none,
+                                                .outmod = midgard_outmod_none,
+                                                .mask = 0xF,
+                                                .src1 = vector_alu_srco_unsigned(alu_src),
+                                                .src2 = vector_alu_srco_unsigned(blank_alu_src),
+                                        }
+                                };
 
-					alu_src.abs = false;
+                                util_dynarray_append(ctx->current_block, midgard_instruction, u2f);
+                                midgard_insert_dummy(ctx);
 
-					midgard_instruction fmul = {
-						.type = TAG_ALU_4,
-						.vector = true,
-						.uses_ssa = true,
-						.ssa_args = {
-							.src0 = reg,
-							.dest = reg,
-							.src1 = _mesa_float_to_half(1.0 / 255.0),
-							.inline_constant = true
-						},
-						.alu = {
-							.op = midgard_alu_op_fmul,
-							.reg_mode = midgard_reg_mode_full,
-							.dest_override = midgard_dest_override_none,
-							.outmod = midgard_outmod_none,
-							.mask = 0xFF,
-							.src1 = vector_alu_srco_unsigned(alu_src),
-							.src2 = vector_alu_srco_unsigned(blank_alu_src),
-						}
-					};
-	
-					util_dynarray_append(ctx->current_block, midgard_instruction, fmul);
-					midgard_insert_dummy(ctx);
-				} else {
-					printf("Unknown input in blend shader\n");
-					assert(0);
-				}
-			} else if (ctx->stage == MESA_SHADER_VERTEX) {
-				midgard_instruction ins = m_load_attr_32(reg, offset);
-				ins.load_store.unknown = 0x1E1E; /* XXX: What is this? */
-				util_dynarray_append(ctx->current_block, midgard_instruction, ins);
-			} else {
-				printf("Unknown load\n");
-				assert(0);
-			}
+                                /* vmul.fmul r1, hr2, #0.00392151 */
 
-			break;
+                                alu_src.abs = false;
 
-		case nir_intrinsic_store_output:
-			const_offset = nir_src_as_const_value(instr->src[1]);
-			assert(const_offset && "no indirect outputs");
+                                midgard_instruction fmul = {
+                                        .type = TAG_ALU_4,
+                                        .vector = true,
+                                        .uses_ssa = true,
+                                        .ssa_args = {
+                                                .src0 = reg,
+                                                .dest = reg,
+                                                .src1 = _mesa_float_to_half(1.0 / 255.0),
+                                                .inline_constant = true
+                                        },
+                                        .alu = {
+                                                .op = midgard_alu_op_fmul,
+                                                .reg_mode = midgard_reg_mode_full,
+                                                .dest_override = midgard_dest_override_none,
+                                                .outmod = midgard_outmod_none,
+                                                .mask = 0xFF,
+                                                .src1 = vector_alu_srco_unsigned(alu_src),
+                                                .src2 = vector_alu_srco_unsigned(blank_alu_src),
+                                        }
+                                };
 
-			offset = nir_intrinsic_base(instr) + const_offset->u32[0];
+                                util_dynarray_append(ctx->current_block, midgard_instruction, fmul);
+                                midgard_insert_dummy(ctx);
+                        } else {
+                                printf("Unknown input in blend shader\n");
+                                assert(0);
+                        }
+                } else if (ctx->stage == MESA_SHADER_VERTEX) {
+                        midgard_instruction ins = m_load_attr_32(reg, offset);
+                        ins.load_store.unknown = 0x1E1E; /* XXX: What is this? */
+                        util_dynarray_append(ctx->current_block, midgard_instruction, ins);
+                } else {
+                        printf("Unknown load\n");
+                        assert(0);
+                }
 
-			reg = nir_src_index(&instr->src[0]);
+                break;
 
-			if (ctx->stage == MESA_SHADER_FRAGMENT) {
-				/* gl_FragColor is not emitted with load/store
-				 * instructions. Instead, it gets plonked into
-				 * r0 at the end of the shader and we do the
-				 * framebuffer writeout dance. TODO: Defer
-				 * writes */
+        case nir_intrinsic_store_output:
+                const_offset = nir_src_as_const_value(instr->src[1]);
+                assert(const_offset && "no indirect outputs");
 
-				//EMIT(fmov, reg, blank_alu_src, 0, true, midgard_outmod_none);
-				midgard_pin_output(ctx, reg, 0);
-			} else if (ctx->stage == MESA_SHADER_VERTEX) {
-				/* Varyings are written into one of two special
-				 * varying register, r26 or r27. The register itself is selected as the register 
-				 * in the st_vary instruction, minus the base of 26. E.g. write into r27 and then call st_vary(1)
-				 *
-				 * Normally emitting fmov's is frowned upon,
-				 * but due to unique constraints of
-				 * REGISTER_VARYING, fmov emission + a
-				 * dedicated cleanup pass is the only way to
-				 * guarantee correctness when considering some
-				 * (common) edge cases XXX: FIXME */
+                offset = nir_intrinsic_base(instr) + const_offset->u32[0];
 
-				/* TODO: Integrate with special purpose RA (and scheduler?) */
-				bool high_varying_register = false;
+                reg = nir_src_index(&instr->src[0]);
 
-				EMIT(fmov, reg, blank_alu_src, REGISTER_VARYING_BASE + high_varying_register, true, midgard_outmod_none);
+                if (ctx->stage == MESA_SHADER_FRAGMENT) {
+                        /* gl_FragColor is not emitted with load/store
+                         * instructions. Instead, it gets plonked into
+                         * r0 at the end of the shader and we do the
+                         * framebuffer writeout dance. TODO: Defer
+                         * writes */
 
-				/* Look up how it was actually laid out */
+                        //EMIT(fmov, reg, blank_alu_src, 0, true, midgard_outmod_none);
+                        midgard_pin_output(ctx, reg, 0);
+                } else if (ctx->stage == MESA_SHADER_VERTEX) {
+                        /* Varyings are written into one of two special
+                         * varying register, r26 or r27. The register itself is selected as the register
+                         * in the st_vary instruction, minus the base of 26. E.g. write into r27 and then call st_vary(1)
+                         *
+                         * Normally emitting fmov's is frowned upon,
+                         * but due to unique constraints of
+                         * REGISTER_VARYING, fmov emission + a
+                         * dedicated cleanup pass is the only way to
+                         * guarantee correctness when considering some
+                         * (common) edge cases XXX: FIXME */
 
-				printf("Trying %d\n", offset + 1);
-				void *entry = _mesa_hash_table_u64_search(ctx->varying_nir_to_mdg, offset + 1);
+                        /* TODO: Integrate with special purpose RA (and scheduler?) */
+                        bool high_varying_register = false;
 
-				if (!entry) {
-					printf("Skipping varying\n");
-					break;
-				}
+                        EMIT(fmov, reg, blank_alu_src, REGISTER_VARYING_BASE + high_varying_register, true, midgard_outmod_none);
 
-				offset = (uintptr_t) (entry) - 1;
+                        /* Look up how it was actually laid out */
 
-				/* Compute offset: gl_Position is zero. The
-				 * first varying is two. The nth varying is 2+n
-				 * for zero-indexed n. Varying #1 is unused.
-				 * See the corresponding structures in the
-				 * command stream. */
+                        printf("Trying %d\n", offset + 1);
+                        void *entry = _mesa_hash_table_u64_search(ctx->varying_nir_to_mdg, offset + 1);
 
-				if (offset > 0)
-					offset += 1;
+                        if (!entry) {
+                                printf("Skipping varying\n");
+                                break;
+                        }
 
-				midgard_instruction ins = m_store_vary_32(high_varying_register, offset);
-				ins.load_store.unknown = 0x1E9E; /* XXX: What is this? */
-				ins.uses_ssa = false;
-				util_dynarray_append(ctx->current_block, midgard_instruction, ins);
-			} else {
-				printf("Unknown store\n");
-				assert(0);
-			}
+                        offset = (uintptr_t) (entry) - 1;
 
-			break;
+                        /* Compute offset: gl_Position is zero. The
+                         * first varying is two. The nth varying is 2+n
+                         * for zero-indexed n. Varying #1 is unused.
+                         * See the corresponding structures in the
+                         * command stream. */
 
-		default:
-			printf ("Unhandled intrinsic\n");
-			assert(0);
-			break;
-	}
+                        if (offset > 0)
+                                offset += 1;
 
-	/* Add a dummy to allow loads to move around */
-	midgard_insert_dummy(ctx);
+                        midgard_instruction ins = m_store_vary_32(high_varying_register, offset);
+                        ins.load_store.unknown = 0x1E9E; /* XXX: What is this? */
+                        ins.uses_ssa = false;
+                        util_dynarray_append(ctx->current_block, midgard_instruction, ins);
+                } else {
+                        printf("Unknown store\n");
+                        assert(0);
+                }
+
+                break;
+
+        default:
+                printf ("Unhandled intrinsic\n");
+                assert(0);
+                break;
+        }
+
+        /* Add a dummy to allow loads to move around */
+        midgard_insert_dummy(ctx);
 }
 
 static unsigned
 midgard_tex_format(enum glsl_sampler_dim dim)
 {
-	switch (dim) {
-		case GLSL_SAMPLER_DIM_2D:
-			return TEXTURE_2D;
+        switch (dim) {
+        case GLSL_SAMPLER_DIM_2D:
+                return TEXTURE_2D;
 
-		case GLSL_SAMPLER_DIM_3D:
-			return TEXTURE_3D;
+        case GLSL_SAMPLER_DIM_3D:
+                return TEXTURE_3D;
 
-		case GLSL_SAMPLER_DIM_CUBE:
-			return TEXTURE_CUBE;
+        case GLSL_SAMPLER_DIM_CUBE:
+                return TEXTURE_CUBE;
 
-		default:
-			printf("Unknown sampler dim type\n");
-			assert(0);
-	}
+        default:
+                printf("Unknown sampler dim type\n");
+                assert(0);
+        }
 }
 
 static void
 emit_tex(compiler_context *ctx, nir_tex_instr *instr)
 {
-	/* TODO */
-	//assert (!instr->sampler);
-	//assert (!instr->texture_array_size);
-	assert (instr->op == nir_texop_tex);
+        /* TODO */
+        //assert (!instr->sampler);
+        //assert (!instr->texture_array_size);
+        assert (instr->op == nir_texop_tex);
 
-	/* Allocate registers via a round robin scheme to alternate between the two registers */
-	int reg = ctx->texture_op_count & 1;
-	int in_reg = reg, out_reg = reg;
+        /* Allocate registers via a round robin scheme to alternate between the two registers */
+        int reg = ctx->texture_op_count & 1;
+        int in_reg = reg, out_reg = reg;
 
-	/* Make room for the reg */
+        /* Make room for the reg */
 
-	if (ctx->texture_index[reg] > -1)
-		unalias_ssa(ctx, ctx->texture_index[reg]);
+        if (ctx->texture_index[reg] > -1)
+                unalias_ssa(ctx, ctx->texture_index[reg]);
 
-	int texture_index = instr->texture_index;
-	int sampler_index = texture_index;
+        int texture_index = instr->texture_index;
+        int sampler_index = texture_index;
 
-	for (unsigned i = 0; i < instr->num_srcs; ++i) {
-		switch (instr->src[i].src_type) {
-			case nir_tex_src_coord: {
-				int index = nir_src_index(&instr->src[i].src);
+        for (unsigned i = 0; i < instr->num_srcs; ++i) {
+                switch (instr->src[i].src_type) {
+                case nir_tex_src_coord: {
+                        int index = nir_src_index(&instr->src[i].src);
 
-				midgard_vector_alu_src alu_src = blank_alu_src;
-				alu_src.swizzle = (COMPONENT_Y << 2);
+                        midgard_vector_alu_src alu_src = blank_alu_src;
+                        alu_src.swizzle = (COMPONENT_Y << 2);
 
-				midgard_instruction ins = v_fmov(index, alu_src, REGISTER_TEXTURE_BASE + in_reg, true, midgard_outmod_none);
-				util_dynarray_append((ctx->current_block), midgard_instruction, ins);
+                        midgard_instruction ins = v_fmov(index, alu_src, REGISTER_TEXTURE_BASE + in_reg, true, midgard_outmod_none);
+                        util_dynarray_append((ctx->current_block), midgard_instruction, ins);
 
-				break;
-			}
-			default: {
-				printf("Unknown source type\n");
-				assert(0);
-				break;
-			 }
-		}
-	}
-	
-	/* No helper to build texture words -- we do it all here */
-	midgard_instruction ins = {
-		.type = TAG_TEXTURE_4,
-		.texture = {
-			.op = TEXTURE_OP_NORMAL,
-			.format = midgard_tex_format(instr->sampler_dim),
-			.texture_handle = texture_index,
-			.sampler_handle = sampler_index,
+                        break;
+                }
 
-			/* TODO: Don't force xyzw */
-			.swizzle = SWIZZLE(COMPONENT_X, COMPONENT_Y, COMPONENT_Z, COMPONENT_W), 
-			.mask = 0xF, 
+                default: {
+                        printf("Unknown source type\n");
+                        assert(0);
+                        break;
+                }
+                }
+        }
 
-			/* TODO: half */
-			//.in_reg_full = 1,
-			.out_full = 1,
+        /* No helper to build texture words -- we do it all here */
+        midgard_instruction ins = {
+                .type = TAG_TEXTURE_4,
+                .texture = {
+                        .op = TEXTURE_OP_NORMAL,
+                        .format = midgard_tex_format(instr->sampler_dim),
+                        .texture_handle = texture_index,
+                        .sampler_handle = sampler_index,
 
-			.filter = 1,
-			
-			/* Always 1 */
-			.unknown7 = 1,
+                        /* TODO: Don't force xyzw */
+                        .swizzle = SWIZZLE(COMPONENT_X, COMPONENT_Y, COMPONENT_Z, COMPONENT_W),
+                        .mask = 0xF,
 
-			/* Assume we can continue; hint it out later */
-			.cont = 1,
-		}
-	};
+                        /* TODO: half */
+                        //.in_reg_full = 1,
+                        .out_full = 1,
 
-	/* Set registers to read and write from the same place */
-	ins.texture.in_reg_select = in_reg;
-	ins.texture.out_reg_select = out_reg;
-	
-	/* TODO: Dynamic swizzle input selection, half-swizzles? */
-	if (instr->sampler_dim == GLSL_SAMPLER_DIM_3D) {
-		ins.texture.in_reg_swizzle_right = COMPONENT_X;
-		ins.texture.in_reg_swizzle_left = COMPONENT_Y;
-		//ins.texture.in_reg_swizzle_third = COMPONENT_Z;
-	} else {
-		ins.texture.in_reg_swizzle_left = COMPONENT_X;
-		ins.texture.in_reg_swizzle_right = COMPONENT_Y;
-		//ins.texture.in_reg_swizzle_third = COMPONENT_X;
-	}
+                        .filter = 1,
 
-	util_dynarray_append(ctx->current_block, midgard_instruction, ins);
+                        /* Always 1 */
+                        .unknown7 = 1,
 
-	/* Simultaneously alias the destination and emit a move for it. The move will be eliminated if possible */
+                        /* Assume we can continue; hint it out later */
+                        .cont = 1,
+                }
+        };
 
-	int o_reg = REGISTER_TEXTURE_BASE + out_reg, o_index = nir_dest_index(&instr->dest);
-	alias_ssa(ctx, o_index, SSA_FIXED_REGISTER(o_reg));
-	ctx->texture_index[reg] = o_index;
+        /* Set registers to read and write from the same place */
+        ins.texture.in_reg_select = in_reg;
+        ins.texture.out_reg_select = out_reg;
 
-	midgard_instruction ins2 = v_fmov(SSA_FIXED_REGISTER(o_reg), blank_alu_src, o_index, false, midgard_outmod_none);
-	util_dynarray_append(ctx->current_block, midgard_instruction, ins2);
+        /* TODO: Dynamic swizzle input selection, half-swizzles? */
+        if (instr->sampler_dim == GLSL_SAMPLER_DIM_3D) {
+                ins.texture.in_reg_swizzle_right = COMPONENT_X;
+                ins.texture.in_reg_swizzle_left = COMPONENT_Y;
+                //ins.texture.in_reg_swizzle_third = COMPONENT_Z;
+        } else {
+                ins.texture.in_reg_swizzle_left = COMPONENT_X;
+                ins.texture.in_reg_swizzle_right = COMPONENT_Y;
+                //ins.texture.in_reg_swizzle_third = COMPONENT_X;
+        }
 
-	/* Used for .cont and .last hinting */
-	ctx->texture_op_count++;
+        util_dynarray_append(ctx->current_block, midgard_instruction, ins);
+
+        /* Simultaneously alias the destination and emit a move for it. The move will be eliminated if possible */
+
+        int o_reg = REGISTER_TEXTURE_BASE + out_reg, o_index = nir_dest_index(&instr->dest);
+        alias_ssa(ctx, o_index, SSA_FIXED_REGISTER(o_reg));
+        ctx->texture_index[reg] = o_index;
+
+        midgard_instruction ins2 = v_fmov(SSA_FIXED_REGISTER(o_reg), blank_alu_src, o_index, false, midgard_outmod_none);
+        util_dynarray_append(ctx->current_block, midgard_instruction, ins2);
+
+        /* Used for .cont and .last hinting */
+        ctx->texture_op_count++;
 }
 
 static void
 emit_instr(compiler_context *ctx, struct nir_instr *instr)
 {
 #ifdef NIR_DEBUG_FINE
-	nir_print_instr(instr, stdout);
-	putchar('\n');
+        nir_print_instr(instr, stdout);
+        putchar('\n');
 #endif
 
-	switch(instr->type) {
-		case nir_instr_type_load_const:
-			emit_load_const(ctx, nir_instr_as_load_const(instr));
-			break;
+        switch (instr->type) {
+        case nir_instr_type_load_const:
+                emit_load_const(ctx, nir_instr_as_load_const(instr));
+                break;
 
-		case nir_instr_type_intrinsic:
-			emit_intrinsic(ctx, nir_instr_as_intrinsic(instr));
-			break;
+        case nir_instr_type_intrinsic:
+                emit_intrinsic(ctx, nir_instr_as_intrinsic(instr));
+                break;
 
-		case nir_instr_type_alu:
-			emit_alu(ctx, nir_instr_as_alu(instr));
-			break;
+        case nir_instr_type_alu:
+                emit_alu(ctx, nir_instr_as_alu(instr));
+                break;
 
-		case nir_instr_type_tex:
-			emit_tex(ctx, nir_instr_as_tex(instr));
-			break;
+        case nir_instr_type_tex:
+                emit_tex(ctx, nir_instr_as_tex(instr));
+                break;
 
-		case nir_instr_type_ssa_undef:
-			/* Spurious */
-			break;
+        case nir_instr_type_ssa_undef:
+                /* Spurious */
+                break;
 
-		default:
-			printf("Unhandled instruction type\n");
-			//assert(0);
-			break;
-	}
+        default:
+                printf("Unhandled instruction type\n");
+                //assert(0);
+                break;
+        }
 }
 
 /* Determine the actual hardware from the index based on the RA results or special values */
@@ -1437,268 +1440,280 @@ dealias_register(compiler_context *ctx, struct ra_graph *g, int reg, int maxreg)
         if (reg >= SSA_FIXED_MINIMUM)
                 return SSA_REG_FROM_FIXED(reg);
 
-	if (reg >= 0) {
-		assert(reg < maxreg);
-		int r = ra_get_node_reg(g, reg);
-		ctx->work_registers = MAX2(ctx->work_registers, r);
-		return r;
-	}
+        if (reg >= 0) {
+                assert(reg < maxreg);
+                int r = ra_get_node_reg(g, reg);
+                ctx->work_registers = MAX2(ctx->work_registers, r);
+                return r;
+        }
 
-	switch(reg) {
-		/* fmov style unused */
-		case SSA_UNUSED_0: return REGISTER_UNUSED;
-		
-		/* lut style unused */
-		case SSA_UNUSED_1: return REGISTER_UNUSED;
+        switch (reg) {
+        /* fmov style unused */
+        case SSA_UNUSED_0:
+                return REGISTER_UNUSED;
 
-		default:
-		   printf("Unknown SSA register alias %d\n", reg);
-		   assert(0);
-		   return 31;
-	}
+        /* lut style unused */
+        case SSA_UNUSED_1:
+                return REGISTER_UNUSED;
+
+        default:
+                printf("Unknown SSA register alias %d\n", reg);
+                assert(0);
+                return 31;
+        }
 }
 
 static unsigned int
 midgard_ra_select_callback(struct ra_graph *g, BITSET_WORD *regs, void *data)
 {
-	/* Choose the first available register to minimise reported register pressure */
+        /* Choose the first available register to minimise reported register pressure */
 
-	for (int i = 0; i < 16; ++i) {
-		if (BITSET_TEST(regs, i)) {
-			return i;
-		}
-	}
+        for (int i = 0; i < 16; ++i) {
+                if (BITSET_TEST(regs, i)) {
+                        return i;
+                }
+        }
 
-	assert(0);
+        assert(0);
 }
 
 static bool
 is_live_after(midgard_block *block, midgard_instruction *start, int src)
 {
-	/* Check the rest of the block for liveness */
-	for (midgard_instruction *ins = start + 1; IN_ARRAY(ins, &block->instructions); ++ins) {
-		if (ins->unused) continue;
-		if (!ins->uses_ssa) continue;
+        /* Check the rest of the block for liveness */
+        for (midgard_instruction *ins = start + 1; IN_ARRAY(ins, &block->instructions); ++ins) {
+                if (ins->unused) continue;
 
-		if (ins->ssa_args.src0 == src) return true;
-		if (!ins->ssa_args.inline_constant && ins->ssa_args.src1 == src) return true;
-	}
+                if (!ins->uses_ssa) continue;
 
-	/* TODO: Check the succeeding blocks */
-	return false;
+                if (ins->ssa_args.src0 == src) return true;
+
+                if (!ins->ssa_args.inline_constant && ins->ssa_args.src1 == src) return true;
+        }
+
+        /* TODO: Check the succeeding blocks */
+        return false;
 }
 
 static void
 allocate_registers(compiler_context *ctx)
 {
-	/* First, initialize the RA */
-	struct ra_regs *regs = ra_alloc_reg_set(NULL, 32, true);
+        /* First, initialize the RA */
+        struct ra_regs *regs = ra_alloc_reg_set(NULL, 32, true);
 
-	/* Create a primary (general purpose) class, as well as special purpose
-	 * pipeline register classes */
+        /* Create a primary (general purpose) class, as well as special purpose
+         * pipeline register classes */
 
-	int primary_class = ra_alloc_reg_class(regs);
-	int varying_class  = ra_alloc_reg_class(regs);
+        int primary_class = ra_alloc_reg_class(regs);
+        int varying_class  = ra_alloc_reg_class(regs);
 
-	/* Add the full set of work registers */
-	for (int i = 0; i < 16; ++i)
-		ra_class_add_reg(regs, primary_class, i);
+        /* Add the full set of work registers */
+        for (int i = 0; i < 16; ++i)
+                ra_class_add_reg(regs, primary_class, i);
 
-	/* Add special registers */
-	ra_class_add_reg(regs, varying_class, REGISTER_VARYING_BASE);
-	ra_class_add_reg(regs, varying_class, REGISTER_VARYING_BASE + 1);
+        /* Add special registers */
+        ra_class_add_reg(regs, varying_class, REGISTER_VARYING_BASE);
+        ra_class_add_reg(regs, varying_class, REGISTER_VARYING_BASE + 1);
 
-	/* We're done setting up */
-	ra_set_finalize(regs, NULL);
+        /* We're done setting up */
+        ra_set_finalize(regs, NULL);
 
-	/* Transform the MIR into squeezed index form */
-	util_dynarray_foreach(&ctx->blocks, midgard_block, block) {
-		util_dynarray_foreach(&block->instructions, midgard_instruction, ins) {
-			if (ins->unused) continue;
-			if (!ins->uses_ssa) continue;
+        /* Transform the MIR into squeezed index form */
+        util_dynarray_foreach(&ctx->blocks, midgard_block, block) {
+                util_dynarray_foreach(&block->instructions, midgard_instruction, ins) {
+                        if (ins->unused) continue;
 
-			ins->ssa_args.src0 = find_or_allocate_temp(ctx, ins->ssa_args.src0);
+                        if (!ins->uses_ssa) continue;
 
-			if (!ins->ssa_args.inline_constant) {
-				ins->ssa_args.src1 = find_or_allocate_temp(ctx, ins->ssa_args.src1);
-			}
+                        ins->ssa_args.src0 = find_or_allocate_temp(ctx, ins->ssa_args.src0);
 
-			if (!ins->ssa_args.literal_out) {
-				ins->ssa_args.dest = find_or_allocate_temp(ctx, ins->ssa_args.dest);
-			}
-		}
+                        if (!ins->ssa_args.inline_constant) {
+                                ins->ssa_args.src1 = find_or_allocate_temp(ctx, ins->ssa_args.src1);
+                        }
 
-		print_mir_block(block);
-	}
+                        if (!ins->ssa_args.literal_out) {
+                                ins->ssa_args.dest = find_or_allocate_temp(ctx, ins->ssa_args.dest);
+                        }
+                }
 
-	/* Let's actually do register allocation */
-	int nodes = ctx->temp_count;
-	struct ra_graph *g = ra_alloc_interference_graph(regs, nodes);
+                print_mir_block(block);
+        }
 
-	/* Set everything to the work register class, unless it has somewhere
-	 * special to go */
+        /* Let's actually do register allocation */
+        int nodes = ctx->temp_count;
+        struct ra_graph *g = ra_alloc_interference_graph(regs, nodes);
 
-	util_dynarray_foreach(&ctx->blocks, midgard_block, block) {
-		util_dynarray_foreach(&block->instructions, midgard_instruction, ins) {
-			if (ins->unused) continue;
-			if (!ins->uses_ssa) continue;
-			if (ins->ssa_args.literal_out) continue;
-			if (ins->ssa_args.dest < 0) continue;
-			if (ins->ssa_args.dest >= SSA_FIXED_MINIMUM) continue;
+        /* Set everything to the work register class, unless it has somewhere
+         * special to go */
 
-			int class = primary_class;
+        util_dynarray_foreach(&ctx->blocks, midgard_block, block) {
+                util_dynarray_foreach(&block->instructions, midgard_instruction, ins) {
+                        if (ins->unused) continue;
 
-			ra_set_node_class(g, ins->ssa_args.dest, class);
-		}
-	}
+                        if (!ins->uses_ssa) continue;
 
-	for (int index = 0; index <= ctx->max_hash; ++index) {
-		unsigned temp = (uintptr_t) _mesa_hash_table_u64_search(ctx->ssa_to_register, index + 1);
+                        if (ins->ssa_args.literal_out) continue;
 
-		if (temp) {
-			unsigned reg = temp - 1;
-			int t = find_or_allocate_temp(ctx, index);
-			ra_set_node_reg(g, t, reg);
-		}
-	}
+                        if (ins->ssa_args.dest < 0) continue;
 
-	/* Determine liveness */
+                        if (ins->ssa_args.dest >= SSA_FIXED_MINIMUM) continue;
 
-	int *live_start = malloc(nodes * sizeof(int));
-	int *live_end = malloc(nodes * sizeof(int));
+                        int class = primary_class;
 
-	/* Initialize as non-existent */
+                        ra_set_node_class(g, ins->ssa_args.dest, class);
+                }
+        }
 
-	for (int i = 0; i < nodes; ++i) {
-		live_start[i] = live_end[i] = -1;
-	}
+        for (int index = 0; index <= ctx->max_hash; ++index) {
+                unsigned temp = (uintptr_t) _mesa_hash_table_u64_search(ctx->ssa_to_register, index + 1);
 
-	int d = 0;
+                if (temp) {
+                        unsigned reg = temp - 1;
+                        int t = find_or_allocate_temp(ctx, index);
+                        ra_set_node_reg(g, t, reg);
+                }
+        }
 
-	util_dynarray_foreach(&ctx->blocks, midgard_block, block) {
-		util_dynarray_foreach(&block->instructions, midgard_instruction, ins) {
-			if (ins->unused) continue;
-			if (!ins->uses_ssa) continue;
+        /* Determine liveness */
 
-			if (!ins->ssa_args.literal_out) {
-				/* If this destination is not yet live, it is now since we just wrote it */
+        int *live_start = malloc(nodes * sizeof(int));
+        int *live_end = malloc(nodes * sizeof(int));
 
-				int dest = ins->ssa_args.dest;
+        /* Initialize as non-existent */
 
-				if (live_start[dest] == -1)
-					live_start[dest] = d;
-			}
+        for (int i = 0; i < nodes; ++i) {
+                live_start[i] = live_end[i] = -1;
+        }
 
-			/* Since we just used a source, the source might be
-			 * dead now. Scan the rest of the block for
-			 * invocations, and if there are none, the source dies
-			 * */
+        int d = 0;
 
-			int src2 = ins->ssa_args.inline_constant ? -1 : ins->ssa_args.src1;
-			int sources[2] = { ins->ssa_args.src0, src2 };
+        util_dynarray_foreach(&ctx->blocks, midgard_block, block) {
+                util_dynarray_foreach(&block->instructions, midgard_instruction, ins) {
+                        if (ins->unused) continue;
 
-			for (int src = 0; src < 2; ++src) {
-				int s = sources[src];
-				
-				if (s < 0) continue;
-				if (s >= SSA_FIXED_MINIMUM) continue;
+                        if (!ins->uses_ssa) continue;
 
-				if (!is_live_after(block, ins, s)) {
-					live_end[s] = d;
-				}
-			}
+                        if (!ins->ssa_args.literal_out) {
+                                /* If this destination is not yet live, it is now since we just wrote it */
 
-			++d;
-		}
-	}
+                                int dest = ins->ssa_args.dest;
 
-	/* If a node still hasn't been killed, kill it now */
+                                if (live_start[dest] == -1)
+                                        live_start[dest] = d;
+                        }
 
-	for (int i = 0; i < nodes; ++i) {
-		if (live_start[i] == -1)
-			printf("-1 start for %d?\n", i);
+                        /* Since we just used a source, the source might be
+                         * dead now. Scan the rest of the block for
+                         * invocations, and if there are none, the source dies
+                         * */
 
-		if (live_end[i] == -1)
-			live_end[i] = d;
-	}
+                        int src2 = ins->ssa_args.inline_constant ? -1 : ins->ssa_args.src1;
+                        int sources[2] = { ins->ssa_args.src0, src2 };
 
-	/* Setup interference between nodes that are live at the same time */
+                        for (int src = 0; src < 2; ++src) {
+                                int s = sources[src];
 
-	for (int i = 0; i < nodes; ++i) {
-		for (int j = i + 1; j < nodes; ++j) {
-			if (!(live_start[i] >= live_end[j] || live_start[j] >= live_end[i]))
-				if ((live_start[i] != -1) && (live_start[j] != -1))
-					ra_add_node_interference(g, i, j);
-		}
-	}
+                                if (s < 0) continue;
 
-	for (int i = 0; i < nodes; ++i) {
-		for (int j = i + 1; j < nodes; ++j) {
-			if (i == 0)
-				ra_add_node_interference(g, i, j);
-		}
-	}
+                                if (s >= SSA_FIXED_MINIMUM) continue;
 
-	ra_set_select_reg_callback(g, midgard_ra_select_callback, NULL);
+                                if (!is_live_after(block, ins, s)) {
+                                        live_end[s] = d;
+                                }
+                        }
 
-	if (!ra_allocate(g)) {
-		printf("Error allocating registers\n");
-		assert(0);
-	}
+                        ++d;
+                }
+        }
 
-	/* Cleanup */
-	free(live_start);
-	free(live_end);
+        /* If a node still hasn't been killed, kill it now */
 
-	util_dynarray_foreach(&ctx->blocks, midgard_block, block) {
-		util_dynarray_foreach(&block->instructions, midgard_instruction, ins) {
-			if (ins->unused) continue;
-			if (!ins->uses_ssa) continue;
+        for (int i = 0; i < nodes; ++i) {
+                if (live_start[i] == -1)
+                        printf("-1 start for %d?\n", i);
 
-			ssa_args args = ins->ssa_args;
+                if (live_end[i] == -1)
+                        live_end[i] = d;
+        }
 
-			switch (ins->type) {
-				case TAG_ALU_4:
-					ins->registers.src1_reg = dealias_register(ctx, g, args.src0, nodes);
+        /* Setup interference between nodes that are live at the same time */
 
-					ins->registers.src2_imm = args.inline_constant;
+        for (int i = 0; i < nodes; ++i) {
+                for (int j = i + 1; j < nodes; ++j) {
+                        if (!(live_start[i] >= live_end[j] || live_start[j] >= live_end[i]))
+                                if ((live_start[i] != -1) && (live_start[j] != -1))
+                                        ra_add_node_interference(g, i, j);
+                }
+        }
 
-					if (args.inline_constant) {
-						/* Encode inline 16-bit constant as a vector by default */
+        for (int i = 0; i < nodes; ++i) {
+                for (int j = i + 1; j < nodes; ++j) {
+                        if (i == 0)
+                                ra_add_node_interference(g, i, j);
+                }
+        }
 
-						ins->registers.src2_reg = args.src1 >> 11;
+        ra_set_select_reg_callback(g, midgard_ra_select_callback, NULL);
 
-						int lower_11 = args.src1 & ((1 << 12) - 1);
+        if (!ra_allocate(g)) {
+                printf("Error allocating registers\n");
+                assert(0);
+        }
 
-						uint16_t imm = ((lower_11 >> 8) & 0x7) | ((lower_11 & 0xFF) << 3);
-						ins->alu.src2 = imm << 2;
-					} else {
-						ins->registers.src2_reg = dealias_register(ctx, g, args.src1, nodes);
-					}
+        /* Cleanup */
+        free(live_start);
+        free(live_end);
 
-					ins->registers.out_reg = args.literal_out ? args.dest : dealias_register(ctx, g, args.dest, nodes);
+        util_dynarray_foreach(&ctx->blocks, midgard_block, block) {
+                util_dynarray_foreach(&block->instructions, midgard_instruction, ins) {
+                        if (ins->unused) continue;
 
-					break;
-				
-				case TAG_LOAD_STORE_4: {
-					if (OP_IS_STORE(ins->load_store.op)) {
-						/* ssa_args invalid for store_vary */
-						ins->load_store.reg = 0;
-					} else {
-						bool has_dest = args.dest >= 0;
-						int ssa_arg = has_dest ? args.dest : args.src0;
+                        if (!ins->uses_ssa) continue;
 
-						ins->load_store.reg = dealias_register(ctx, g, ssa_arg, nodes);
-					}
+                        ssa_args args = ins->ssa_args;
 
-					break;
-				}
+                        switch (ins->type) {
+                        case TAG_ALU_4:
+                                ins->registers.src1_reg = dealias_register(ctx, g, args.src0, nodes);
 
-				default: 
-					break;
-			}
-		}
-	}
+                                ins->registers.src2_imm = args.inline_constant;
+
+                                if (args.inline_constant) {
+                                        /* Encode inline 16-bit constant as a vector by default */
+
+                                        ins->registers.src2_reg = args.src1 >> 11;
+
+                                        int lower_11 = args.src1 & ((1 << 12) - 1);
+
+                                        uint16_t imm = ((lower_11 >> 8) & 0x7) | ((lower_11 & 0xFF) << 3);
+                                        ins->alu.src2 = imm << 2;
+                                } else {
+                                        ins->registers.src2_reg = dealias_register(ctx, g, args.src1, nodes);
+                                }
+
+                                ins->registers.out_reg = args.literal_out ? args.dest : dealias_register(ctx, g, args.dest, nodes);
+
+                                break;
+
+                        case TAG_LOAD_STORE_4: {
+                                if (OP_IS_STORE(ins->load_store.op)) {
+                                        /* ssa_args invalid for store_vary */
+                                        ins->load_store.reg = 0;
+                                } else {
+                                        bool has_dest = args.dest >= 0;
+                                        int ssa_arg = has_dest ? args.dest : args.src0;
+
+                                        ins->load_store.reg = dealias_register(ctx, g, ssa_arg, nodes);
+                                }
+
+                                break;
+                        }
+
+                        default:
+                                break;
+                        }
+                }
+        }
 }
 
 /* Midgard IR only knows vector ALU types, but we sometimes need to actually
@@ -1706,25 +1721,26 @@ allocate_registers(compiler_context *ctx)
  * this, we just demote vector ALU payloads to scalar. */
 
 static int
-component_from_mask(unsigned mask) {
-	for (int c = 0; c < 4; ++c) {
-		if (mask & (3 << (2*c)))
-			return c;
-	}
+component_from_mask(unsigned mask)
+{
+        for (int c = 0; c < 4; ++c) {
+                if (mask & (3 << (2 * c)))
+                        return c;
+        }
 
-	assert(0);
+        assert(0);
 }
 
 static bool
 is_single_component_mask(unsigned mask)
 {
-	int components = 0;
+        int components = 0;
 
-	for (int c = 0; c < 4; ++c)
-		if (mask & (3 << (2*c)))
-			components++;
-	
-	return components == 1;
+        for (int c = 0; c < 4; ++c)
+                if (mask & (3 << (2 * c)))
+                        components++;
+
+        return components == 1;
 }
 
 /* Create a mask of accessed components from a swizzle to figure out vector
@@ -1733,64 +1749,64 @@ is_single_component_mask(unsigned mask)
 static unsigned
 swizzle_to_access_mask(unsigned swizzle)
 {
-	unsigned component_mask = 0;
+        unsigned component_mask = 0;
 
-	for (int i = 0; i < 4; ++i) {
-		unsigned c = (swizzle >> (2 * i)) & 3;
-		component_mask |= (1 << c);
-	}
+        for (int i = 0; i < 4; ++i) {
+                unsigned c = (swizzle >> (2 * i)) & 3;
+                component_mask |= (1 << c);
+        }
 
-	return component_mask;
+        return component_mask;
 }
 
 static unsigned
 vector_to_scalar_source(unsigned u)
 {
-	midgard_vector_alu_src v;
-	memcpy(&v, &u, sizeof(v));
+        midgard_vector_alu_src v;
+        memcpy(&v, &u, sizeof(v));
 
-	midgard_scalar_alu_src s = {
-		.abs = v.abs,
-		.negate = v.negate,
-		.full = !v.half,
-		.component = (v.swizzle & 3) << 1
-	};
+        midgard_scalar_alu_src s = {
+                .abs = v.abs,
+                .negate = v.negate,
+                .full = !v.half,
+                .component = (v.swizzle & 3) << 1
+        };
 
-	unsigned o;
-	memcpy(&o, &s, sizeof(s));
+        unsigned o;
+        memcpy(&o, &s, sizeof(s));
 
-	return o & ((1 << 6) - 1);
+        return o & ((1 << 6) - 1);
 }
 
 static midgard_scalar_alu
 vector_to_scalar_alu(midgard_vector_alu v, ssa_args *args)
 {
-	/* The output component is from the mask */
-	midgard_scalar_alu s = {
-		.op = v.op,
-		.src1 = vector_to_scalar_source(v.src1),
-		.src2 = vector_to_scalar_source(v.src2),
-		.unknown = 0,
-		.outmod = v.outmod,
-		.output_full = 1, /* TODO: Half */
-		.output_component = component_from_mask(v.mask) << 1,
-	};
+        /* The output component is from the mask */
+        midgard_scalar_alu s = {
+                .op = v.op,
+                .src1 = vector_to_scalar_source(v.src1),
+                .src2 = vector_to_scalar_source(v.src2),
+                .unknown = 0,
+                .outmod = v.outmod,
+                .output_full = 1, /* TODO: Half */
+                .output_component = component_from_mask(v.mask) << 1,
+        };
 
-	/* Inline constant is passed along rather than trying to extract it
-	 * from v */
+        /* Inline constant is passed along rather than trying to extract it
+         * from v */
 
-	if (args->inline_constant) {
-		uint16_t imm = 0;
-		int lower_11 = args->src1 & ((1 << 12) - 1);
-		imm |= (lower_11 >> 9) & 3;
-		imm |= (lower_11 >> 6) & 4;
-		imm |= (lower_11 >> 2) & 0x38;
-		imm |= (lower_11 & 63) << 6;
+        if (args->inline_constant) {
+                uint16_t imm = 0;
+                int lower_11 = args->src1 & ((1 << 12) - 1);
+                imm |= (lower_11 >> 9) & 3;
+                imm |= (lower_11 >> 6) & 4;
+                imm |= (lower_11 >> 2) & 0x38;
+                imm |= (lower_11 & 63) << 6;
 
-		s.src2 = imm;
-	}
+                s.src2 = imm;
+        }
 
-	return s;
+        return s;
 }
 
 /* Midgard prefetches instruction types, so during emission we need to
@@ -1805,16 +1821,16 @@ vector_to_scalar_alu(midgard_vector_alu v, ssa_args *args)
 
 static void
 emit_binary_vector_instruction(midgard_instruction *ains,
-		uint16_t *register_words, int *register_words_count, 
-		uint64_t *body_words, size_t *body_size, int *body_words_count, 
-		size_t *bytes_emitted)
+                               uint16_t *register_words, int *register_words_count,
+                               uint64_t *body_words, size_t *body_size, int *body_words_count,
+                               size_t *bytes_emitted)
 {
-	memcpy(&register_words[(*register_words_count)++], &ains->registers, sizeof(ains->registers));
-	*bytes_emitted += sizeof(midgard_reg_info);
+        memcpy(&register_words[(*register_words_count)++], &ains->registers, sizeof(ains->registers));
+        *bytes_emitted += sizeof(midgard_reg_info);
 
-	body_size[*body_words_count] = sizeof(midgard_vector_alu);
-	memcpy(&body_words[(*body_words_count)++], &ains->alu, sizeof(ains->alu));
-	*bytes_emitted += sizeof(midgard_vector_alu);
+        body_size[*body_words_count] = sizeof(midgard_vector_alu);
+        memcpy(&body_words[(*body_words_count)++], &ains->alu, sizeof(ains->alu));
+        *bytes_emitted += sizeof(midgard_vector_alu);
 }
 
 /* Checks for an SSA data hazard between two adjacent instructions, keeping in
@@ -1824,47 +1840,47 @@ emit_binary_vector_instruction(midgard_instruction *ains,
 static bool
 can_run_concurrent_ssa(midgard_instruction *first, midgard_instruction *second)
 {
-	/* If it's non-SSA... it's probably fine? */
-	if (!first->uses_ssa || !second->uses_ssa)
-		return true;
+        /* If it's non-SSA... it's probably fine? */
+        if (!first->uses_ssa || !second->uses_ssa)
+                return true;
 
-	/* Each instruction reads some registers and writes to a register. See
-	 * where the first writes */
+        /* Each instruction reads some registers and writes to a register. See
+         * where the first writes */
 
-	if (first->ssa_args.literal_out)
-		return false; /* Bail */
+        if (first->ssa_args.literal_out)
+                return false; /* Bail */
 
-	/* Figure out where exactly we wrote to */
-	int source = first->ssa_args.dest;
-	int source_mask = first->type == TAG_ALU_4 ? squeeze_writemask(first->alu.mask) : 0xF;
+        /* Figure out where exactly we wrote to */
+        int source = first->ssa_args.dest;
+        int source_mask = first->type == TAG_ALU_4 ? squeeze_writemask(first->alu.mask) : 0xF;
 
-	/* As long as the second doesn't read from the first, we're okay */
-	if (second->ssa_args.src0 == source) {
-		if (first->type == TAG_ALU_4) {
-			/* Figure out which components we just read from */
+        /* As long as the second doesn't read from the first, we're okay */
+        if (second->ssa_args.src0 == source) {
+                if (first->type == TAG_ALU_4) {
+                        /* Figure out which components we just read from */
 
-			int q = second->alu.src1;
-			midgard_vector_alu_src *m = (midgard_vector_alu_src *) &q;
+                        int q = second->alu.src1;
+                        midgard_vector_alu_src *m = (midgard_vector_alu_src *) &q;
 
-			/* Check if there are components in common, and fail if so */
-			if (swizzle_to_access_mask(m->swizzle) & source_mask)
-				return false;
-		} else 
-			return false;
+                        /* Check if there are components in common, and fail if so */
+                        if (swizzle_to_access_mask(m->swizzle) & source_mask)
+                                return false;
+                } else
+                        return false;
 
-	}
+        }
 
-	if (second->ssa_args.src1 == source && !second->ssa_args.inline_constant)
-		return false;
+        if (second->ssa_args.src1 == source && !second->ssa_args.inline_constant)
+                return false;
 
-	/* Otherwise, it's safe in that regard. Another data hazard is both
-	 * writing to the same place, of course */
+        /* Otherwise, it's safe in that regard. Another data hazard is both
+         * writing to the same place, of course */
 
-	if (!second->ssa_args.literal_out && second->ssa_args.dest == source)
-		return false;
+        if (!second->ssa_args.literal_out && second->ssa_args.dest == source)
+                return false;
 
-	/* ...That's it */
-	return true;
+        /* ...That's it */
+        return true;
 }
 
 /* Schedules, but does not emit, a single basic block. After scheduling, the
@@ -1874,337 +1890,353 @@ can_run_concurrent_ssa(midgard_instruction *first, midgard_instruction *second)
 static midgard_bundle
 schedule_bundle(compiler_context *ctx, midgard_block *block, midgard_instruction *ins, int *skip)
 {
-	int instructions_emitted = 0, instructions_consumed = -1;
-	midgard_bundle bundle = { 0 };
+        int instructions_emitted = 0, instructions_consumed = -1;
+        midgard_bundle bundle = { 0 };
 
-	uint8_t tag = ins->type;
+        uint8_t tag = ins->type;
 
-	/* Default to the instruction's tag */
-	bundle.tag = tag;
+        /* Default to the instruction's tag */
+        bundle.tag = tag;
 
-	switch(ins->type) {
-		case TAG_ALU_4: {
-			uint32_t control = 0;
-			size_t bytes_emitted = sizeof(control);
-		
-			/* TODO: Constant combining */
-			int index = 0, last_unit = 0;
+        switch (ins->type) {
+        case TAG_ALU_4: {
+                uint32_t control = 0;
+                size_t bytes_emitted = sizeof(control);
 
-			/* Previous instructions, for the purpose of parallelism */
-			midgard_instruction *segment[4] = {0};
-			int segment_size = 0;
+                /* TODO: Constant combining */
+                int index = 0, last_unit = 0;
 
-			instructions_emitted = -1;
+                /* Previous instructions, for the purpose of parallelism */
+                midgard_instruction *segment[4] = {0};
+                int segment_size = 0;
 
-			while (IN_ARRAY(ins + index, &block->instructions)) {
-				midgard_instruction *ains = ins + index; 
+                instructions_emitted = -1;
 
-				/* Ensure that the chain can continue */
-				if (ains->unused) goto skip_instruction;
-				if (ains->type != TAG_ALU_4) break;
+                while (IN_ARRAY(ins + index, &block->instructions)) {
+                        midgard_instruction *ains = ins + index;
 
-				/* According to the presentation "The ARM
-				 * Mali-T880 Mobile GPU" from HotChips 27,
-				 * there are two pipeline stages. Branching
-				 * position determined experimentally. Lines
-				 * are executed in parallel: 
-				 *
-				 * [ VMUL ] [ SADD ]
-				 * [ VADD ] [ SMUL ] [ LUT ] [ BRANCH ]
-				 *
-				 * Verify that there are no ordering dependencies here.
-				 *
-				 * TODO: Allow for parallelism!!!
-				 */
+                        /* Ensure that the chain can continue */
+                        if (ains->unused) goto skip_instruction;
 
-				/* Pick a unit for it if it doesn't force a particular unit */
+                        if (ains->type != TAG_ALU_4) break;
 
-				int unit = ains->unit;
-				bool vectorize = false;
+                        /* According to the presentation "The ARM
+                         * Mali-T880 Mobile GPU" from HotChips 27,
+                         * there are two pipeline stages. Branching
+                         * position determined experimentally. Lines
+                         * are executed in parallel:
+                         *
+                         * [ VMUL ] [ SADD ]
+                         * [ VADD ] [ SMUL ] [ LUT ] [ BRANCH ]
+                         *
+                         * Verify that there are no ordering dependencies here.
+                         *
+                         * TODO: Allow for parallelism!!!
+                         */
 
-				if (!unit) {
-					int op = ains->alu.op;
-					int units = alu_opcode_unit[op];
+                        /* Pick a unit for it if it doesn't force a particular unit */
 
-					/* TODO: Promotion of scalars to vectors */
-					int vector = ((!is_single_component_mask(ains->alu.mask)) || ((units & UNITS_SCALAR) == 0)) && (units & UNITS_ANY_VECTOR);
+                        int unit = ains->unit;
+                        bool vectorize = false;
 
-					if (!vector)
-						assert(units & UNITS_SCALAR);
+                        if (!unit) {
+                                int op = ains->alu.op;
+                                int units = alu_opcode_unit[op];
 
-					if (vector) {
-						if (last_unit >= UNIT_VADD) {
-							if (units & UNIT_VADD)
-								unit = UNIT_VADD;
-							else if (units & UNIT_VLUT)
-								unit = UNIT_VLUT;
-							else
-								break;
-						} else {
-							if (units & UNIT_VMUL)
-								unit = UNIT_VMUL;
-							else if (units & UNIT_VADD)
-								unit = UNIT_VADD;
-							else if (units & UNIT_VLUT)
-								unit = UNIT_VLUT;
-							else
-								assert(0);
-						}
-					} else {
-						if (last_unit >= UNIT_VADD) {
-							if ((units & UNIT_SMUL) && !(control & UNIT_SMUL))
-								unit = UNIT_SMUL;
-							else if (units & UNIT_VLUT) {
-								unit = UNIT_VLUT;
-								vectorize = true;
-							} else
-								break;
-						} else {
-							if ((units & UNIT_SADD) && !(control & UNIT_SADD))
-								unit = UNIT_SADD;
-							else if (units & UNIT_SMUL)
-								unit = UNIT_SMUL;
-							else
-								break;
-						}
-					}
+                                /* TODO: Promotion of scalars to vectors */
+                                int vector = ((!is_single_component_mask(ains->alu.mask)) || ((units & UNITS_SCALAR) == 0)) && (units & UNITS_ANY_VECTOR);
 
-					assert(unit & units);
-				}
+                                if (!vector)
+                                        assert(units & UNITS_SCALAR);
 
-				/* Late unit check, this time for encoding (not parallelism) */
-				if (unit <= last_unit) break;
+                                if (vector) {
+                                        if (last_unit >= UNIT_VADD) {
+                                                if (units & UNIT_VADD)
+                                                        unit = UNIT_VADD;
+                                                else if (units & UNIT_VLUT)
+                                                        unit = UNIT_VLUT;
+                                                else
+                                                        break;
+                                        } else {
+                                                if (units & UNIT_VMUL)
+                                                        unit = UNIT_VMUL;
+                                                else if (units & UNIT_VADD)
+                                                        unit = UNIT_VADD;
+                                                else if (units & UNIT_VLUT)
+                                                        unit = UNIT_VLUT;
+                                                else
+                                                        assert(0);
+                                        }
+                                } else {
+                                        if (last_unit >= UNIT_VADD) {
+                                                if ((units & UNIT_SMUL) && !(control & UNIT_SMUL))
+                                                        unit = UNIT_SMUL;
+                                                else if (units & UNIT_VLUT) {
+                                                        unit = UNIT_VLUT;
+                                                        vectorize = true;
+                                                } else
+                                                        break;
+                                        } else {
+                                                if ((units & UNIT_SADD) && !(control & UNIT_SADD))
+                                                        unit = UNIT_SADD;
+                                                else if (units & UNIT_SMUL)
+                                                        unit = UNIT_SMUL;
+                                                else
+                                                        break;
+                                        }
+                                }
 
-				/* Clear the segment */
-				if (last_unit < UNIT_VADD && unit >= UNIT_VADD)
-					segment_size = 0;
+                                assert(unit & units);
+                        }
 
-				/* Check for data hazards */
-				int has_hazard = false;
+                        /* Late unit check, this time for encoding (not parallelism) */
+                        if (unit <= last_unit) break;
 
-				for (int s = 0; s < segment_size; ++s)
-					if (!can_run_concurrent_ssa(segment[s], ains))
-						has_hazard = true;
+                        /* Clear the segment */
+                        if (last_unit < UNIT_VADD && unit >= UNIT_VADD)
+                                segment_size = 0;
 
-				if (has_hazard)
-					break;
+                        /* Check for data hazards */
+                        int has_hazard = false;
 
-				/* We're good to go -- emit the instruction */
-				ains->unit = unit;
+                        for (int s = 0; s < segment_size; ++s)
+                                if (!can_run_concurrent_ssa(segment[s], ains))
+                                        has_hazard = true;
 
-				/* Promote scalar to vector if needed */
-				if (vectorize)
-					ains->vector = true;
+                        if (has_hazard)
+                                break;
 
-				segment[segment_size++] = ains;
+                        /* We're good to go -- emit the instruction */
+                        ains->unit = unit;
 
-				/* Only one set of embedded constants per
-				 * bundle possible; if we have more, we must
-				 * break the chain early, unfortunately */
+                        /* Promote scalar to vector if needed */
+                        if (vectorize)
+                                ains->vector = true;
 
-				if (ains->has_constants) {
-					if (bundle.has_embedded_constants) {
-						/* ...but if there are already
-						 * constants but these are the
-						 * *same* constants, we let it
-						 * through */
+                        segment[segment_size++] = ains;
 
-						if (memcmp(bundle.constants, ains->constants, sizeof(bundle.constants)))
-							break;
-					} else {
-						bundle.has_embedded_constants = true;
-						memcpy(bundle.constants, ains->constants, sizeof(bundle.constants));
+                        /* Only one set of embedded constants per
+                         * bundle possible; if we have more, we must
+                         * break the chain early, unfortunately */
 
-						/* If this is a blend shader special constant, track it for patching */
-						if (ains->has_blend_constant)
-							bundle.has_blend_constant = true;
-					}
-				}
+                        if (ains->has_constants) {
+                                if (bundle.has_embedded_constants) {
+                                        /* ...but if there are already
+                                         * constants but these are the
+                                         * *same* constants, we let it
+                                         * through */
 
-				if (ains->unit & UNITS_ANY_VECTOR) {
-					emit_binary_vector_instruction(ains, bundle.register_words,
-							&bundle.register_words_count, bundle.body_words,
-							bundle.body_size, &bundle.body_words_count, &bytes_emitted);
-				} else if (ains->compact_branch) {
-					 /* All of r0 has to be written out
-					  * along with the branch writeout.
-					  * (slow!) */
+                                        if (memcmp(bundle.constants, ains->constants, sizeof(bundle.constants)))
+                                                break;
+                                } else {
+                                        bundle.has_embedded_constants = true;
+                                        memcpy(bundle.constants, ains->constants, sizeof(bundle.constants));
 
-					if (ains->writeout) {
-						if (index == 0) {
-							midgard_instruction ins = v_fmov(0, blank_alu_src, 0, true, midgard_outmod_none);
-							ins.unit = UNIT_VMUL;
+                                        /* If this is a blend shader special constant, track it for patching */
+                                        if (ains->has_blend_constant)
+                                                bundle.has_blend_constant = true;
+                                }
+                        }
 
-							control |= ins.unit;
+                        if (ains->unit & UNITS_ANY_VECTOR) {
+                                emit_binary_vector_instruction(ains, bundle.register_words,
+                                                               &bundle.register_words_count, bundle.body_words,
+                                                               bundle.body_size, &bundle.body_words_count, &bytes_emitted);
+                        } else if (ains->compact_branch) {
+                                /* All of r0 has to be written out
+                                 * along with the branch writeout.
+                                 * (slow!) */
 
-							emit_binary_vector_instruction(&ins, bundle.register_words,
-									&bundle.register_words_count, bundle.body_words,
-									bundle.body_size, &bundle.body_words_count, &bytes_emitted);
-						} else {
-							/* Analyse the group to see if r0 is written in full */
-							bool components[4] = { 0 };
-							uint16_t register_dep_mask = 0;
-							uint16_t written_mask = 0;
+                                if (ains->writeout) {
+                                        if (index == 0) {
+                                                midgard_instruction ins = v_fmov(0, blank_alu_src, 0, true, midgard_outmod_none);
+                                                ins.unit = UNIT_VMUL;
 
-							for (int t = 0; t < index; ++t) {
-								midgard_instruction *qins = ins + t;
+                                                control |= ins.unit;
 
-								if (qins->unused) continue;
+                                                emit_binary_vector_instruction(&ins, bundle.register_words,
+                                                                               &bundle.register_words_count, bundle.body_words,
+                                                                               bundle.body_size, &bundle.body_words_count, &bytes_emitted);
+                                        } else {
+                                                /* Analyse the group to see if r0 is written in full */
+                                                bool components[4] = { 0 };
+                                                uint16_t register_dep_mask = 0;
+                                                uint16_t written_mask = 0;
 
-								/* Mark down writes */
+                                                for (int t = 0; t < index; ++t) {
+                                                        midgard_instruction *qins = ins + t;
 
-								if (qins->registers.out_reg != 0) {
-									written_mask |= (1 << qins->registers.out_reg);
-									continue;
-								}
+                                                        if (qins->unused) continue;
 
-								/* Mark down the register dependencies for errata check */
+                                                        /* Mark down writes */
 
-								if (qins->registers.src1_reg < 16)
-									register_dep_mask |= (1 << qins->registers.src1_reg);
+                                                        if (qins->registers.out_reg != 0) {
+                                                                written_mask |= (1 << qins->registers.out_reg);
+                                                                continue;
+                                                        }
 
-								if (qins->registers.src2_reg < 16)
-									register_dep_mask |= (1 << qins->registers.src2_reg);
+                                                        /* Mark down the register dependencies for errata check */
 
-								int mask = qins->alu.mask;
+                                                        if (qins->registers.src1_reg < 16)
+                                                                register_dep_mask |= (1 << qins->registers.src1_reg);
 
-								for (int c = 0; c < 4; ++c)
-									if (mask & (0x3 << (2 * c)))
-										components[c] = true;
-							}
+                                                        if (qins->registers.src2_reg < 16)
+                                                                register_dep_mask |= (1 << qins->registers.src2_reg);
+
+                                                        int mask = qins->alu.mask;
+
+                                                        for (int c = 0; c < 4; ++c)
+                                                                if (mask & (0x3 << (2 * c)))
+                                                                        components[c] = true;
+                                                }
 
 
-							/* ERRATA (?): In a bundle ending in a fragment writeout, the register dependencies of r0 cannot be written within this bundle (discovered in -bshading:shading=phong) */
-							if (register_dep_mask & written_mask) {
-								printf("ERRATA WORKAROUND: Breakup for writeout dependency masks %X vs %X (common %X)\n", register_dep_mask, written_mask, register_dep_mask & written_mask);
-								break;
-							}
+                                                /* ERRATA (?): In a bundle ending in a fragment writeout, the register dependencies of r0 cannot be written within this bundle (discovered in -bshading:shading=phong) */
+                                                if (register_dep_mask & written_mask) {
+                                                        printf("ERRATA WORKAROUND: Breakup for writeout dependency masks %X vs %X (common %X)\n", register_dep_mask, written_mask, register_dep_mask & written_mask);
+                                                        break;
+                                                }
 
-							/* If even a single component is not written, break it up (conservative check). */
-							bool breakup = false;
+                                                /* If even a single component is not written, break it up (conservative check). */
+                                                bool breakup = false;
 
-							for (int c = 0; c < 4; ++c)
-								if (!components[c])
-									breakup = true;
+                                                for (int c = 0; c < 4; ++c)
+                                                        if (!components[c])
+                                                                breakup = true;
 
-							if (breakup)
-								break;
+                                                if (breakup)
+                                                        break;
 
-							/* Otherwise, we're free to proceed */
-						}
-					}
+                                                /* Otherwise, we're free to proceed */
+                                        }
+                                }
 
-					bundle.body_size[bundle.body_words_count] = sizeof(ains->br_compact);
-					memcpy(&bundle.body_words[bundle.body_words_count++], &ains->br_compact, sizeof(ains->br_compact));
-					bytes_emitted += sizeof(ains->br_compact);
-				} else {
-					memcpy(&bundle.register_words[bundle.register_words_count++], &ains->registers, sizeof(ains->registers));
-					bytes_emitted += sizeof(midgard_reg_info);
+                                bundle.body_size[bundle.body_words_count] = sizeof(ains->br_compact);
+                                memcpy(&bundle.body_words[bundle.body_words_count++], &ains->br_compact, sizeof(ains->br_compact));
+                                bytes_emitted += sizeof(ains->br_compact);
+                        } else {
+                                memcpy(&bundle.register_words[bundle.register_words_count++], &ains->registers, sizeof(ains->registers));
+                                bytes_emitted += sizeof(midgard_reg_info);
 
-					bundle.body_size[bundle.body_words_count] = sizeof(midgard_scalar_alu);
-					bundle.body_words_count++;
-					bytes_emitted += sizeof(midgard_scalar_alu);
-				}
+                                bundle.body_size[bundle.body_words_count] = sizeof(midgard_scalar_alu);
+                                bundle.body_words_count++;
+                                bytes_emitted += sizeof(midgard_scalar_alu);
+                        }
 
-				/* Defer marking until after writing to allow for break */
-				control |= ains->unit;
-				last_unit = ains->unit;
-				++instructions_emitted;
+                        /* Defer marking until after writing to allow for break */
+                        control |= ains->unit;
+                        last_unit = ains->unit;
+                        ++instructions_emitted;
 
 skip_instruction:
-				++index;
-			}
+                        ++index;
+                }
 
-			/* Bubble up the number of instructions for skipping */
-			instructions_consumed = index - 1;
+                /* Bubble up the number of instructions for skipping */
+                instructions_consumed = index - 1;
 
-			int padding = 0;
+                int padding = 0;
 
-			/* Pad ALU op to nearest word */
+                /* Pad ALU op to nearest word */
 
-			if (bytes_emitted & 15) {
-				padding = 16 - (bytes_emitted & 15);
-				bytes_emitted += padding;
-			}
+                if (bytes_emitted & 15) {
+                        padding = 16 - (bytes_emitted & 15);
+                        bytes_emitted += padding;
+                }
 
-			/* Constants must always be quadwords */
-			if (bundle.has_embedded_constants)
-				bytes_emitted += 16;
+                /* Constants must always be quadwords */
+                if (bundle.has_embedded_constants)
+                        bytes_emitted += 16;
 
-			/* Size ALU instruction for tag */
-			bundle.tag = (TAG_ALU_4) + (bytes_emitted / 16) - 1;
-			bundle.padding = padding;
-			bundle.control = bundle.tag | control;
+                /* Size ALU instruction for tag */
+                bundle.tag = (TAG_ALU_4) + (bytes_emitted / 16) - 1;
+                bundle.padding = padding;
+                bundle.control = bundle.tag | control;
 
-			break;
-		 }
+                break;
+        }
 
-		case TAG_LOAD_STORE_4: {
-			/* Load store instructions have two words at once. If
-			 * we only have one queued up, we need to NOP pad.
-			 * Otherwise, we store both in succession to save space
-			 * and cycles -- letting them go in parallel -- skip
-			 * the next. The usefulness of this optimisation is
-			 * greatly dependent on the quality of the instruction
-			 * scheduler.
-			 */
+        case TAG_LOAD_STORE_4: {
+                /* Load store instructions have two words at once. If
+                 * we only have one queued up, we need to NOP pad.
+                 * Otherwise, we store both in succession to save space
+                 * and cycles -- letting them go in parallel -- skip
+                 * the next. The usefulness of this optimisation is
+                 * greatly dependent on the quality of the instruction
+                 * scheduler.
+                 */
 
-			int idx = 1;
+                int idx = 1;
 
-			while(IN_ARRAY((ins + idx), &block->instructions) && (ins + idx)->unused)
-				++idx;
+                while (IN_ARRAY((ins + idx), &block->instructions) && (ins + idx)->unused)
+                        ++idx;
 
-			if (IN_ARRAY((ins + idx), &block->instructions) && ((ins + idx)->type == TAG_LOAD_STORE_4)) {
-				/* As the two operate concurrently, make sure
-				 * they are not dependent */
+                if (IN_ARRAY((ins + idx), &block->instructions) && ((ins + idx)->type == TAG_LOAD_STORE_4)) {
+                        /* As the two operate concurrently, make sure
+                         * they are not dependent */
 
-				if (can_run_concurrent_ssa(ins, ins + idx) || true) {
-					/* Skip ahead, since it's redundant with the pair */
-					instructions_consumed = idx + (instructions_emitted++);
-				}
-			}
+                        if (can_run_concurrent_ssa(ins, ins + idx) || true) {
+                                /* Skip ahead, since it's redundant with the pair */
+                                instructions_consumed = idx + (instructions_emitted++);
+                        }
+                }
 
-			break;
-		}
+                break;
+        }
 
 #if 0
-		case TAG_TEXTURE_4:
-			/* TODO: Schedule texture ops */
-			break;
+
+        case TAG_TEXTURE_4:
+                /* TODO: Schedule texture ops */
+                break;
 #endif
 
-		default:
-			/* XXX: What happens with textures? */
-			break;
-	}
+        default:
+                /* XXX: What happens with textures? */
+                break;
+        }
 
-	/* Copy the instructions into the bundle */
-	bundle.instruction_count = instructions_emitted + 1;
-	
-	int used_idx = 0;
-	for (int i = 0; used_idx < bundle.instruction_count; ++i) {
-		if ((ins + i)->unused) continue;
+        /* Copy the instructions into the bundle */
+        bundle.instruction_count = instructions_emitted + 1;
 
-		bundle.instructions[used_idx++] = *(ins + i);
-	}
+        int used_idx = 0;
 
-	*skip = (instructions_consumed == -1) ? instructions_emitted : instructions_consumed;
+        for (int i = 0; used_idx < bundle.instruction_count; ++i) {
+                if ((ins + i)->unused) continue;
 
-	return bundle;
+                bundle.instructions[used_idx++] = *(ins + i);
+        }
+
+        *skip = (instructions_consumed == -1) ? instructions_emitted : instructions_consumed;
+
+        return bundle;
 }
 
 static int
 quadword_size(int tag)
 {
-	switch (tag) {
-		case TAG_ALU_4: 	return 1;
-		case TAG_ALU_8: 	return 2;
-		case TAG_ALU_12: 	return 3;
-		case TAG_ALU_16: 	return 4;
-		case TAG_LOAD_STORE_4: 	return 1;
-		case TAG_TEXTURE_4: 	return 1;
-		default: 		assert(0);
-	}
+        switch (tag) {
+        case TAG_ALU_4:
+                return 1;
+
+        case TAG_ALU_8:
+                return 2;
+
+        case TAG_ALU_12:
+                return 3;
+
+        case TAG_ALU_16:
+                return 4;
+
+        case TAG_LOAD_STORE_4:
+                return 1;
+
+        case TAG_TEXTURE_4:
+                return 1;
+
+        default:
+                assert(0);
+        }
 }
 
 /* Schedule a single block by iterating its instruction to create bundles.
@@ -2213,38 +2245,38 @@ quadword_size(int tag)
 static void
 schedule_block(compiler_context *ctx, midgard_block *block)
 {
-	util_dynarray_init(&block->bundles, NULL);
+        util_dynarray_init(&block->bundles, NULL);
 
-	block->quadword_count = 0;
+        block->quadword_count = 0;
 
-	util_dynarray_foreach(&block->instructions, midgard_instruction, ins) {
-		if (!ins->unused) {
-			int skip;
-			midgard_bundle bundle = schedule_bundle(ctx, block, ins, &skip);
-			util_dynarray_append(&block->bundles, midgard_bundle, bundle);
+        util_dynarray_foreach(&block->instructions, midgard_instruction, ins) {
+                if (!ins->unused) {
+                        int skip;
+                        midgard_bundle bundle = schedule_bundle(ctx, block, ins, &skip);
+                        util_dynarray_append(&block->bundles, midgard_bundle, bundle);
 
-			if (bundle.has_blend_constant) {
-				/* TODO: Multiblock? */
-				int quadwords_within_block = block->quadword_count + quadword_size(bundle.tag) - 1;
-				ctx->blend_constant_offset = quadwords_within_block * 0x10;
-			}
-			
-			ins += skip;
-			block->quadword_count += quadword_size(bundle.tag);
-		}
-	}
+                        if (bundle.has_blend_constant) {
+                                /* TODO: Multiblock? */
+                                int quadwords_within_block = block->quadword_count + quadword_size(bundle.tag) - 1;
+                                ctx->blend_constant_offset = quadwords_within_block * 0x10;
+                        }
 
-	block->is_scheduled = true;
+                        ins += skip;
+                        block->quadword_count += quadword_size(bundle.tag);
+                }
+        }
+
+        block->is_scheduled = true;
 }
 
 static void
 schedule_program(compiler_context *ctx)
 {
-	allocate_registers(ctx);
+        allocate_registers(ctx);
 
-	util_dynarray_foreach(&ctx->blocks, midgard_block, block) {
-		schedule_block(ctx, block);
-	}
+        util_dynarray_foreach(&ctx->blocks, midgard_block, block) {
+                schedule_block(ctx, block);
+        }
 }
 
 /* After everything is scheduled, emit whole bundles at a time */
@@ -2252,103 +2284,103 @@ schedule_program(compiler_context *ctx)
 static void
 emit_binary_bundle(compiler_context *ctx, midgard_bundle *bundle, struct util_dynarray *emission, int next_tag)
 {
-	int lookahead = next_tag << 4;
+        int lookahead = next_tag << 4;
 
-	switch(bundle->tag) {
-		case TAG_ALU_4:
-		case TAG_ALU_8:
-		case TAG_ALU_12:
-		case TAG_ALU_16: {
-                       /* Actually emit each component */
-		       util_dynarray_append(emission, uint32_t, bundle->control | lookahead);
+        switch (bundle->tag) {
+        case TAG_ALU_4:
+        case TAG_ALU_8:
+        case TAG_ALU_12:
+        case TAG_ALU_16: {
+                /* Actually emit each component */
+                util_dynarray_append(emission, uint32_t, bundle->control | lookahead);
 
-                       for (int i = 0; i < bundle->register_words_count; ++i)
-                               util_dynarray_append(emission, uint16_t, bundle->register_words[i]);
+                for (int i = 0; i < bundle->register_words_count; ++i)
+                        util_dynarray_append(emission, uint16_t, bundle->register_words[i]);
 
-		       /* Emit body words based on the instructions bundled */
-		       for (int i = 0; i < bundle->instruction_count; ++i) {
-			       midgard_instruction *ins = &bundle->instructions[i];
-			       assert(!ins->unused);
+                /* Emit body words based on the instructions bundled */
+                for (int i = 0; i < bundle->instruction_count; ++i) {
+                        midgard_instruction *ins = &bundle->instructions[i];
+                        assert(!ins->unused);
 
-			       if (ins->unit & UNITS_ANY_VECTOR) {
-					memcpy(util_dynarray_grow(emission, sizeof(midgard_vector_alu)), &ins->alu, sizeof(midgard_vector_alu));
-			       } else if (ins->compact_branch) {
-				       /* Dummy move, XXX DRY */
-				       if ((i == 0) && ins->writeout) {
-						midgard_instruction ins = v_fmov(0, blank_alu_src, 0, true, midgard_outmod_none);
-						memcpy(util_dynarray_grow(emission, sizeof(midgard_vector_alu)), &ins.alu, sizeof(midgard_vector_alu));
-				       }
+                        if (ins->unit & UNITS_ANY_VECTOR) {
+                                memcpy(util_dynarray_grow(emission, sizeof(midgard_vector_alu)), &ins->alu, sizeof(midgard_vector_alu));
+                        } else if (ins->compact_branch) {
+                                /* Dummy move, XXX DRY */
+                                if ((i == 0) && ins->writeout) {
+                                        midgard_instruction ins = v_fmov(0, blank_alu_src, 0, true, midgard_outmod_none);
+                                        memcpy(util_dynarray_grow(emission, sizeof(midgard_vector_alu)), &ins.alu, sizeof(midgard_vector_alu));
+                                }
 
-					memcpy(util_dynarray_grow(emission, sizeof(ins->br_compact)), &ins->br_compact, sizeof(ins->br_compact));
-			       } else {
-				       /* Scalar */
- 					midgard_scalar_alu scalarised = vector_to_scalar_alu(ins->alu, &ins->ssa_args);
-					memcpy(util_dynarray_grow(emission, sizeof(scalarised)), &scalarised, sizeof(scalarised));
-			       }
-		       }
+                                memcpy(util_dynarray_grow(emission, sizeof(ins->br_compact)), &ins->br_compact, sizeof(ins->br_compact));
+                        } else {
+                                /* Scalar */
+                                midgard_scalar_alu scalarised = vector_to_scalar_alu(ins->alu, &ins->ssa_args);
+                                memcpy(util_dynarray_grow(emission, sizeof(scalarised)), &scalarised, sizeof(scalarised));
+                        }
+                }
 
-                       /* Emit padding (all zero) */
-                       memset(util_dynarray_grow(emission, bundle->padding), 0, bundle->padding);
+                /* Emit padding (all zero) */
+                memset(util_dynarray_grow(emission, bundle->padding), 0, bundle->padding);
 
-                       /* Tack on constants */
+                /* Tack on constants */
 
-                       if (bundle->has_embedded_constants) {
-			       util_dynarray_append(emission, float, bundle->constants[0]);
-			       util_dynarray_append(emission, float, bundle->constants[1]);
-			       util_dynarray_append(emission, float, bundle->constants[2]);
-			       util_dynarray_append(emission, float, bundle->constants[3]);
-                       }
+                if (bundle->has_embedded_constants) {
+                        util_dynarray_append(emission, float, bundle->constants[0]);
+                        util_dynarray_append(emission, float, bundle->constants[1]);
+                        util_dynarray_append(emission, float, bundle->constants[2]);
+                        util_dynarray_append(emission, float, bundle->constants[3]);
+                }
 
-			break;
-		 }
+                break;
+        }
 
-		case TAG_LOAD_STORE_4: {
-			/* One or two composing instructions */
+        case TAG_LOAD_STORE_4: {
+                /* One or two composing instructions */
 
-			uint64_t current64, next64 = LDST_NOP;
+                uint64_t current64, next64 = LDST_NOP;
 
-			memcpy(&current64, &bundle->instructions[0].load_store, sizeof(current64));
-			
-			if (bundle->instruction_count == 2)
-				memcpy(&next64, &bundle->instructions[1].load_store, sizeof(next64));
+                memcpy(&current64, &bundle->instructions[0].load_store, sizeof(current64));
 
-			midgard_load_store instruction = {
-				.type = bundle->tag,
-				.next_type = next_tag,
-				.word1 = current64,
-				.word2 = next64
-			};
+                if (bundle->instruction_count == 2)
+                        memcpy(&next64, &bundle->instructions[1].load_store, sizeof(next64));
 
-			util_dynarray_append(emission, midgard_load_store, instruction);
+                midgard_load_store instruction = {
+                        .type = bundle->tag,
+                        .next_type = next_tag,
+                        .word1 = current64,
+                        .word2 = next64
+                };
 
-			break;
-		}
+                util_dynarray_append(emission, midgard_load_store, instruction);
 
-		case TAG_TEXTURE_4: {
-			/* Texture instructions are easy, since there is no
-			 * pipelining nor VLIW to worry about. We may need to set the .last flag */
-			
-			midgard_instruction *ins = &bundle->instructions[0];
+                break;
+        }
 
-			ins->texture.type = TAG_TEXTURE_4;
-			ins->texture.next_type = next_tag;
+        case TAG_TEXTURE_4: {
+                /* Texture instructions are easy, since there is no
+                 * pipelining nor VLIW to worry about. We may need to set the .last flag */
 
-			ctx->texture_op_count--;
+                midgard_instruction *ins = &bundle->instructions[0];
 
-			if (!ctx->texture_op_count) {
-				ins->texture.cont = 0;
-				ins->texture.last = 1;
-			}
+                ins->texture.type = TAG_TEXTURE_4;
+                ins->texture.next_type = next_tag;
 
-	    		util_dynarray_append(emission, midgard_texture_word, ins->texture);
-			break;
-		}		
+                ctx->texture_op_count--;
 
-		default:
-			printf("Unknown midgard instruction type\n");
-			assert(0);
-			break;
-	}
+                if (!ctx->texture_op_count) {
+                        ins->texture.cont = 0;
+                        ins->texture.last = 1;
+                }
+
+                util_dynarray_append(emission, midgard_texture_word, ins->texture);
+                break;
+        }
+
+        default:
+                printf("Unknown midgard instruction type\n");
+                assert(0);
+                break;
+        }
 }
 
 
@@ -2367,53 +2399,53 @@ emit_binary_bundle(compiler_context *ctx, midgard_bundle *bundle, struct util_dy
 static void
 inline_alu_constants(compiler_context *ctx)
 {
-	util_dynarray_foreach(ctx->current_block, midgard_instruction, alu) {
-		/* Other instructions cannot inline constants */
-		if (alu->type != TAG_ALU_4) continue;
+        util_dynarray_foreach(ctx->current_block, midgard_instruction, alu) {
+                /* Other instructions cannot inline constants */
+                if (alu->type != TAG_ALU_4) continue;
 
-		/* If there is already a constant here, we can do nothing */
-		if (alu->has_constants) continue;
+                /* If there is already a constant here, we can do nothing */
+                if (alu->has_constants) continue;
 
-		/* Constants should always be SSA... */
-		if (!alu->uses_ssa) continue;
+                /* Constants should always be SSA... */
+                if (!alu->uses_ssa) continue;
 
-		CONDITIONAL_ATTACH(src0);
+                CONDITIONAL_ATTACH(src0);
 
-		if (!alu->has_constants) {
-			if (!alu->ssa_args.inline_constant) 
-				CONDITIONAL_ATTACH(src1)
-		} else if (!alu->ssa_args.inline_constant) {
-			/* Corner case: _two_ vec4 constants, for instance with a
-			 * csel. For this case, we can only use a constant
-			 * register for one, we'll have to emit a move for the
-			 * other. Note, if both arguments are constants, then
-			 * necessarily neither argument depends on the value of
-			 * any particular register. As the destination register
-			 * will be wiped, that means we can spill the constant
-			 * to the destination register.
-			 */
+                if (!alu->has_constants) {
+                        if (!alu->ssa_args.inline_constant)
+                                CONDITIONAL_ATTACH(src1)
+                        } else if (!alu->ssa_args.inline_constant) {
+                        /* Corner case: _two_ vec4 constants, for instance with a
+                         * csel. For this case, we can only use a constant
+                         * register for one, we'll have to emit a move for the
+                         * other. Note, if both arguments are constants, then
+                         * necessarily neither argument depends on the value of
+                         * any particular register. As the destination register
+                         * will be wiped, that means we can spill the constant
+                         * to the destination register.
+                         */
 
-			void *entry = _mesa_hash_table_u64_search(ctx->ssa_constants, alu->ssa_args.src1 + 1);
-		
-			if (entry) {
-				midgard_instruction ins = v_fmov(SSA_FIXED_REGISTER(REGISTER_CONSTANT), blank_alu_src, 4096 + alu->ssa_args.src1, false, midgard_outmod_none);
-				attach_constants(ctx, &ins, entry, alu->ssa_args.src1 + 1);
+                        void *entry = _mesa_hash_table_u64_search(ctx->ssa_constants, alu->ssa_args.src1 + 1);
 
-				/* Force a break XXX Defer r31 writes */
-				ins.unit = UNIT_VLUT;
+                        if (entry) {
+                                midgard_instruction ins = v_fmov(SSA_FIXED_REGISTER(REGISTER_CONSTANT), blank_alu_src, 4096 + alu->ssa_args.src1, false, midgard_outmod_none);
+                                attach_constants(ctx, &ins, entry, alu->ssa_args.src1 + 1);
 
-				/* Set the source */
-				alu->ssa_args.src1 = 4096 + alu->ssa_args.src1;
+                                /* Force a break XXX Defer r31 writes */
+                                ins.unit = UNIT_VLUT;
 
-				/* Right before us (odd numbers) is a dummy
-				 * instruction.  Copy the new move into that.
-				 * */
+                                /* Set the source */
+                                alu->ssa_args.src1 = 4096 + alu->ssa_args.src1;
 
-				memcpy(alu - 1, alu - 2, sizeof(ins));
-				memcpy(alu - 2, &ins, sizeof(ins));
-			}
-		}
-	}
+                                /* Right before us (odd numbers) is a dummy
+                                 * instruction.  Copy the new move into that.
+                                 * */
+
+                                memcpy(alu - 1, alu - 2, sizeof(ins));
+                                memcpy(alu - 2, &ins, sizeof(ins));
+                        }
+                }
+        }
 }
 
 /* Midgard supports two types of constants, embedded constants (128-bit) and
@@ -2424,128 +2456,131 @@ inline_alu_constants(compiler_context *ctx)
 static void
 embedded_to_inline_constant(compiler_context *ctx)
 {
-	util_dynarray_foreach(ctx->current_block, midgard_instruction, ins) {
-		if (!ins->has_constants) continue;
-		if (ins->ssa_args.inline_constant) continue;
-		if (ins->unused) continue;
+        util_dynarray_foreach(ctx->current_block, midgard_instruction, ins) {
+                if (!ins->has_constants) continue;
 
-		/* Blend constants must not be inlined by definition */
-		if (ins->has_blend_constant) continue;
+                if (ins->ssa_args.inline_constant) continue;
 
-		/* src1 cannot be an inline constant due to encoding
-		 * restrictions. So, if possible we try to flip the arguments
-		 * in that case */
+                if (ins->unused) continue;
 
-		int op = ins->alu.op;
+                /* Blend constants must not be inlined by definition */
+                if (ins->has_blend_constant) continue;
 
-		if (ins->ssa_args.src0 == SSA_FIXED_REGISTER(REGISTER_CONSTANT)) {
-			/* Flip based on op. Fallthrough intentional */
+                /* src1 cannot be an inline constant due to encoding
+                 * restrictions. So, if possible we try to flip the arguments
+                 * in that case */
 
-			switch (op) {
-				/* These ops require an operational change to flip their arguments TODO */
-				case midgard_alu_op_flt: 
-				case midgard_alu_op_fle: 
-				case midgard_alu_op_ilt: 
-				case midgard_alu_op_ile: 
-				case midgard_alu_op_fcsel: 
-				case midgard_alu_op_icsel: 
-				case midgard_alu_op_isub: 
-					printf("Missed non-commutative flip (%s)\n", alu_opcode_names[op]);
-					break;
+                int op = ins->alu.op;
 
-				/* These ops are commutative and Just Flip */
-				case midgard_alu_op_fne: 
-				case midgard_alu_op_fadd: 
-				case midgard_alu_op_fmul: 
-				case midgard_alu_op_fmin: 
-				case midgard_alu_op_fmax: 
-				case midgard_alu_op_iadd: 
-				case midgard_alu_op_imul: 
-				case midgard_alu_op_feq: 
-				case midgard_alu_op_ieq: 
-				case midgard_alu_op_ine: 
-				case midgard_alu_op_iand:
-				case midgard_alu_op_ior:
-				case midgard_alu_op_ixor:
-					/* Flip the SSA numbers */
-					ins->ssa_args.src0 = ins->ssa_args.src1;
-					ins->ssa_args.src1 = SSA_FIXED_REGISTER(REGISTER_CONSTANT);
+                if (ins->ssa_args.src0 == SSA_FIXED_REGISTER(REGISTER_CONSTANT)) {
+                        /* Flip based on op. Fallthrough intentional */
 
-					/* And flip the modifiers */
+                        switch (op) {
+                        /* These ops require an operational change to flip their arguments TODO */
+                        case midgard_alu_op_flt:
+                        case midgard_alu_op_fle:
+                        case midgard_alu_op_ilt:
+                        case midgard_alu_op_ile:
+                        case midgard_alu_op_fcsel:
+                        case midgard_alu_op_icsel:
+                        case midgard_alu_op_isub:
+                                printf("Missed non-commutative flip (%s)\n", alu_opcode_names[op]);
+                                break;
 
-					unsigned src_temp;
+                        /* These ops are commutative and Just Flip */
+                        case midgard_alu_op_fne:
+                        case midgard_alu_op_fadd:
+                        case midgard_alu_op_fmul:
+                        case midgard_alu_op_fmin:
+                        case midgard_alu_op_fmax:
+                        case midgard_alu_op_iadd:
+                        case midgard_alu_op_imul:
+                        case midgard_alu_op_feq:
+                        case midgard_alu_op_ieq:
+                        case midgard_alu_op_ine:
+                        case midgard_alu_op_iand:
+                        case midgard_alu_op_ior:
+                        case midgard_alu_op_ixor:
+                                /* Flip the SSA numbers */
+                                ins->ssa_args.src0 = ins->ssa_args.src1;
+                                ins->ssa_args.src1 = SSA_FIXED_REGISTER(REGISTER_CONSTANT);
 
-					src_temp = ins->alu.src2;
-					ins->alu.src2 = ins->alu.src1;
-					ins->alu.src1 = src_temp;
-				default:
-					break;
-			}
-		}
+                                /* And flip the modifiers */
 
-		if (ins->ssa_args.src1 == SSA_FIXED_REGISTER(REGISTER_CONSTANT)) {
-			/* Extract the source information */
+                                unsigned src_temp;
 
-			midgard_vector_alu_src *src;
-			int q = ins->alu.src2;
-			midgard_vector_alu_src *m = (midgard_vector_alu_src *) &q;
-			src = m;
+                                src_temp = ins->alu.src2;
+                                ins->alu.src2 = ins->alu.src1;
+                                ins->alu.src1 = src_temp;
 
-			/* Component is from the swizzle, e.g. r26.w -> w component */
-			int component = src->swizzle & 3;
+                        default:
+                                break;
+                        }
+                }
 
-			/* Scale constant appropriately, if we can legally */
-			uint16_t scaled_constant = 0;
+                if (ins->ssa_args.src1 == SSA_FIXED_REGISTER(REGISTER_CONSTANT)) {
+                        /* Extract the source information */
 
-			/* XXX: Check legality */
-			if (midgard_is_integer_op(op)) {
-				/* TODO: Inline integer */
-				continue;
+                        midgard_vector_alu_src *src;
+                        int q = ins->alu.src2;
+                        midgard_vector_alu_src *m = (midgard_vector_alu_src *) &q;
+                        src = m;
 
-				unsigned int *iconstants = (unsigned int *) ins->constants;
-				scaled_constant = (uint16_t) iconstants[component];
+                        /* Component is from the swizzle, e.g. r26.w -> w component */
+                        int component = src->swizzle & 3;
 
-				/* Constant overflow after resize */
-				if (scaled_constant != iconstants[component])
-				       continue;
-			} else {
-				scaled_constant = _mesa_float_to_half((float) ins->constants[component]);
-			}
+                        /* Scale constant appropriately, if we can legally */
+                        uint16_t scaled_constant = 0;
 
-			/* We don't know how to handle these with a constant */
+                        /* XXX: Check legality */
+                        if (midgard_is_integer_op(op)) {
+                                /* TODO: Inline integer */
+                                continue;
 
-			if (src->abs || src->negate || src->half || src->rep_low || src->rep_high) {
-				printf("Bailing inline constant...\n");
-				continue;
-			}
+                                unsigned int *iconstants = (unsigned int *) ins->constants;
+                                scaled_constant = (uint16_t) iconstants[component];
 
-			/* Make sure that the constant is not itself a
-			 * vector by checking if all accessed values
-			 * (by the swizzle) are the same. */
+                                /* Constant overflow after resize */
+                                if (scaled_constant != iconstants[component])
+                                        continue;
+                        } else {
+                                scaled_constant = _mesa_float_to_half((float) ins->constants[component]);
+                        }
 
-			uint32_t *cons = (uint32_t *) ins->constants;
-			uint32_t value = cons[component];
+                        /* We don't know how to handle these with a constant */
 
-			bool is_vector = false;
+                        if (src->abs || src->negate || src->half || src->rep_low || src->rep_high) {
+                                printf("Bailing inline constant...\n");
+                                continue;
+                        }
 
-			for (int c = 1; c < 4; ++c) {
-				uint32_t test = cons[(src->swizzle >> (2 * c)) & 3];
-				
-				if (test != value) {
-					is_vector = true;
-					break;
-				}
-			}
+                        /* Make sure that the constant is not itself a
+                         * vector by checking if all accessed values
+                         * (by the swizzle) are the same. */
 
-			if (is_vector)
-				continue;
+                        uint32_t *cons = (uint32_t *) ins->constants;
+                        uint32_t value = cons[component];
 
-			/* Get rid of the embedded constant */
-			ins->has_constants = false; 
-			ins->ssa_args.inline_constant = true;
-			ins->ssa_args.src1 = scaled_constant;
-		}
-	}
+                        bool is_vector = false;
+
+                        for (int c = 1; c < 4; ++c) {
+                                uint32_t test = cons[(src->swizzle >> (2 * c)) & 3];
+
+                                if (test != value) {
+                                        is_vector = true;
+                                        break;
+                                }
+                        }
+
+                        if (is_vector)
+                                continue;
+
+                        /* Get rid of the embedded constant */
+                        ins->has_constants = false;
+                        ins->ssa_args.inline_constant = true;
+                        ins->ssa_args.src1 = scaled_constant;
+                }
+        }
 }
 
 /* Map normal SSA sources to other SSA sources / fixed registers (like
@@ -2554,20 +2589,20 @@ embedded_to_inline_constant(compiler_context *ctx)
 static void
 map_ssa_to_alias(compiler_context *ctx, int *ref)
 {
-	unsigned int alias = (uintptr_t) _mesa_hash_table_u64_search(ctx->ssa_to_alias, *ref + 1);
-	
-	if (alias) {
-		/* Remove entry in leftovers to avoid a redunant fmov */
+        unsigned int alias = (uintptr_t) _mesa_hash_table_u64_search(ctx->ssa_to_alias, *ref + 1);
 
-		struct set_entry *leftover = _mesa_set_search(ctx->leftover_ssa_to_alias, ((void *) (uintptr_t) (*ref + 1)));
+        if (alias) {
+                /* Remove entry in leftovers to avoid a redunant fmov */
 
-		if (leftover)
-			_mesa_set_remove(ctx->leftover_ssa_to_alias, leftover);
+                struct set_entry *leftover = _mesa_set_search(ctx->leftover_ssa_to_alias, ((void *) (uintptr_t) (*ref + 1)));
 
-		/* Assign the alias map */
-		*ref = alias - 1;
-		return;
-	}
+                if (leftover)
+                        _mesa_set_remove(ctx->leftover_ssa_to_alias, leftover);
+
+                /* Assign the alias map */
+                *ref = alias - 1;
+                return;
+        }
 }
 
 #define AS_SRC(to, u) \
@@ -2581,18 +2616,25 @@ map_ssa_to_alias(compiler_context *ctx, int *ref)
 static void
 midgard_eliminate_orphan_moves(compiler_context *ctx, midgard_block *block)
 {
-	util_dynarray_foreach(&block->instructions, midgard_instruction, ins) {
-		if (ins->unused) continue;
-		if (!ins->uses_ssa) continue;
-		if (ins->type != TAG_ALU_4) continue;
-		if (ins->alu.op != midgard_alu_op_fmov) continue;
-		if (ins->ssa_args.literal_out) continue;
-		if (ins->ssa_args.dest >= SSA_FIXED_MINIMUM) continue;
-		if (midgard_is_pinned(ctx, ins->ssa_args.dest)) continue;
-		if (is_live_after(block, ins, ins->ssa_args.dest)) continue;
+        util_dynarray_foreach(&block->instructions, midgard_instruction, ins) {
+                if (ins->unused) continue;
 
-		ins->unused = true;
-	}
+                if (!ins->uses_ssa) continue;
+
+                if (ins->type != TAG_ALU_4) continue;
+
+                if (ins->alu.op != midgard_alu_op_fmov) continue;
+
+                if (ins->ssa_args.literal_out) continue;
+
+                if (ins->ssa_args.dest >= SSA_FIXED_MINIMUM) continue;
+
+                if (midgard_is_pinned(ctx, ins->ssa_args.dest)) continue;
+
+                if (is_live_after(block, ins, ins->ssa_args.dest)) continue;
+
+                ins->unused = true;
+        }
 }
 
 /* The following passes reorder MIR instructions to enable better scheduling */
@@ -2600,38 +2642,43 @@ midgard_eliminate_orphan_moves(compiler_context *ctx, midgard_block *block)
 static void
 midgard_pair_load_store(compiler_context *ctx, midgard_block *block)
 {
-	util_dynarray_foreach(&block->instructions, midgard_instruction, ins) {
-		if (ins->unused) continue;
-		if (!ins->uses_ssa) continue;
-		if (ins->type != TAG_LOAD_STORE_4) continue;
+        util_dynarray_foreach(&block->instructions, midgard_instruction, ins) {
+                if (ins->unused) continue;
 
-		/* We've found a load/store op. Check if next is also load/store. Mind the gap */
-		if (IN_ARRAY(ins + 2, &block->instructions)) {
-			if ((ins + 2)->type == TAG_LOAD_STORE_4) {
-				/* If so, we're done since we're a pair */
-				++ins;
-				continue;
-			}
+                if (!ins->uses_ssa) continue;
 
-			/* Maximum search distance to pair, to avoid register pressure disasters */
-			int search_distance = 8;
+                if (ins->type != TAG_LOAD_STORE_4) continue;
 
-			/* Otherwise, we have an orphaned load/store -- search for another load */
-			for (midgard_instruction *c = ins + 1; IN_ARRAY(c, &block->instructions) && search_distance; ++c, --search_distance) {
-				if (c->unused) continue;
-				if (!c->uses_ssa) continue;
-				if (c->type != TAG_LOAD_STORE_4) continue;
-				if (OP_IS_STORE(c->load_store.op)) continue;
+                /* We've found a load/store op. Check if next is also load/store. Mind the gap */
+                if (IN_ARRAY(ins + 2, &block->instructions)) {
+                        if ((ins + 2)->type == TAG_LOAD_STORE_4) {
+                                /* If so, we're done since we're a pair */
+                                ++ins;
+                                continue;
+                        }
 
-				/* We found one! Move it up to pair and remove it from the old location */
+                        /* Maximum search distance to pair, to avoid register pressure disasters */
+                        int search_distance = 8;
 
-				memcpy(ins + 1, c, sizeof(midgard_instruction));
-				c->unused = true;
+                        /* Otherwise, we have an orphaned load/store -- search for another load */
+                        for (midgard_instruction *c = ins + 1; IN_ARRAY(c, &block->instructions) && search_distance; ++c, --search_distance) {
+                                if (c->unused) continue;
 
-				break;
-			}
-		}
-	}
+                                if (!c->uses_ssa) continue;
+
+                                if (c->type != TAG_LOAD_STORE_4) continue;
+
+                                if (OP_IS_STORE(c->load_store.op)) continue;
+
+                                /* We found one! Move it up to pair and remove it from the old location */
+
+                                memcpy(ins + 1, c, sizeof(midgard_instruction));
+                                c->unused = true;
+
+                                break;
+                        }
+                }
+        }
 }
 
 /* If there are leftovers after the below pass, emit actual fmov
@@ -2640,28 +2687,28 @@ midgard_pair_load_store(compiler_context *ctx, midgard_block *block)
 static void
 emit_leftover_move(compiler_context *ctx)
 {
-	set_foreach(ctx->leftover_ssa_to_alias, leftover) {
-		int base = ((uintptr_t) leftover->key) - 1;
-		int mapped = base;
+        set_foreach(ctx->leftover_ssa_to_alias, leftover) {
+                int base = ((uintptr_t) leftover->key) - 1;
+                int mapped = base;
 
-		map_ssa_to_alias(ctx, &mapped);
-		EMIT(fmov, mapped, blank_alu_src, base, false, midgard_outmod_none);
-	}
+                map_ssa_to_alias(ctx, &mapped);
+                EMIT(fmov, mapped, blank_alu_src, base, false, midgard_outmod_none);
+        }
 }
 
 static void
 actualise_ssa_to_alias(compiler_context *ctx)
 {
-	util_dynarray_foreach(ctx->current_block, midgard_instruction, ins) {
-		if (!ins->uses_ssa) continue;
+        util_dynarray_foreach(ctx->current_block, midgard_instruction, ins) {
+                if (!ins->uses_ssa) continue;
 
-		map_ssa_to_alias(ctx, &ins->ssa_args.src0);
+                map_ssa_to_alias(ctx, &ins->ssa_args.src0);
 
-		if (!ins->ssa_args.inline_constant)
-			map_ssa_to_alias(ctx, &ins->ssa_args.src1);
-	}
+                if (!ins->ssa_args.inline_constant)
+                        map_ssa_to_alias(ctx, &ins->ssa_args.src1);
+        }
 
-	emit_leftover_move(ctx);
+        emit_leftover_move(ctx);
 }
 
 /* Vertex shaders do not write gl_Position as is; instead, they write a
@@ -2675,115 +2722,117 @@ actualise_ssa_to_alias(compiler_context *ctx)
 static void
 write_transformed_position(nir_builder *b, nir_src input_point_src, int uniform_no)
 {
-	nir_ssa_def *input_point = nir_ssa_for_src(b, input_point_src, 4);
+        nir_ssa_def *input_point = nir_ssa_for_src(b, input_point_src, 4);
 
-	/* Get viewport from the uniforms */
-	nir_intrinsic_instr *load;
-	load = nir_intrinsic_instr_create(b->shader, nir_intrinsic_load_uniform);
-	load->num_components = 4;
-	load->src[0] = nir_src_for_ssa(nir_imm_int(b, uniform_no));
-	nir_ssa_dest_init(&load->instr, &load->dest, 4, 32, NULL);
-	nir_builder_instr_insert(b, &load->instr);
-	
-	/* Formatted as <width, height, centerx, centery> */
-	nir_ssa_def *viewport_vec4 = &load->dest.ssa;
-	nir_ssa_def *viewport_width = nir_channel(b, viewport_vec4, 0);
-	nir_ssa_def *viewport_height = nir_channel(b, viewport_vec4, 1);
-	nir_ssa_def *viewport_offset = nir_channels(b, viewport_vec4, 0x8 | 0x4);
+        /* Get viewport from the uniforms */
+        nir_intrinsic_instr *load;
+        load = nir_intrinsic_instr_create(b->shader, nir_intrinsic_load_uniform);
+        load->num_components = 4;
+        load->src[0] = nir_src_for_ssa(nir_imm_int(b, uniform_no));
+        nir_ssa_dest_init(&load->instr, &load->dest, 4, 32, NULL);
+        nir_builder_instr_insert(b, &load->instr);
 
-	/* XXX: From uniforms? */
-	nir_ssa_def *depth_near = nir_imm_float(b, 0.0);
-	nir_ssa_def *depth_far = nir_imm_float(b, 1.0);
+        /* Formatted as <width, height, centerx, centery> */
+        nir_ssa_def *viewport_vec4 = &load->dest.ssa;
+        nir_ssa_def *viewport_width = nir_channel(b, viewport_vec4, 0);
+        nir_ssa_def *viewport_height = nir_channel(b, viewport_vec4, 1);
+        nir_ssa_def *viewport_offset = nir_channels(b, viewport_vec4, 0x8 | 0x4);
 
-	/* World space to normalised device coordinates */
+        /* XXX: From uniforms? */
+        nir_ssa_def *depth_near = nir_imm_float(b, 0.0);
+        nir_ssa_def *depth_far = nir_imm_float(b, 1.0);
 
-	nir_ssa_def *w_recip = nir_frcp(b, nir_channel(b, input_point, 3));
-	nir_ssa_def *ndc_point = nir_fmul(b, nir_channels(b, input_point, 0x7), w_recip);
+        /* World space to normalised device coordinates */
 
-	/* Normalised device coordinates to screen space */
+        nir_ssa_def *w_recip = nir_frcp(b, nir_channel(b, input_point, 3));
+        nir_ssa_def *ndc_point = nir_fmul(b, nir_channels(b, input_point, 0x7), w_recip);
 
-	nir_ssa_def *viewport_multiplier = nir_vec2(b,
-			nir_fmul(b, viewport_width, nir_imm_float(b, 0.5f)),
-			nir_fmul(b, viewport_height, nir_imm_float(b, 0.5f)));
+        /* Normalised device coordinates to screen space */
 
-	nir_ssa_def *viewport_xy = nir_fadd(b, nir_fmul(b, nir_channels(b, ndc_point, 0x3), viewport_multiplier), viewport_offset);
+        nir_ssa_def *viewport_multiplier = nir_vec2(b,
+                                           nir_fmul(b, viewport_width, nir_imm_float(b, 0.5f)),
+                                           nir_fmul(b, viewport_height, nir_imm_float(b, 0.5f)));
 
-	nir_ssa_def *depth_multiplier = nir_fmul(b, nir_fsub(b, depth_far, depth_near), nir_imm_float(b, 0.5f));
-	nir_ssa_def *depth_offset     = nir_fmul(b, nir_fadd(b, depth_far, depth_near), nir_imm_float(b, 0.5f));
-	nir_ssa_def *screen_depth     = nir_fadd(b, nir_fmul(b, nir_channel(b, ndc_point, 2), depth_multiplier), depth_offset);
+        nir_ssa_def *viewport_xy = nir_fadd(b, nir_fmul(b, nir_channels(b, ndc_point, 0x3), viewport_multiplier), viewport_offset);
 
-	nir_ssa_def *screen_space = nir_vec4(b, 
-			nir_channel(b, viewport_xy, 0),
-			nir_channel(b, viewport_xy, 1),
-			screen_depth,
-			nir_imm_float(b, 0.0));
+        nir_ssa_def *depth_multiplier = nir_fmul(b, nir_fsub(b, depth_far, depth_near), nir_imm_float(b, 0.5f));
+        nir_ssa_def *depth_offset     = nir_fmul(b, nir_fadd(b, depth_far, depth_near), nir_imm_float(b, 0.5f));
+        nir_ssa_def *screen_depth     = nir_fadd(b, nir_fmul(b, nir_channel(b, ndc_point, 2), depth_multiplier), depth_offset);
 
-	/* Finally, write out the transformed values to the varying */
+        nir_ssa_def *screen_space = nir_vec4(b,
+                                             nir_channel(b, viewport_xy, 0),
+                                             nir_channel(b, viewport_xy, 1),
+                                             screen_depth,
+                                             nir_imm_float(b, 0.0));
 
-	nir_intrinsic_instr *store;
-	store = nir_intrinsic_instr_create(b->shader, nir_intrinsic_store_output);
-	store->num_components = 4;
-	nir_intrinsic_set_base(store, 0);
-	nir_intrinsic_set_write_mask(store, 0xf);
-	store->src[0].ssa = screen_space;
-	store->src[0].is_ssa = true;
-	store->src[1] = nir_src_for_ssa(nir_imm_int(b, 0));
-	nir_builder_instr_insert(b, &store->instr);
+        /* Finally, write out the transformed values to the varying */
+
+        nir_intrinsic_instr *store;
+        store = nir_intrinsic_instr_create(b->shader, nir_intrinsic_store_output);
+        store->num_components = 4;
+        nir_intrinsic_set_base(store, 0);
+        nir_intrinsic_set_write_mask(store, 0xf);
+        store->src[0].ssa = screen_space;
+        store->src[0].is_ssa = true;
+        store->src[1] = nir_src_for_ssa(nir_imm_int(b, 0));
+        nir_builder_instr_insert(b, &store->instr);
 }
 
 static void
 transform_position_writes(nir_shader *shader)
 {
-	nir_foreach_function(func, shader) {
-		nir_foreach_block(block, func->impl) {
-			nir_foreach_instr_safe(instr, block) {
-				if (instr->type != nir_instr_type_intrinsic) continue;
+        nir_foreach_function(func, shader) {
+                nir_foreach_block(block, func->impl) {
+                        nir_foreach_instr_safe(instr, block) {
+                                if (instr->type != nir_instr_type_intrinsic) continue;
 
-				nir_intrinsic_instr *intr = nir_instr_as_intrinsic(instr);
-				nir_variable *out = NULL;
+                                nir_intrinsic_instr *intr = nir_instr_as_intrinsic(instr);
+                                nir_variable *out = NULL;
 
-				switch (intr->intrinsic) {
-					case nir_intrinsic_store_output:
-						/* already had i/o lowered.. lookup the matching output var: */
-						nir_foreach_variable(var, &shader->outputs) {
-							int drvloc = var->data.driver_location;
-							if (nir_intrinsic_base(intr) == drvloc) {
-								out = var;
-								break;
-							}
-						}
+                                switch (intr->intrinsic) {
+                                case nir_intrinsic_store_output:
+                                        /* already had i/o lowered.. lookup the matching output var: */
+                                        nir_foreach_variable(var, &shader->outputs) {
+                                                int drvloc = var->data.driver_location;
 
-						break;
-					default:
-						break;
-				}
+                                                if (nir_intrinsic_base(intr) == drvloc) {
+                                                        out = var;
+                                                        break;
+                                                }
+                                        }
 
-				if (!out) continue;
+                                        break;
 
-				if (out->data.mode != nir_var_shader_out)
-					continue;
+                                default:
+                                        break;
+                                }
 
-				if (out->data.location != VARYING_SLOT_POS)
-					continue;
+                                if (!out) continue;
 
-				nir_builder b;
-				nir_builder_init(&b, func->impl);
-				b.cursor = nir_before_instr(instr);
+                                if (out->data.mode != nir_var_shader_out)
+                                        continue;
 
-				write_transformed_position(&b, intr->src[0], UNIFORM_VIEWPORT);
-				nir_instr_remove(instr);
-			}
-		}
-	}
+                                if (out->data.location != VARYING_SLOT_POS)
+                                        continue;
+
+                                nir_builder b;
+                                nir_builder_init(&b, func->impl);
+                                b.cursor = nir_before_instr(instr);
+
+                                write_transformed_position(&b, intr->src[0], UNIFORM_VIEWPORT);
+                                nir_instr_remove(instr);
+                        }
+                }
+        }
 }
 
 static void
 emit_fragment_epilogue(compiler_context *ctx)
 {
-	/* See the docs for why this works. TODO: gl_FragDepth */
+        /* See the docs for why this works. TODO: gl_FragDepth */
 
-	EMIT(alu_br_compact_cond, midgard_jmp_writeout_op_writeout, TAG_ALU_4, 0, midgard_condition_always);
-	EMIT(alu_br_compact_cond, midgard_jmp_writeout_op_writeout, TAG_ALU_4, -1, midgard_condition_always);
+        EMIT(alu_br_compact_cond, midgard_jmp_writeout_op_writeout, TAG_ALU_4, 0, midgard_condition_always);
+        EMIT(alu_br_compact_cond, midgard_jmp_writeout_op_writeout, TAG_ALU_4, -1, midgard_condition_always);
 }
 
 /* For the blend epilogue, we need to convert the blended fragment vec4 (stored
@@ -2793,150 +2842,150 @@ emit_fragment_epilogue(compiler_context *ctx)
 static void
 emit_blend_epilogue(compiler_context *ctx)
 {
-	/* vmul.fmul.none.fulllow hr48, r0, #255 */
+        /* vmul.fmul.none.fulllow hr48, r0, #255 */
 
-	midgard_instruction scale = {
-		.type = TAG_ALU_4,
-		.vector = true,
-		.uses_ssa = true,
-		.unit = UNIT_VMUL,
-		.ssa_args = {
-			.src0 = SSA_FIXED_REGISTER(0),
-			.src1 = _mesa_float_to_half(255.0),
-			.dest = 24,
-			.literal_out = true,
-			.inline_constant = true
-		},
-		.alu = {
-			.op = midgard_alu_op_fmul,
-			.reg_mode = midgard_reg_mode_full,
-			.dest_override = midgard_dest_override_lower,
-			.outmod = midgard_outmod_none,
-			.mask = 0xFF,
-			.src1 = vector_alu_srco_unsigned(blank_alu_src),
-			.src2 = vector_alu_srco_unsigned(blank_alu_src),
-		}
-	};
+        midgard_instruction scale = {
+                .type = TAG_ALU_4,
+                .vector = true,
+                .uses_ssa = true,
+                .unit = UNIT_VMUL,
+                .ssa_args = {
+                        .src0 = SSA_FIXED_REGISTER(0),
+                        .src1 = _mesa_float_to_half(255.0),
+                        .dest = 24,
+                        .literal_out = true,
+                        .inline_constant = true
+                },
+                .alu = {
+                        .op = midgard_alu_op_fmul,
+                        .reg_mode = midgard_reg_mode_full,
+                        .dest_override = midgard_dest_override_lower,
+                        .outmod = midgard_outmod_none,
+                        .mask = 0xFF,
+                        .src1 = vector_alu_srco_unsigned(blank_alu_src),
+                        .src2 = vector_alu_srco_unsigned(blank_alu_src),
+                }
+        };
 
-	util_dynarray_append(ctx->current_block, midgard_instruction, scale);
+        util_dynarray_append(ctx->current_block, midgard_instruction, scale);
 
-	/* vadd.f2u8.pos.low hr0, hr48, #0 */
+        /* vadd.f2u8.pos.low hr0, hr48, #0 */
 
-	midgard_vector_alu_src alu_src = blank_alu_src;
-	alu_src.half = true;
+        midgard_vector_alu_src alu_src = blank_alu_src;
+        alu_src.half = true;
 
-	midgard_instruction f2u8 = {
-		.type = TAG_ALU_4,
-		.vector = true,
-		.uses_ssa = true,
-		.ssa_args = {
-			.src0 = SSA_FIXED_REGISTER(24),
-			.dest = 0,
-			.literal_out = true,
-			.inline_constant = true
-		},
-		.alu = {
-			.op = midgard_alu_op_f2u8,
-			.reg_mode = midgard_reg_mode_half,
-			.dest_override = midgard_dest_override_lower,
-			.outmod = midgard_outmod_pos,
-			.mask = 0xF,
-			.src1 = vector_alu_srco_unsigned(alu_src),
-			.src2 = vector_alu_srco_unsigned(blank_alu_src),
-		}
-	};
+        midgard_instruction f2u8 = {
+                .type = TAG_ALU_4,
+                .vector = true,
+                .uses_ssa = true,
+                .ssa_args = {
+                        .src0 = SSA_FIXED_REGISTER(24),
+                        .dest = 0,
+                        .literal_out = true,
+                        .inline_constant = true
+                },
+                .alu = {
+                        .op = midgard_alu_op_f2u8,
+                        .reg_mode = midgard_reg_mode_half,
+                        .dest_override = midgard_dest_override_lower,
+                        .outmod = midgard_outmod_pos,
+                        .mask = 0xF,
+                        .src1 = vector_alu_srco_unsigned(alu_src),
+                        .src2 = vector_alu_srco_unsigned(blank_alu_src),
+                }
+        };
 
-	util_dynarray_append(ctx->current_block, midgard_instruction, f2u8);
+        util_dynarray_append(ctx->current_block, midgard_instruction, f2u8);
 
-	/* vmul.imov.quarter r0, r0, r0 */
+        /* vmul.imov.quarter r0, r0, r0 */
 
-	midgard_instruction imov_8 = {
-		.type = TAG_ALU_4,
-		.vector = true,
-		.alu = {
-			.op = midgard_alu_op_imov,
-			.reg_mode = midgard_reg_mode_quarter,
-			.dest_override = midgard_dest_override_none,
-			.outmod = midgard_outmod_none,
-			.mask = 0xFF,
-			.src1 = vector_alu_srco_unsigned(blank_alu_src),
-			.src2 = vector_alu_srco_unsigned(blank_alu_src),
-		}
-	};
+        midgard_instruction imov_8 = {
+                .type = TAG_ALU_4,
+                .vector = true,
+                .alu = {
+                        .op = midgard_alu_op_imov,
+                        .reg_mode = midgard_reg_mode_quarter,
+                        .dest_override = midgard_dest_override_none,
+                        .outmod = midgard_outmod_none,
+                        .mask = 0xFF,
+                        .src1 = vector_alu_srco_unsigned(blank_alu_src),
+                        .src2 = vector_alu_srco_unsigned(blank_alu_src),
+                }
+        };
 
-	/* Emit branch epilogue with the 8-bit move as the source */
+        /* Emit branch epilogue with the 8-bit move as the source */
 
-	util_dynarray_append(ctx->current_block, midgard_instruction, imov_8);
-	EMIT(alu_br_compact_cond, midgard_jmp_writeout_op_writeout, TAG_ALU_4, 0, midgard_condition_always);
+        util_dynarray_append(ctx->current_block, midgard_instruction, imov_8);
+        EMIT(alu_br_compact_cond, midgard_jmp_writeout_op_writeout, TAG_ALU_4, 0, midgard_condition_always);
 
-	util_dynarray_append(ctx->current_block, midgard_instruction, imov_8);
-	EMIT(alu_br_compact_cond, midgard_jmp_writeout_op_writeout, TAG_ALU_4, -1, midgard_condition_always);
+        util_dynarray_append(ctx->current_block, midgard_instruction, imov_8);
+        EMIT(alu_br_compact_cond, midgard_jmp_writeout_op_writeout, TAG_ALU_4, -1, midgard_condition_always);
 }
 
 static midgard_block *
 emit_block(compiler_context *ctx, nir_block *block)
 {
-	midgard_block this_block;
-	this_block.is_scheduled = false;
-	++ctx->block_count;
+        midgard_block this_block;
+        this_block.is_scheduled = false;
+        ++ctx->block_count;
 
-	ctx->texture_index[0] = -1;
-	ctx->texture_index[1] = -1;
+        ctx->texture_index[0] = -1;
+        ctx->texture_index[1] = -1;
 
-	/* Set up current block */
-	util_dynarray_init(&this_block.instructions, NULL);
-	ctx->current_block = &this_block.instructions;
+        /* Set up current block */
+        util_dynarray_init(&this_block.instructions, NULL);
+        ctx->current_block = &this_block.instructions;
 
-	nir_foreach_instr(instr, block) {
-		emit_instr(ctx, instr);
-		++ctx->instruction_count;
-	}
+        nir_foreach_instr(instr, block) {
+                emit_instr(ctx, instr);
+                ++ctx->instruction_count;
+        }
 
-	inline_alu_constants(ctx);
-	embedded_to_inline_constant(ctx);
+        inline_alu_constants(ctx);
+        embedded_to_inline_constant(ctx);
 
-	/* Perform heavylifting for aliasing */
-	actualise_ssa_to_alias(ctx);
+        /* Perform heavylifting for aliasing */
+        actualise_ssa_to_alias(ctx);
 
-	midgard_eliminate_orphan_moves(ctx, &this_block);
-	midgard_pair_load_store(ctx, &this_block);
+        midgard_eliminate_orphan_moves(ctx, &this_block);
+        midgard_pair_load_store(ctx, &this_block);
 
 #ifdef MIR_DEBUG
-	print_mir_block(&this_block);
+        print_mir_block(&this_block);
 #endif
 
-	/* Append fragment shader epilogue (value writeout) */
-	if (ctx->stage == MESA_SHADER_FRAGMENT) {
-		if (block == nir_impl_last_block(ctx->func->impl)) {
-			if (ctx->is_blend)
-				emit_blend_epilogue(ctx);
-			else
-				emit_fragment_epilogue(ctx);
-		}
-	}
+        /* Append fragment shader epilogue (value writeout) */
+        if (ctx->stage == MESA_SHADER_FRAGMENT) {
+                if (block == nir_impl_last_block(ctx->func->impl)) {
+                        if (ctx->is_blend)
+                                emit_blend_epilogue(ctx);
+                        else
+                                emit_fragment_epilogue(ctx);
+                }
+        }
 
-	/* Fallthrough save */
-	this_block.next_fallthrough = ctx->previous_source_block;
+        /* Fallthrough save */
+        this_block.next_fallthrough = ctx->previous_source_block;
 
-	/* Save the block. Initial and final may be the same. */
-	util_dynarray_append(&ctx->blocks, midgard_block, this_block);
+        /* Save the block. Initial and final may be the same. */
+        util_dynarray_append(&ctx->blocks, midgard_block, this_block);
 
-	midgard_block *block_ptr = util_dynarray_top_ptr(&ctx->blocks, midgard_block);
+        midgard_block *block_ptr = util_dynarray_top_ptr(&ctx->blocks, midgard_block);
 
-	if (block == nir_start_block(ctx->func->impl))
-		ctx->initial_block = block_ptr;
+        if (block == nir_start_block(ctx->func->impl))
+                ctx->initial_block = block_ptr;
 
-	if (block == nir_impl_last_block(ctx->func->impl))
-		ctx->final_block = block_ptr;
+        if (block == nir_impl_last_block(ctx->func->impl))
+                ctx->final_block = block_ptr;
 
-	/* Allow the next control flow to access us retroactively, for
-	 * branching etc */
-	ctx->current_block = &block_ptr->instructions;
-	
-	/* Document the fallthrough chain */
-	ctx->previous_source_block = block_ptr;
+        /* Allow the next control flow to access us retroactively, for
+         * branching etc */
+        ctx->current_block = &block_ptr->instructions;
 
-	return block_ptr;
+        /* Document the fallthrough chain */
+        ctx->previous_source_block = block_ptr;
+
+        return block_ptr;
 }
 
 static midgard_block *emit_cf_list(struct compiler_context *ctx, struct exec_list *list);
@@ -2944,349 +2993,355 @@ static midgard_block *emit_cf_list(struct compiler_context *ctx, struct exec_lis
 static void
 emit_if(struct compiler_context *ctx, nir_if *nif)
 {
-	/* Conditional branches expect the condition in r31.w; emit a move for
-	 * that in the _previous_ block (which is the current block). */
-	emit_condition(ctx, &nif->condition, true);
+        /* Conditional branches expect the condition in r31.w; emit a move for
+         * that in the _previous_ block (which is the current block). */
+        emit_condition(ctx, &nif->condition, true);
 
-	/* Speculatively emit the branch, but we can't fill it in until later */
-	EMIT(branch, true, true);
-	midgard_instruction *then_branch = util_dynarray_top_ptr(ctx->current_block, midgard_instruction);
+        /* Speculatively emit the branch, but we can't fill it in until later */
+        EMIT(branch, true, true);
+        midgard_instruction *then_branch = util_dynarray_top_ptr(ctx->current_block, midgard_instruction);
 
-	/* Emit the two subblocks */
-	midgard_block *then_block = emit_cf_list(ctx, &nif->then_list);
+        /* Emit the two subblocks */
+        midgard_block *then_block = emit_cf_list(ctx, &nif->then_list);
 
-	/* Emit a jump from the end of the then block to the end of the else */
-	EMIT(branch, false, false);
-	midgard_instruction *then_exit = util_dynarray_top_ptr(ctx->current_block, midgard_instruction);
+        /* Emit a jump from the end of the then block to the end of the else */
+        EMIT(branch, false, false);
+        midgard_instruction *then_exit = util_dynarray_top_ptr(ctx->current_block, midgard_instruction);
 
-	/* Emit second block, and check if it's empty */
+        /* Emit second block, and check if it's empty */
 
-	int else_idx = ctx->block_count;
-	int count_in = ctx->instruction_count;
-	midgard_block *else_block = emit_cf_list(ctx, &nif->else_list);
+        int else_idx = ctx->block_count;
+        int count_in = ctx->instruction_count;
+        midgard_block *else_block = emit_cf_list(ctx, &nif->else_list);
 
-	/* Now that we have the subblocks emitted, fix up the branches */
+        /* Now that we have the subblocks emitted, fix up the branches */
 
-	assert(then_block);
-	assert(else_block);
+        assert(then_block);
+        assert(else_block);
 
 
-	if (ctx->instruction_count == count_in) {
-		/* The else block is empty, so don't emit an exit jump */
-		then_exit->unused = true;
-		then_branch->branch.target_start = else_idx + 1;
-	} else {
-		then_branch->branch.target_start = else_idx;
-		then_exit->branch.target_start = else_idx + 1;
-	}
+        if (ctx->instruction_count == count_in) {
+                /* The else block is empty, so don't emit an exit jump */
+                then_exit->unused = true;
+                then_branch->branch.target_start = else_idx + 1;
+        } else {
+                then_branch->branch.target_start = else_idx;
+                then_exit->branch.target_start = else_idx + 1;
+        }
 }
 
 static void
 emit_loop(struct compiler_context *ctx, nir_loop *nloop)
 {
-	emit_cf_list(ctx, &nloop->body);
+        emit_cf_list(ctx, &nloop->body);
 }
 
 static midgard_block *
 emit_cf_list(struct compiler_context *ctx, struct exec_list *list)
 {
-	midgard_block *start_block = NULL;
+        midgard_block *start_block = NULL;
 
-	foreach_list_typed(nir_cf_node, node, node, list) {
-		switch (node->type) {
-		case nir_cf_node_block: {
-			midgard_block *block = emit_block(ctx, nir_cf_node_as_block(node));
+        foreach_list_typed(nir_cf_node, node, node, list) {
+                switch (node->type) {
+                case nir_cf_node_block: {
+                        midgard_block *block = emit_block(ctx, nir_cf_node_as_block(node));
 
-			if (!start_block)
-				start_block = block;
+                        if (!start_block)
+                                start_block = block;
 
-			break;
-		}
-		case nir_cf_node_if:
-			emit_if(ctx, nir_cf_node_as_if(node));
-			break;
-		case nir_cf_node_loop:
-			emit_loop(ctx, nir_cf_node_as_loop(node));
-			break;
-		case nir_cf_node_function:
-			assert(0);
-			break;
-		}
-	}
+                        break;
+                }
 
-	return start_block;
+                case nir_cf_node_if:
+                        emit_if(ctx, nir_cf_node_as_if(node));
+                        break;
+
+                case nir_cf_node_loop:
+                        emit_loop(ctx, nir_cf_node_as_loop(node));
+                        break;
+
+                case nir_cf_node_function:
+                        assert(0);
+                        break;
+                }
+        }
+
+        return start_block;
 }
 
 int
 midgard_compile_shader_nir(nir_shader *nir, midgard_program *program, bool is_blend)
 {
-	struct util_dynarray *compiled = &program->compiled;
+        struct util_dynarray *compiled = &program->compiled;
 
-	compiler_context ictx = {
-		.nir = nir,
-		.stage = nir->info.stage,
+        compiler_context ictx = {
+                .nir = nir,
+                .stage = nir->info.stage,
 
-		.is_blend = is_blend,
-		.blend_constant_offset = -1,
-	};
+                .is_blend = is_blend,
+                .blend_constant_offset = -1,
+        };
 
-	compiler_context *ctx = &ictx;
+        compiler_context *ctx = &ictx;
 
-	/* TODO: Decide this at runtime */
-	ctx->uniform_cutoff = 8;
+        /* TODO: Decide this at runtime */
+        ctx->uniform_cutoff = 8;
 
-	switch (ctx->stage) {
-		case MESA_SHADER_VERTEX:
-			ctx->special_uniforms = 1;
-			break;
-		default:
-			ctx->special_uniforms = 0;
-			break;
-	}
+        switch (ctx->stage) {
+        case MESA_SHADER_VERTEX:
+                ctx->special_uniforms = 1;
+                break;
 
-	/* Append epilogue uniforms if necessary. The cmdstream depends on
-	 * these being at the -end-; see assign_var_locations. */
+        default:
+                ctx->special_uniforms = 0;
+                break;
+        }
+
+        /* Append epilogue uniforms if necessary. The cmdstream depends on
+         * these being at the -end-; see assign_var_locations. */
 
         if (ctx->stage == MESA_SHADER_VERTEX) {
                 nir_variable_create(nir, nir_var_uniform, glsl_vec4_type(), "viewport");
         }
 
-	/* Assign var locations early, so the epilogue can use them if necessary */
+        /* Assign var locations early, so the epilogue can use them if necessary */
 
-	nir_assign_var_locations(&nir->outputs, &nir->num_outputs, glsl_type_size);
-	nir_assign_var_locations(&nir->inputs, &nir->num_inputs, glsl_type_size);
-	nir_assign_var_locations(&nir->uniforms, &nir->num_uniforms, glsl_type_size);
+        nir_assign_var_locations(&nir->outputs, &nir->num_outputs, glsl_type_size);
+        nir_assign_var_locations(&nir->inputs, &nir->num_inputs, glsl_type_size);
+        nir_assign_var_locations(&nir->uniforms, &nir->num_uniforms, glsl_type_size);
 
-	/* Initialize at a global (not block) level hash tables */
+        /* Initialize at a global (not block) level hash tables */
 
-	ctx->ssa_constants = _mesa_hash_table_u64_create(NULL); 
-	ctx->ssa_to_alias = _mesa_hash_table_u64_create(NULL); 
-	ctx->ssa_to_register = _mesa_hash_table_u64_create(NULL); 
-	ctx->hash_to_temp = _mesa_hash_table_u64_create(NULL); 
-	ctx->leftover_ssa_to_alias = _mesa_set_create(NULL, _mesa_hash_pointer, _mesa_key_pointer_equal);
+        ctx->ssa_constants = _mesa_hash_table_u64_create(NULL);
+        ctx->ssa_to_alias = _mesa_hash_table_u64_create(NULL);
+        ctx->ssa_to_register = _mesa_hash_table_u64_create(NULL);
+        ctx->hash_to_temp = _mesa_hash_table_u64_create(NULL);
+        ctx->leftover_ssa_to_alias = _mesa_set_create(NULL, _mesa_hash_pointer, _mesa_key_pointer_equal);
 
-	/* Assign actual uniform location, skipping over samplers */
+        /* Assign actual uniform location, skipping over samplers */
 
-	ctx->uniform_nir_to_mdg = _mesa_hash_table_u64_create(NULL); 
+        ctx->uniform_nir_to_mdg = _mesa_hash_table_u64_create(NULL);
 
-	nir_foreach_variable(var, &nir->uniforms) {
-		if (glsl_get_base_type(var->type) == GLSL_TYPE_SAMPLER) continue;
+        nir_foreach_variable(var, &nir->uniforms) {
+                if (glsl_get_base_type(var->type) == GLSL_TYPE_SAMPLER) continue;
 
-		for (int col = 0; col < glsl_get_matrix_columns(var->type); ++col) {
-			int id = ctx->uniform_count++;
-			_mesa_hash_table_u64_insert(ctx->uniform_nir_to_mdg, var->data.driver_location + col + 1, (void *) ((uintptr_t) (id + 1)));
-		}
-	}
+                for (int col = 0; col < glsl_get_matrix_columns(var->type); ++col) {
+                        int id = ctx->uniform_count++;
+                        _mesa_hash_table_u64_insert(ctx->uniform_nir_to_mdg, var->data.driver_location + col + 1, (void *) ((uintptr_t) (id + 1)));
+                }
+        }
 
-	if (ctx->stage == MESA_SHADER_VERTEX) {
-		ctx->varying_nir_to_mdg = _mesa_hash_table_u64_create(NULL); 
-		ctx->varying_count = 1; /* Offset away from gl_Position */
+        if (ctx->stage == MESA_SHADER_VERTEX) {
+                ctx->varying_nir_to_mdg = _mesa_hash_table_u64_create(NULL);
+                ctx->varying_count = 1; /* Offset away from gl_Position */
 
-		nir_foreach_variable(var, &nir->outputs) {
-			if (var->data.location < VARYING_SLOT_VAR0) {
-				if (var->data.location == VARYING_SLOT_POS) {
-					printf("Adding pos %d\n", var->data.driver_location + 1);
-					_mesa_hash_table_u64_insert(ctx->varying_nir_to_mdg, var->data.driver_location + 1, (void *) ((uintptr_t) (1)));
-				} else {
-					printf("Skipping unknown\n");
-				}
-				
-				continue;
-			}
+                nir_foreach_variable(var, &nir->outputs) {
+                        if (var->data.location < VARYING_SLOT_VAR0) {
+                                if (var->data.location == VARYING_SLOT_POS) {
+                                        printf("Adding pos %d\n", var->data.driver_location + 1);
+                                        _mesa_hash_table_u64_insert(ctx->varying_nir_to_mdg, var->data.driver_location + 1, (void *) ((uintptr_t) (1)));
+                                } else {
+                                        printf("Skipping unknown\n");
+                                }
 
-			for (int col = 0; col < glsl_get_matrix_columns(var->type); ++col) {
-				int id = ctx->varying_count++;
-				printf("Adding varying %d\n", var->data.driver_location + col + 1);
-				_mesa_hash_table_u64_insert(ctx->varying_nir_to_mdg, var->data.driver_location + col + 1, (void *) ((uintptr_t) (id + 1)));
-			}
-		}
-	}
+                                continue;
+                        }
+
+                        for (int col = 0; col < glsl_get_matrix_columns(var->type); ++col) {
+                                int id = ctx->varying_count++;
+                                printf("Adding varying %d\n", var->data.driver_location + col + 1);
+                                _mesa_hash_table_u64_insert(ctx->varying_nir_to_mdg, var->data.driver_location + col + 1, (void *) ((uintptr_t) (id + 1)));
+                        }
+                }
+        }
 
 
 
-	/* Lower vars -- not I/O -- before epilogue */
+        /* Lower vars -- not I/O -- before epilogue */
 
-	NIR_PASS_V(nir, nir_lower_var_copies);
-	NIR_PASS_V(nir, nir_lower_vars_to_ssa);
-	NIR_PASS_V(nir, nir_split_var_copies);
-	NIR_PASS_V(nir, nir_lower_var_copies);
-	NIR_PASS_V(nir, nir_lower_global_vars_to_local);
-	NIR_PASS_V(nir, nir_lower_var_copies);
-	NIR_PASS_V(nir, nir_lower_vars_to_ssa);
-	NIR_PASS_V(nir, nir_lower_io, nir_var_all, glsl_type_size, 0);
+        NIR_PASS_V(nir, nir_lower_var_copies);
+        NIR_PASS_V(nir, nir_lower_vars_to_ssa);
+        NIR_PASS_V(nir, nir_split_var_copies);
+        NIR_PASS_V(nir, nir_lower_var_copies);
+        NIR_PASS_V(nir, nir_lower_global_vars_to_local);
+        NIR_PASS_V(nir, nir_lower_var_copies);
+        NIR_PASS_V(nir, nir_lower_vars_to_ssa);
+        NIR_PASS_V(nir, nir_lower_io, nir_var_all, glsl_type_size, 0);
 
-	/* Append vertex epilogue before optimisation, so the epilogue itself
-	 * is optimised */
+        /* Append vertex epilogue before optimisation, so the epilogue itself
+         * is optimised */
 
-	if (ctx->stage == MESA_SHADER_VERTEX)
-		transform_position_writes(nir);
+        if (ctx->stage == MESA_SHADER_VERTEX)
+                transform_position_writes(nir);
 
-	/* Optimisation passes */
+        /* Optimisation passes */
 
-	optimise_nir(nir);
+        optimise_nir(nir);
 
 #ifdef NIR_DEBUG
-	nir_print_shader(nir, stdout);
+        nir_print_shader(nir, stdout);
 #endif
 
-	/* Assign counts, now that we're sure (post-optimisation) */
-	program->uniform_count = nir->num_uniforms;
+        /* Assign counts, now that we're sure (post-optimisation) */
+        program->uniform_count = nir->num_uniforms;
 
-	program->attribute_count = (ctx->stage == MESA_SHADER_VERTEX) ? nir->num_inputs : 0;
-	program->varying_count = (ctx->stage == MESA_SHADER_VERTEX) ? nir->num_outputs : ((ctx->stage == MESA_SHADER_FRAGMENT) ? nir->num_inputs : 0);
+        program->attribute_count = (ctx->stage == MESA_SHADER_VERTEX) ? nir->num_inputs : 0;
+        program->varying_count = (ctx->stage == MESA_SHADER_VERTEX) ? nir->num_outputs : ((ctx->stage == MESA_SHADER_FRAGMENT) ? nir->num_inputs : 0);
 
 
-	nir_foreach_function(func, nir) {
-		if (!func->impl)
-			continue;
+        nir_foreach_function(func, nir) {
+                if (!func->impl)
+                        continue;
 
-		util_dynarray_init(&ctx->blocks, NULL);
-		ctx->block_count = 0;
-		ctx->func = func;
+                util_dynarray_init(&ctx->blocks, NULL);
+                ctx->block_count = 0;
+                ctx->func = func;
 
-		emit_cf_list(ctx, &func->impl->body);
-		emit_block(ctx, func->impl->end_block);
+                emit_cf_list(ctx, &func->impl->body);
+                emit_block(ctx, func->impl->end_block);
 
-		break; /* TODO: Multi-function shaders */
-	}
+                break; /* TODO: Multi-function shaders */
+        }
 
-	util_dynarray_init(compiled, NULL);
+        util_dynarray_init(compiled, NULL);
 
-	/* Schedule! */
-	schedule_program(ctx);
+        /* Schedule! */
+        schedule_program(ctx);
 
-	/* Now that all the bundles are scheduled and we can calculate block
-	 * sizes, emit actual branch instructions rather than placeholders */
+        /* Now that all the bundles are scheduled and we can calculate block
+         * sizes, emit actual branch instructions rather than placeholders */
 
-	int br_block_idx = 0;
+        int br_block_idx = 0;
 
-	util_dynarray_foreach(&ctx->blocks, midgard_block, block) {
-		util_dynarray_foreach(&block->bundles, midgard_bundle, bundle) {
-			for (int c = 0; c < bundle->instruction_count; ++c) {
-				midgard_instruction *ins = &bundle->instructions[c];
+        util_dynarray_foreach(&ctx->blocks, midgard_block, block) {
+                util_dynarray_foreach(&block->bundles, midgard_bundle, bundle) {
+                        for (int c = 0; c < bundle->instruction_count; ++c) {
+                                midgard_instruction *ins = &bundle->instructions[c];
 
-				if (ins->unused) continue;
-				if (ins->unit != ALU_ENAB_BR_COMPACT) continue;
-				if (ins->prepacked_branch) continue;
+                                if (ins->unused) continue;
 
-				uint16_t compact;
+                                if (ins->unit != ALU_ENAB_BR_COMPACT) continue;
 
-				/* Determine the block we're jumping to */
-				int target_number = ins->branch.target_start;
+                                if (ins->prepacked_branch) continue;
 
-				midgard_block *target = util_dynarray_element(&ctx->blocks, midgard_block, target_number);
-				assert(target);
+                                uint16_t compact;
 
-				/* Determine the destination tag */
-				midgard_bundle *first = util_dynarray_element(&target->bundles, midgard_bundle, 0);
-				assert(first);
+                                /* Determine the block we're jumping to */
+                                int target_number = ins->branch.target_start;
 
-				int dest_tag = first->tag;
+                                midgard_block *target = util_dynarray_element(&ctx->blocks, midgard_block, target_number);
+                                assert(target);
 
-				/* Count up the number of quadwords we're jumping over. That is, the number of quadwords in each of the blocks between (br_block_idx, target_number) */
-				assert(target_number > br_block_idx); /* TODO: Jumps backwards */
+                                /* Determine the destination tag */
+                                midgard_bundle *first = util_dynarray_element(&target->bundles, midgard_bundle, 0);
+                                assert(first);
 
-				int quadword_offset = 0;
+                                int dest_tag = first->tag;
 
-				for (int idx = br_block_idx + 1; idx < target_number; ++idx) {
-					midgard_block *blk = util_dynarray_element(&ctx->blocks, midgard_block, idx);
-					assert(blk);
-					
-					quadword_offset += blk->quadword_count;
-				}
+                                /* Count up the number of quadwords we're jumping over. That is, the number of quadwords in each of the blocks between (br_block_idx, target_number) */
+                                assert(target_number > br_block_idx); /* TODO: Jumps backwards */
 
-				if (ins->branch.conditional) {
-					midgard_branch_cond branch = {
-						.op = midgard_jmp_writeout_op_branch_cond,
-						.dest_tag = dest_tag,
-						.offset = quadword_offset,
-						.cond = ins->branch.invert_conditional ? midgard_condition_false : midgard_condition_true
-					};
+                                int quadword_offset = 0;
 
-					memcpy(&compact, &branch, sizeof(branch));
-				} else {
-					midgard_branch_uncond branch = {
-						.op = midgard_jmp_writeout_op_branch_uncond,
-						.dest_tag = dest_tag, 
-						.offset = quadword_offset, 
-						.unknown = 1
-					};
+                                for (int idx = br_block_idx + 1; idx < target_number; ++idx) {
+                                        midgard_block *blk = util_dynarray_element(&ctx->blocks, midgard_block, idx);
+                                        assert(blk);
 
-					memcpy(&compact, &branch, sizeof(branch));
-				}
+                                        quadword_offset += blk->quadword_count;
+                                }
 
-				/* Swap in the generic branch for our actual branch */
-				ins->unit = ALU_ENAB_BR_COMPACT;
-				ins->br_compact = compact;
-			}
+                                if (ins->branch.conditional) {
+                                        midgard_branch_cond branch = {
+                                                .op = midgard_jmp_writeout_op_branch_cond,
+                                                .dest_tag = dest_tag,
+                                                .offset = quadword_offset,
+                                                .cond = ins->branch.invert_conditional ? midgard_condition_false : midgard_condition_true
+                                        };
 
-		}
+                                        memcpy(&compact, &branch, sizeof(branch));
+                                } else {
+                                        midgard_branch_uncond branch = {
+                                                .op = midgard_jmp_writeout_op_branch_uncond,
+                                                .dest_tag = dest_tag,
+                                                .offset = quadword_offset,
+                                                .unknown = 1
+                                        };
 
-		++br_block_idx;
-	}
+                                        memcpy(&compact, &branch, sizeof(branch));
+                                }
 
-	/* Emit flat binary from the instruction arrays. Iterate each block in
-	 * sequence. Save instruction boundaries such that lookahead tags can
-	 * be assigned easily */
+                                /* Swap in the generic branch for our actual branch */
+                                ins->unit = ALU_ENAB_BR_COMPACT;
+                                ins->br_compact = compact;
+                        }
 
-	/* Cache _all_ bundles in source order for lookahead across failed branches */
+                }
 
-	int bundle_count = 0;
-	util_dynarray_foreach(&ctx->blocks, midgard_block, block) {
-		bundle_count += block->bundles.size / sizeof(midgard_bundle);
-	}
-	midgard_bundle **source_order_bundles = malloc(sizeof(midgard_bundle*) * bundle_count);
-	int bundle_idx = 0;
-	util_dynarray_foreach(&ctx->blocks, midgard_block, block) {
-		util_dynarray_foreach(&block->bundles, midgard_bundle, bundle) {
-			source_order_bundles[bundle_idx++] = bundle;
-		}
-	}
+                ++br_block_idx;
+        }
 
-	int current_bundle = 0;
+        /* Emit flat binary from the instruction arrays. Iterate each block in
+         * sequence. Save instruction boundaries such that lookahead tags can
+         * be assigned easily */
 
-	util_dynarray_foreach(&ctx->blocks, midgard_block, block) {
-		util_dynarray_foreach(&block->bundles, midgard_bundle, bundle) {
-			int lookahead = 1;
+        /* Cache _all_ bundles in source order for lookahead across failed branches */
 
-			if (current_bundle + 1 < bundle_count) {
-				uint8_t next = source_order_bundles[current_bundle + 1]->tag;
+        int bundle_count = 0;
+        util_dynarray_foreach(&ctx->blocks, midgard_block, block) {
+                bundle_count += block->bundles.size / sizeof(midgard_bundle);
+        }
+        midgard_bundle **source_order_bundles = malloc(sizeof(midgard_bundle *) * bundle_count);
+        int bundle_idx = 0;
+        util_dynarray_foreach(&ctx->blocks, midgard_block, block) {
+                util_dynarray_foreach(&block->bundles, midgard_bundle, bundle) {
+                        source_order_bundles[bundle_idx++] = bundle;
+                }
+        }
 
-				if (!(current_bundle + 2 < bundle_count) && IS_ALU(next)) {
-					lookahead = 1;
-				} else {
-					lookahead = next;
-				}
-			}
+        int current_bundle = 0;
 
-			emit_binary_bundle(ctx, bundle, compiled, lookahead);
-			++current_bundle;
-		}
+        util_dynarray_foreach(&ctx->blocks, midgard_block, block) {
+                util_dynarray_foreach(&block->bundles, midgard_bundle, bundle) {
+                        int lookahead = 1;
 
-		/* TODO: Free deeper */
-		util_dynarray_fini(&block->instructions);
-	}
+                        if (current_bundle + 1 < bundle_count) {
+                                uint8_t next = source_order_bundles[current_bundle + 1]->tag;
 
-	free(source_order_bundles);
+                                if (!(current_bundle + 2 < bundle_count) && IS_ALU(next)) {
+                                        lookahead = 1;
+                                } else {
+                                        lookahead = next;
+                                }
+                        }
 
-	/* Due to lookahead, we need to report in the command stream the first tag executed */
+                        emit_binary_bundle(ctx, bundle, compiled, lookahead);
+                        ++current_bundle;
+                }
 
-	midgard_block *initial_block = util_dynarray_element(&ctx->blocks, midgard_block, 0);
-	midgard_bundle *initial_bundle = util_dynarray_element(&initial_block->bundles, midgard_bundle, 0);
-	program->first_tag = initial_bundle->tag;
+                /* TODO: Free deeper */
+                util_dynarray_fini(&block->instructions);
+        }
 
-	/* Deal with off-by-one related to the fencepost problem */
-	program->work_register_count = ctx->work_registers + 1;
+        free(source_order_bundles);
 
-	program->can_discard = ctx->can_discard;
-	program->uniform_cutoff = ctx->uniform_cutoff;
+        /* Due to lookahead, we need to report in the command stream the first tag executed */
 
-	program->blend_patch_offset = ctx->blend_constant_offset;
-	printf("Patch %d\n", program->blend_patch_offset);
+        midgard_block *initial_block = util_dynarray_element(&ctx->blocks, midgard_block, 0);
+        midgard_bundle *initial_bundle = util_dynarray_element(&initial_block->bundles, midgard_bundle, 0);
+        program->first_tag = initial_bundle->tag;
+
+        /* Deal with off-by-one related to the fencepost problem */
+        program->work_register_count = ctx->work_registers + 1;
+
+        program->can_discard = ctx->can_discard;
+        program->uniform_cutoff = ctx->uniform_cutoff;
+
+        program->blend_patch_offset = ctx->blend_constant_offset;
+        printf("Patch %d\n", program->blend_patch_offset);
 
 #ifdef MDG_DEBUG
-	disassemble_midgard(program->compiled.data, program->compiled.size);
+        disassemble_midgard(program->compiled.data, program->compiled.size);
 #endif
 
-	return 0;
+        return 0;
 }
