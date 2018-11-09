@@ -25,6 +25,7 @@
 #include <stdio.h>
 #include "pan_blend_shaders.h"
 #include "midgard/midgard_compile.h"
+#include "compiler/nir/nir_builder.h"
 
 /*
  * Implements the command stream portion of programmatic blend shaders.
@@ -85,12 +86,40 @@ panfrost_make_blend_shader(struct panfrost_context *ctx, struct panfrost_blend_s
         //const struct pipe_rt_blend_state *blend = &cso->base.rt[0];
         mali_ptr *out = &cso->blend_shader;
 
+        /* Build the shader */
+
+        nir_shader *shader = nir_shader_create(NULL, MESA_SHADER_FRAGMENT, NULL, NULL);
+        nir_function *fn = nir_function_create(shader, "main");
+        nir_function_impl *impl = nir_function_impl_create(fn);
+
+        /* Create the blend variables */
+
+        nir_variable *c_src = nir_variable_create(shader, nir_var_shader_in, glsl_vector_type(GLSL_TYPE_FLOAT, 4), "gl_Color");
+        nir_variable *c_dst = nir_variable_create(shader, nir_var_shader_in, glsl_vector_type(GLSL_TYPE_FLOAT, 4), "gl_SecondaryColor");
+        nir_variable *c_out = nir_variable_create(shader, nir_var_shader_out, glsl_vector_type(GLSL_TYPE_FLOAT, 4), "gl_FragColor");
+
+        c_src->data.location = VARYING_SLOT_COL0;
+        c_dst->data.location = VARYING_SLOT_COL1;
+        c_out->data.location = FRAG_RESULT_COLOR;
+
+        /* Setup nir_builder */
+
+        nir_builder _b;
+        nir_builder *b = &_b;
+        nir_builder_init(b, impl);
+        b->cursor = nir_before_block(nir_start_block(impl));
+
+        /* Build a trivial blend shader */
+        nir_store_var(b, c_out, nir_load_var(b, c_src), 0xFF);
+
+        nir_print_shader(shader, stdout);
+
         /* Upload the shader */
         midgard_program program = {
                 .work_register_count = 3,
                 .first_tag = 9,
-                .blend_patch_offset = 16
-                //.blend_patch_offset = -1,
+                //.blend_patch_offset = 16
+                .blend_patch_offset = -1,
         };
 
         char dst[4096];
