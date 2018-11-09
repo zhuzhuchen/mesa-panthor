@@ -26,7 +26,6 @@
 #define __BUILDER_H__
 
 #define BIT64
-#define T8XX
 #define MFBD
 
 #define _LARGEFILE64_SOURCE 1
