@@ -116,7 +116,7 @@ panfrost_make_blend_shader(struct panfrost_context *ctx, struct panfrost_blend_s
         nir_ssa_def *s_dst = nir_load_var(b, c_dst);
 
         /* Build a trivial blend shader */
-        nir_store_var(b, c_out, nir_blend_f(b, blend, s_src, s_dst), 0xFF);
+        nir_store_var(b, c_out, nir_blending_f(blend, b, s_src, s_dst), 0xFF);
 
         nir_print_shader(shader, stdout);
 
