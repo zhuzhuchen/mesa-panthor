@@ -23,27 +23,30 @@
  */
 
 #include "compiler/nir/nir_builder.h"
+#include "pipe/p_state.h"
 #include "util/u_format.h"
 #include "nir_lower_blend.h"
 
+/* src and dst are vec4 */
+
 nir_ssa_def *
 nir_blend_channel_f(nir_builder *b,
-                    nir_ssa_def **src,
-                    nir_ssa_def **dst,
-                    unsigned factor,
-                    int channel)
+                    nir_ssa_def *src,
+                    nir_ssa_def *dst,
+                    unsigned factor)
 {
         switch(factor) {
         case PIPE_BLENDFACTOR_ONE:
                 return nir_imm_float(b, 1.0);
         case PIPE_BLENDFACTOR_SRC_COLOR:
-                return src[channel];
+                return nir_channels(b, src, 0x7);
         case PIPE_BLENDFACTOR_SRC_ALPHA:
-                return src[3];
+                return nir_channel(b, src, 3);
         case PIPE_BLENDFACTOR_DST_ALPHA:
-                return dst[3];
+                return nir_channel(b, dst, 3);
         case PIPE_BLENDFACTOR_DST_COLOR:
-                return dst[channel];
+                return nir_channels(b, src, 0x7);
+#if 0
         case PIPE_BLENDFACTOR_SRC_ALPHA_SATURATE:
                 if (channel != 3) {
                         return nir_fmin(b,
@@ -61,8 +64,10 @@ nir_blend_channel_f(nir_builder *b,
                                              0);
         case PIPE_BLENDFACTOR_CONST_ALPHA:
                 return nir_load_blend_const_color_a_float(b);
+#endif
         case PIPE_BLENDFACTOR_ZERO:
                 return nir_imm_float(b, 0.0);
+#if 0
         case PIPE_BLENDFACTOR_INV_SRC_COLOR:
                 return nir_fsub(b, nir_imm_float(b, 1.0), src[channel]);
         case PIPE_BLENDFACTOR_INV_SRC_ALPHA:
@@ -81,6 +86,7 @@ nir_blend_channel_f(nir_builder *b,
                 return nir_fsub(b, nir_imm_float(b, 1.0),
                                 nir_load_blend_const_color_a_float(b));
 
+#endif
         default:
         case PIPE_BLENDFACTOR_SRC1_COLOR:
         case PIPE_BLENDFACTOR_SRC1_ALPHA:
@@ -114,6 +120,41 @@ nir_blend_func_f(nir_builder *b, nir_ssa_def *src, nir_ssa_def *dst,
                 return src;
 
         }
+}
+
+/* Blend a single "unit", consisting of a function and factor pair. Either RGB
+ * or A */
+
+static nir_ssa_def *
+nir_blend_unit_f(nir_builder *b, nir_ssa_def *src, nir_ssa_def *dst, unsigned func, unsigned src_factor, unsigned dst_factor, unsigned mask)
+{
+        /* Compile factors */
+        nir_ssa_def *compiled_src_factor = nir_blend_channel_f(b, src, dst, src_factor);
+        nir_ssa_def *compiled_dst_factor = nir_blend_channel_f(b, src, dst, src_factor);
+
+        /* Apply factor to source and destination */
+        nir_ssa_def *scaled_src = nir_fmul(b, nir_channels(b, src, mask), compiled_src_factor);
+        nir_ssa_def *scaled_dst = nir_fmul(b, nir_channels(b, dst, mask), compiled_dst_factor);
+
+        /* Blend together */
+        return nir_blend_func_f(b, scaled_src, scaled_dst, func);
+}
+
+/* Implement floating point blending */
+
+nir_ssa_def *
+nir_blend_f(nir_builder *b, const struct pipe_rt_blend_state *blend, nir_ssa_def *src, nir_ssa_def *dst)
+{
+        /* TODO: Alpha */
+        nir_ssa_def *blended_rgb = nir_blend_unit_f(b, src, dst, blend->rgb_func, blend->rgb_src_factor, blend->rgb_dst_factor, 0x7);
+        nir_ssa_def *blended_a = nir_blend_unit_f(b, src, dst, blend->alpha_func, blend->alpha_src_factor, blend->alpha_dst_factor, 0x8);
+
+        /* Combine */
+        return nir_vec4(b,
+                        nir_channel(b, blended_rgb, 0),
+                        nir_channel(b, blended_rgb, 1),
+                        nir_channel(b, blended_rgb, 2),
+                        nir_channel(b, blended_a, 0));
 }
 
 #if 0

@@ -24,13 +24,14 @@
 
 nir_ssa_def *
 nir_blend_channel_f(nir_builder *b,
-                    nir_ssa_def **src,
-                    nir_ssa_def **dst,
-                    unsigned factor,
-                    int channel);
+                    nir_ssa_def *src,
+                    nir_ssa_def *dst,
+                    unsigned factor);
 
 nir_ssa_def *
 nir_blend_func_f(nir_builder *b, nir_ssa_def *src, nir_ssa_def *dst,
                  unsigned func);
 
+nir_ssa_def *
+nir_blend_f(nir_builder *b, const struct pipe_rt_blend_state *blend, nir_ssa_def *src, nir_ssa_def *dst);
 

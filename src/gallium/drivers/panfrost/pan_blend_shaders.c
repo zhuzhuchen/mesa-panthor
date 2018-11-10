@@ -84,7 +84,7 @@
 void
 panfrost_make_blend_shader(struct panfrost_context *ctx, struct panfrost_blend_state *cso, const struct pipe_blend_color *blend_color)
 {
-        //const struct pipe_rt_blend_state *blend = &cso->base.rt[0];
+        const struct pipe_rt_blend_state *blend = &cso->base.rt[0];
         mali_ptr *out = &cso->blend_shader;
 
         /* Build the shader */
@@ -110,8 +110,13 @@ panfrost_make_blend_shader(struct panfrost_context *ctx, struct panfrost_blend_s
         nir_builder_init(b, impl);
         b->cursor = nir_before_block(nir_start_block(impl));
 
+        /* Setup inputs */
+
+        nir_ssa_def *s_src = nir_load_var(b, c_src);
+        nir_ssa_def *s_dst = nir_load_var(b, c_dst);
+
         /* Build a trivial blend shader */
-        nir_store_var(b, c_out, nir_blend_func_f(b, nir_load_var(b, c_dst), nir_load_var(b, c_src), PIPE_BLEND_ADD), 0xFF);
+        nir_store_var(b, c_out, nir_blend_f(b, blend, s_src, s_dst), 0xFF);
 
         nir_print_shader(shader, stdout);
 
