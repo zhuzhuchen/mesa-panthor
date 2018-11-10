@@ -60,7 +60,15 @@ libpanfrost = static_library(
     dep_thread,
     idep_nir
   ],
-  include_directories : [inc_common, inc_gallium_aux, inc_gallium, inc_include, inc_src, include_directories('midgard'), include_directories('include')],
+  include_directories : [
+    inc_common,
+    inc_gallium_aux,
+    inc_gallium,
+    inc_include,
+    inc_src,
+    include_directories('midgard'),
+    include_directories('include')
+  ],
   c_args : [c_vis_args, c_msvc_compat_args],
 )
 
@@ -79,7 +87,14 @@ files_midgard = files(
 midgard_compiler = executable(
   'midgard_compiler',
   [files_midgard, midgard_nir_algebraic_c],
-  include_directories : [inc_common, inc_src, inc_include, inc_gallium, inc_gallium_aux, include_directories('midgard')],
+  include_directories : [
+    inc_common,
+    inc_src,
+    inc_include,
+    inc_gallium,
+    inc_gallium_aux,
+    include_directories('midgard')
+    ],
   dependencies : [
     dep_thread,
     idep_nir
