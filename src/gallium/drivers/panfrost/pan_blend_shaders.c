@@ -26,6 +26,7 @@
 #include "pan_blend_shaders.h"
 #include "midgard/midgard_compile.h"
 #include "compiler/nir/nir_builder.h"
+#include "nir_lower_blend.h"
 
 /*
  * Implements the command stream portion of programmatic blend shaders.
@@ -110,7 +111,7 @@ panfrost_make_blend_shader(struct panfrost_context *ctx, struct panfrost_blend_s
         b->cursor = nir_before_block(nir_start_block(impl));
 
         /* Build a trivial blend shader */
-        nir_store_var(b, c_out, nir_fadd(b, nir_load_var(b, c_dst), nir_load_var(b, c_src)), 0xFF);
+        nir_store_var(b, c_out, nir_blend_func_f(b, nir_load_var(b, c_dst), nir_load_var(b, c_src), PIPE_BLEND_ADD), 0xFF);
 
         nir_print_shader(shader, stdout);
 
