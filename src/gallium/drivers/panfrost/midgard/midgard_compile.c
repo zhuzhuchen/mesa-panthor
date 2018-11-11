@@ -1637,6 +1637,8 @@ allocate_registers(compiler_context *ctx)
 
                 if (live_end[i] == -1)
                         live_end[i] = d;
+
+                printf("%i: %d, %d\n", i, live_start[i], live_end[i]);
         }
 
         /* Setup interference between nodes that are live at the same time */
@@ -1644,14 +1646,6 @@ allocate_registers(compiler_context *ctx)
         for (int i = 0; i < nodes; ++i) {
                 for (int j = i + 1; j < nodes; ++j) {
                         if (!(live_start[i] >= live_end[j] || live_start[j] >= live_end[i]))
-                                if ((live_start[i] != -1) && (live_start[j] != -1))
-                                        ra_add_node_interference(g, i, j);
-                }
-        }
-
-        for (int i = 0; i < nodes; ++i) {
-                for (int j = i + 1; j < nodes; ++j) {
-                        if (i == 0)
                                 ra_add_node_interference(g, i, j);
                 }
         }
