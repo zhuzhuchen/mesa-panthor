@@ -27,6 +27,16 @@
 #include "util/u_format.h"
 #include "nir_lower_blend.h"
 
+/* Implements fixed-function blending in software. The standard entrypoint for
+ * floating point blending is nir_blending_f, called with the Gallium blend
+ * state and nir_ssa_def's for the various parameters used in blending. These
+ * routines may be used to construct dedicated blend shaders or appended to
+ * fragment shaders; accordingly, they do not perform I/O to maximize
+ * flexibility.
+ *
+ * TODO: sRGB, logic ops, integer blending, extended blending
+ */
+
 /* src and dst are vec4 */
 
 static nir_ssa_def *
@@ -116,43 +126,6 @@ nir_blend_func_f(nir_builder *b, nir_ssa_def *src, nir_ssa_def *dst,
         }
 }
 
-#if 0
-/* Blend a single "unit", consisting of a function and factor pair. Either RGB
- * or A */
-
-static nir_ssa_def *
-nir_blend_unit_f(nir_builder *b, nir_ssa_def *src, nir_ssa_def *dst, unsigned func, unsigned src_factor, unsigned dst_factor, unsigned mask)
-{
-        /* Compile factors */
-        nir_ssa_def *compiled_src_factor = nir_blend_channel_f(b, src, dst, src_factor);
-        nir_ssa_def *compiled_dst_factor = nir_blend_channel_f(b, src, dst, src_factor);
-
-        /* Apply factor to source and destination */
-        nir_ssa_def *scaled_src = nir_fmul(b, nir_channels(b, src, mask), compiled_src_factor);
-        nir_ssa_def *scaled_dst = nir_fmul(b, nir_channels(b, dst, mask), compiled_dst_factor);
-
-        /* Blend together */
-        return nir_blend_func_f(b, scaled_src, scaled_dst, func);
-}
-
-/* Implement floating point blending */
-
-nir_ssa_def *
-nir_blend_f(nir_builder *b, const struct pipe_rt_blend_state *blend, nir_ssa_def *src, nir_ssa_def *dst)
-{
-        /* TODO: Alpha */
-        nir_ssa_def *blended_rgb = nir_blend_unit_f(b, src, dst, blend->rgb_func, blend->rgb_src_factor, blend->rgb_dst_factor, 0x7);
-        nir_ssa_def *blended_a = nir_blend_unit_f(b, src, dst, blend->alpha_func, blend->alpha_src_factor, blend->alpha_dst_factor, 0x8);
-
-        /* Combine */
-        return nir_vec4(b,
-                        nir_channel(b, blended_rgb, 0),
-                        nir_channel(b, blended_rgb, 1),
-                        nir_channel(b, blended_rgb, 2),
-                        nir_channel(b, blended_a, 0));
-}
-#endif
-
 static void
 nir_per_channel_blending_f(const struct pipe_rt_blend_state *blend, nir_builder *b, nir_ssa_def **result,
                   nir_ssa_def **src_color, nir_ssa_def **dst_color, nir_ssa_def *con)
@@ -217,4 +190,3 @@ nir_blending_f(const struct pipe_rt_blend_state *blend, nir_builder *b,
 
         return nir_vec(b, result, 4);
 }
-
