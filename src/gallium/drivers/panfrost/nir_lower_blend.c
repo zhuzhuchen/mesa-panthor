@@ -33,6 +33,7 @@ static nir_ssa_def *
 nir_blend_channel_f(nir_builder *b,
                     nir_ssa_def **src,
                     nir_ssa_def **dst,
+                    nir_ssa_def *constant,
                     unsigned factor,
                     int channel)
 {
@@ -57,15 +58,10 @@ nir_blend_channel_f(nir_builder *b,
                 } else {
                         return nir_imm_float(b, 1.0);
                 }
-#if 0
         case PIPE_BLENDFACTOR_CONST_COLOR:
-                return nir_load_system_value(b,
-                                             nir_intrinsic_load_blend_const_color_r_float +
-                                             channel,
-                                             0);
+                return nir_channel(b, constant, channel);
         case PIPE_BLENDFACTOR_CONST_ALPHA:
-                return nir_load_blend_const_color_a_float(b);
-#endif
+                return nir_channel(b, constant, 3);
         case PIPE_BLENDFACTOR_ZERO:
                 return nir_imm_float(b, 0.0);
         case PIPE_BLENDFACTOR_INV_SRC_COLOR:
@@ -78,13 +74,11 @@ nir_blend_channel_f(nir_builder *b,
                 return nir_fsub(b, nir_imm_float(b, 1.0), dst[channel]);
         case PIPE_BLENDFACTOR_INV_CONST_COLOR:
                 return nir_fsub(b, nir_imm_float(b, 1.0),
-                                nir_load_system_value(b,
-                                                      nir_intrinsic_load_blend_const_color_r_float +
-                                                      channel,
-                                                      0));
+                                nir_channel(b, constant, channel));
         case PIPE_BLENDFACTOR_INV_CONST_ALPHA:
                 return nir_fsub(b, nir_imm_float(b, 1.0),
-                                nir_load_blend_const_color_a_float(b));
+                                nir_channel(b, constant, 3));
+                                
 
         default:
         case PIPE_BLENDFACTOR_SRC1_COLOR:
@@ -98,7 +92,7 @@ nir_blend_channel_f(nir_builder *b,
 }
 
 
-nir_ssa_def *
+static nir_ssa_def *
 nir_blend_func_f(nir_builder *b, nir_ssa_def *src, nir_ssa_def *dst,
                  unsigned func)
 {
@@ -161,7 +155,7 @@ nir_blend_f(nir_builder *b, const struct pipe_rt_blend_state *blend, nir_ssa_def
 
 static void
 nir_per_channel_blending_f(struct pipe_rt_blend_state *blend, nir_builder *b, nir_ssa_def **result,
-                  nir_ssa_def **src_color, nir_ssa_def **dst_color)
+                  nir_ssa_def **src_color, nir_ssa_def **dst_color, nir_ssa_def *con)
 {
         if (!blend->blend_enable) {
                 for (int i = 0; i < 4; i++)
@@ -182,11 +176,11 @@ nir_per_channel_blending_f(struct pipe_rt_blend_state *blend, nir_builder *b, ni
                 src_blend[i] = nir_fmul(b, src_color[i],
                                         nir_blend_channel_f(b,
                                                             src_color, dst_color,
-                                                            src_factor, i));
+                                                            con, src_factor, i));
                 dst_blend[i] = nir_fmul(b, dst_color[i],
                                         nir_blend_channel_f(b,
                                                             src_color, dst_color,
-                                                            dst_factor, i));
+                                                            con, dst_factor, i));
         }
 
         for (int i = 0; i < 4; i++) {
@@ -200,7 +194,8 @@ nir_per_channel_blending_f(struct pipe_rt_blend_state *blend, nir_builder *b, ni
 
 nir_ssa_def *
 nir_blending_f(struct pipe_rt_blend_state *blend, nir_builder *b,
-                  nir_ssa_def *src_color, nir_ssa_def *dst_color)
+                  nir_ssa_def *src_color, nir_ssa_def *dst_color,
+                  nir_ssa_def *constant)
 {
         nir_ssa_def* result[4];
         
@@ -218,7 +213,7 @@ nir_blending_f(struct pipe_rt_blend_state *blend, nir_builder *b,
                 nir_channel(b, dst_color, 3)
         };
 
-        nir_per_channel_blending_f(blend, b, result, src_components, dst_components);
+        nir_per_channel_blending_f(blend, b, result, src_components, dst_components, constant);
 
         return nir_vec(b, result, 4);
 }

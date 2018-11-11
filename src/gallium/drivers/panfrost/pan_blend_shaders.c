@@ -98,6 +98,7 @@ panfrost_make_blend_shader(struct panfrost_context *ctx, struct panfrost_blend_s
         nir_variable *c_src = nir_variable_create(shader, nir_var_shader_in, glsl_vector_type(GLSL_TYPE_FLOAT, 4), "gl_Color");
         nir_variable *c_dst = nir_variable_create(shader, nir_var_shader_in, glsl_vector_type(GLSL_TYPE_FLOAT, 4), "gl_SecondaryColor");
         nir_variable *c_out = nir_variable_create(shader, nir_var_shader_out, glsl_vector_type(GLSL_TYPE_FLOAT, 4), "gl_FragColor");
+        nir_variable *c_con = nir_variable_create(shader, nir_var_uniform, glsl_vector_type(GLSL_TYPE_FLOAT, 4), "constant");
 
         c_src->data.location = VARYING_SLOT_COL0;
         c_dst->data.location = VARYING_SLOT_COL1;
@@ -114,9 +115,10 @@ panfrost_make_blend_shader(struct panfrost_context *ctx, struct panfrost_blend_s
 
         nir_ssa_def *s_src = nir_load_var(b, c_src);
         nir_ssa_def *s_dst = nir_load_var(b, c_dst);
+        nir_ssa_def *s_con = nir_load_var(b, c_con);
 
         /* Build a trivial blend shader */
-        nir_store_var(b, c_out, nir_blending_f(blend, b, s_src, s_dst), 0xFF);
+        nir_store_var(b, c_out, nir_blending_f(blend, b, s_src, s_dst, s_con), 0xFF);
 
         nir_print_shader(shader, stdout);
 
