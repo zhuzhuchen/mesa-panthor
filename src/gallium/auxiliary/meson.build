@@ -365,6 +365,8 @@ files_libgallium = files(
   'util/u_viewport.h',
   'nir/tgsi_to_nir.c',
   'nir/tgsi_to_nir.h',
+  'nir/nir_lower_blend.c',
+  'nir/nir_lower_blend.h',
 )
 
 if dep_libdrm.found()

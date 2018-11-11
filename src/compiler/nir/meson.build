@@ -114,7 +114,6 @@ files_libnir = files(
   'nir_lower_alpha_test.c',
   'nir_lower_atomics_to_ssbo.c',
   'nir_lower_bitmap.c',
-  'nir_lower_blend.c',
   'nir_lower_clamp_color_outputs.c',
   'nir_lower_clip.c',
   'nir_lower_clip_cull_distance_arrays.c',
