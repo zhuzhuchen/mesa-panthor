@@ -26,7 +26,7 @@
 #include "pan_blend_shaders.h"
 #include "midgard/midgard_compile.h"
 #include "compiler/nir/nir_builder.h"
-#include "nir_lower_blend.h"
+#include "compiler/nir/nir_lower_blend.h"
 
 /*
  * Implements the command stream portion of programmatic blend shaders.

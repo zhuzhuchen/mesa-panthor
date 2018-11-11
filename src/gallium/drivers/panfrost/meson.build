@@ -28,8 +28,6 @@ files_panfrost = files(
   'midgard/cppwrap.cpp',
   'midgard/disassemble.c',
 
-  'nir_lower_blend.c',
-
   'pan_context.c',
 
   'pan_nondrm.c',
