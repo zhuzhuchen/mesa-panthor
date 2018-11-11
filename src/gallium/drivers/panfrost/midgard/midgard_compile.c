@@ -2530,7 +2530,7 @@ embedded_to_inline_constant(compiler_context *ctx)
                         midgard_vector_alu_src *m = (midgard_vector_alu_src *) &q;
                         src = m;
 
-                        /* Component is from the swizzle, e.g. r26.w -> w component */
+                        /* Component is from the swizzle, e.g. r26.w -> w component. TODO: What if x is masked out? */
                         int component = src->swizzle & 3;
 
                         /* Scale constant appropriately, if we can legally */
@@ -2568,6 +2568,10 @@ embedded_to_inline_constant(compiler_context *ctx)
                         bool is_vector = false;
 
                         for (int c = 1; c < 4; ++c) {
+                                /* We only care if this component is actually used */
+                                if (ins->alu.mask & (1 << c))
+                                        continue;
+
                                 uint32_t test = cons[(src->swizzle >> (2 * c)) & 3];
 
                                 if (test != value) {
