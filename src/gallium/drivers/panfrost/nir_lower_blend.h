@@ -23,6 +23,6 @@
  */
 
 nir_ssa_def *
-nir_blending_f(struct pipe_rt_blend_state *blend, nir_builder *b,
+nir_blending_f(const struct pipe_rt_blend_state *blend, nir_builder *b,
                   nir_ssa_def *src_color, nir_ssa_def *dst_color,
                   nir_ssa_def *constant);

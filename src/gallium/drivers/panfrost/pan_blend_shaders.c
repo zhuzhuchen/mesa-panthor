@@ -147,6 +147,7 @@ panfrost_make_blend_shader(struct panfrost_context *ctx, struct panfrost_blend_s
         fread(dst, 1, 2816, fp);
         fclose(fp);
         int size = 2816;
+#endif
 
         /* Hot patch in constant color */
 
@@ -156,7 +157,6 @@ panfrost_make_blend_shader(struct panfrost_context *ctx, struct panfrost_blend_s
                 for (int c = 0; c < 4; ++c)
                         hot_color[c] = blend_color->color[c];
         }
-#endif
 
         *out = panfrost_upload(&ctx->shaders, dst, size, true) | program.first_tag;
 

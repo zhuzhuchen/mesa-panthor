@@ -154,7 +154,7 @@ nir_blend_f(nir_builder *b, const struct pipe_rt_blend_state *blend, nir_ssa_def
 #endif
 
 static void
-nir_per_channel_blending_f(struct pipe_rt_blend_state *blend, nir_builder *b, nir_ssa_def **result,
+nir_per_channel_blending_f(const struct pipe_rt_blend_state *blend, nir_builder *b, nir_ssa_def **result,
                   nir_ssa_def **src_color, nir_ssa_def **dst_color, nir_ssa_def *con)
 {
         if (!blend->blend_enable) {
@@ -193,7 +193,7 @@ nir_per_channel_blending_f(struct pipe_rt_blend_state *blend, nir_builder *b, ni
 /* Arguments are vec4s */
 
 nir_ssa_def *
-nir_blending_f(struct pipe_rt_blend_state *blend, nir_builder *b,
+nir_blending_f(const struct pipe_rt_blend_state *blend, nir_builder *b,
                   nir_ssa_def *src_color, nir_ssa_def *dst_color,
                   nir_ssa_def *constant)
 {
