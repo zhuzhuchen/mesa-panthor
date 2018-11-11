@@ -1127,7 +1127,7 @@ panfrost_emit_for_draw(struct panfrost_context *ctx)
                          * -existence- of a blend shader */
 
                         assert(ctx->blend->blend_work_count >= 2);
-                        blend_count |= ctx->blend->blend_work_count;
+                        blend_count |= MIN2(ctx->blend->blend_work_count, 3);
                 } else {
                         /* Otherwise, the bottom bit simply specifies if
                          * blending (anything other than REPLACE) is enabled */
