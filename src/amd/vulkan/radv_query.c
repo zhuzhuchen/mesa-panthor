@@ -913,6 +913,7 @@ static void radv_query_shader(struct radv_cmd_buffer *cmd_buffer,
 {
 	struct radv_device *device = cmd_buffer->device;
 	struct radv_meta_saved_state saved_state;
+	bool old_predicating;
 
 	if (!*pipeline) {
 		VkResult ret = radv_device_init_meta_query_state_internal(device);
@@ -926,6 +927,12 @@ static void radv_query_shader(struct radv_cmd_buffer *cmd_buffer,
 		       RADV_META_SAVE_COMPUTE_PIPELINE |
 		       RADV_META_SAVE_CONSTANTS |
 		       RADV_META_SAVE_DESCRIPTORS);
+
+	/* VK_EXT_conditional_rendering says that copy commands should not be
+	 * affected by conditional rendering.
+	 */
+	old_predicating = cmd_buffer->state.predicating;
+	cmd_buffer->state.predicating = false;
 
 	struct radv_buffer dst_buffer = {
 		.bo = dst_bo,
@@ -1004,6 +1011,9 @@ static void radv_query_shader(struct radv_cmd_buffer *cmd_buffer,
 		cmd_buffer->state.flush_bits |= RADV_CMD_FLUSH_AND_INV_FRAMEBUFFER;
 
 	radv_unaligned_dispatch(cmd_buffer, count, 1, 1);
+
+	/* Restore conditional rendering. */
+	cmd_buffer->state.predicating = old_predicating;
 
 	radv_meta_restore(&saved_state, cmd_buffer);
 }
@@ -1283,6 +1293,8 @@ void radv_CmdCopyQueryPoolResults(
 				unsigned query = firstQuery + i;
 				uint64_t src_va = va + query * pool->stride + pool->stride - 4;
 
+				radeon_check_space(cmd_buffer->device->ws, cs, 7);
+
 				/* Waits on the upper word of the last DB entry */
 				radv_cp_wait_mem(cs, WAIT_REG_MEM_GREATER_OR_EQUAL,
 						 src_va, 0x80000000, 0xffffffff);
@@ -1359,6 +1371,8 @@ void radv_CmdCopyQueryPoolResults(
 			for(unsigned i = 0; i < queryCount; i++) {
 				unsigned query = firstQuery + i;
 				uint64_t src_va = va + query * pool->stride;
+
+				radeon_check_space(cmd_buffer->device->ws, cs, 7 * 4);
 
 				/* Wait on the upper word of all results. */
 				for (unsigned j = 0; j < 4; j++, src_va += 8) {

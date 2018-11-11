@@ -261,6 +261,7 @@ private:
       bool insertConstraintMoves();
 
       void condenseDefs(Instruction *);
+      void condenseDefs(Instruction *, const int first, const int last);
       void condenseSrcs(Instruction *, const int first, const int last);
 
       void addHazard(Instruction *i, const ValueRef *src);
@@ -273,6 +274,9 @@ private:
       void texConstraintNVC0(TexInstruction *);
       void texConstraintNVE0(TexInstruction *);
       void texConstraintGM107(TexInstruction *);
+
+      bool isScalarTexGM107(TexInstruction *);
+      void handleScalarTexGM107(TexInstruction *);
 
       std::list<Instruction *> constrList;
 
@@ -2048,24 +2052,35 @@ RegAlloc::InsertConstraintsPass::addHazard(Instruction *i, const ValueRef *src)
 void
 RegAlloc::InsertConstraintsPass::condenseDefs(Instruction *insn)
 {
-   uint8_t size = 0;
    int n;
-   for (n = 0; insn->defExists(n) && insn->def(n).getFile() == FILE_GPR; ++n)
-      size += insn->getDef(n)->reg.size;
-   if (n < 2)
+   for (n = 0; insn->defExists(n) && insn->def(n).getFile() == FILE_GPR; ++n);
+   condenseDefs(insn, 0, n - 1);
+}
+
+void
+RegAlloc::InsertConstraintsPass::condenseDefs(Instruction *insn,
+                                              const int a, const int b)
+{
+   uint8_t size = 0;
+   if (a >= b)
       return;
+   for (int s = a; s <= b; ++s)
+      size += insn->getDef(s)->reg.size;
+   if (!size)
+      return;
+
    LValue *lval = new_LValue(func, FILE_GPR);
    lval->reg.size = size;
 
    Instruction *split = new_Instruction(func, OP_SPLIT, typeOfSize(size));
    split->setSrc(0, lval);
-   for (int d = 0; d < n; ++d) {
-      split->setDef(d, insn->getDef(d));
+   for (int d = a; d <= b; ++d) {
+      split->setDef(d - a, insn->getDef(d));
       insn->setDef(d, NULL);
    }
-   insn->setDef(0, lval);
+   insn->setDef(a, lval);
 
-   for (int k = 1, d = n; insn->defExists(d); ++d, ++k) {
+   for (int k = a + 1, d = b + 1; insn->defExists(d); ++d, ++k) {
       insn->setDef(k, insn->getDef(d));
       insn->setDef(d, NULL);
    }
@@ -2075,6 +2090,7 @@ RegAlloc::InsertConstraintsPass::condenseDefs(Instruction *insn)
    insn->bb->insertAfter(insn, split);
    constrList.push_back(split);
 }
+
 void
 RegAlloc::InsertConstraintsPass::condenseSrcs(Instruction *insn,
                                               const int a, const int b)
@@ -2106,6 +2122,158 @@ RegAlloc::InsertConstraintsPass::condenseSrcs(Instruction *insn,
    constrList.push_back(merge);
 }
 
+bool
+RegAlloc::InsertConstraintsPass::isScalarTexGM107(TexInstruction *tex)
+{
+   if (tex->tex.sIndirectSrc >= 0 ||
+       tex->tex.rIndirectSrc >= 0)
+      return false;
+
+   if (tex->tex.mask == 5 || tex->tex.mask == 6)
+      return false;
+
+   switch (tex->op) {
+   case OP_TEX:
+   case OP_TXF:
+   case OP_TXG:
+   case OP_TXL:
+      break;
+   default:
+      return false;
+   }
+
+   // legal variants:
+   // TEXS.1D.LZ
+   // TEXS.2D
+   // TEXS.2D.LZ
+   // TEXS.2D.LL
+   // TEXS.2D.DC
+   // TEXS.2D.LL.DC
+   // TEXS.2D.LZ.DC
+   // TEXS.A2D
+   // TEXS.A2D.LZ
+   // TEXS.A2D.LZ.DC
+   // TEXS.3D
+   // TEXS.3D.LZ
+   // TEXS.CUBE
+   // TEXS.CUBE.LL
+
+   // TLDS.1D.LZ
+   // TLDS.1D.LL
+   // TLDS.2D.LZ
+   // TLSD.2D.LZ.AOFFI
+   // TLDS.2D.LZ.MZ
+   // TLDS.2D.LL
+   // TLDS.2D.LL.AOFFI
+   // TLDS.A2D.LZ
+   // TLDS.3D.LZ
+
+   // TLD4S: all 2D/RECT variants and only offset
+
+   switch (tex->op) {
+   case OP_TEX:
+      if (tex->tex.useOffsets)
+         return false;
+
+      switch (tex->tex.target.getEnum()) {
+      case TEX_TARGET_1D:
+      case TEX_TARGET_2D_ARRAY_SHADOW:
+         return tex->tex.levelZero;
+      case TEX_TARGET_CUBE:
+         return !tex->tex.levelZero;
+      case TEX_TARGET_2D:
+      case TEX_TARGET_2D_ARRAY:
+      case TEX_TARGET_2D_SHADOW:
+      case TEX_TARGET_3D:
+      case TEX_TARGET_RECT:
+      case TEX_TARGET_RECT_SHADOW:
+         return true;
+      default:
+         return false;
+      }
+
+   case OP_TXL:
+      if (tex->tex.useOffsets)
+         return false;
+
+      switch (tex->tex.target.getEnum()) {
+      case TEX_TARGET_2D:
+      case TEX_TARGET_2D_SHADOW:
+      case TEX_TARGET_RECT:
+      case TEX_TARGET_RECT_SHADOW:
+      case TEX_TARGET_CUBE:
+         return true;
+      default:
+         return false;
+      }
+
+   case OP_TXF:
+      switch (tex->tex.target.getEnum()) {
+      case TEX_TARGET_1D:
+         return !tex->tex.useOffsets;
+      case TEX_TARGET_2D:
+      case TEX_TARGET_RECT:
+         return true;
+      case TEX_TARGET_2D_ARRAY:
+      case TEX_TARGET_2D_MS:
+      case TEX_TARGET_3D:
+         return !tex->tex.useOffsets && tex->tex.levelZero;
+      default:
+         return false;
+      }
+
+   case OP_TXG:
+      if (tex->tex.useOffsets > 1)
+         return false;
+      if (tex->tex.mask != 0x3 && tex->tex.mask != 0xf)
+         return false;
+
+      switch (tex->tex.target.getEnum()) {
+      case TEX_TARGET_2D:
+      case TEX_TARGET_2D_MS:
+      case TEX_TARGET_2D_SHADOW:
+      case TEX_TARGET_RECT:
+      case TEX_TARGET_RECT_SHADOW:
+         return true;
+      default:
+         return false;
+      }
+
+   default:
+      return false;
+   }
+}
+
+void
+RegAlloc::InsertConstraintsPass::handleScalarTexGM107(TexInstruction *tex)
+{
+   int defCount = tex->defCount(0xff);
+   int srcCount = tex->srcCount(0xff);
+
+   tex->tex.scalar = true;
+
+   // 1. handle defs
+   if (defCount > 3)
+      condenseDefs(tex, 2, 3);
+   if (defCount > 1)
+      condenseDefs(tex, 0, 1);
+
+   // 2. handle srcs
+   // special case for TXF.A2D
+   if (tex->op == OP_TXF && tex->tex.target == TEX_TARGET_2D_ARRAY) {
+      assert(srcCount >= 3);
+      condenseSrcs(tex, 1, 2);
+   } else {
+      if (srcCount > 3)
+         condenseSrcs(tex, 2, 3);
+      // only if we have more than 2 sources
+      if (srcCount > 2)
+         condenseSrcs(tex, 0, 1);
+   }
+
+   assert(!tex->defExists(2) && !tex->srcExists(2));
+}
+
 void
 RegAlloc::InsertConstraintsPass::texConstraintGM107(TexInstruction *tex)
 {
@@ -2113,6 +2281,13 @@ RegAlloc::InsertConstraintsPass::texConstraintGM107(TexInstruction *tex)
 
    if (isTextureOp(tex->op))
       textureMask(tex);
+
+   if (isScalarTexGM107(tex)) {
+      handleScalarTexGM107(tex);
+      return;
+   }
+
+   assert(!tex->tex.scalar);
    condenseDefs(tex);
 
    if (isSurfaceOp(tex->op)) {
