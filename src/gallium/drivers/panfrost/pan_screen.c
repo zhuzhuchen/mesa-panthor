@@ -134,9 +134,6 @@ panfrost_get_param(struct pipe_screen *screen, enum pipe_cap param)
         case PIPE_CAP_MAX_VERTEX_STREAMS:
                 return 1;
 
-        case PIPE_CAP_MAX_VERTEX_ATTRIB_STRIDE:
-                return 2048;
-
         case PIPE_CAP_PRIMITIVE_RESTART:
                 return 0; /* We don't understand this yet */
 

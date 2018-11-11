@@ -1040,7 +1040,12 @@ emit_intrinsic(compiler_context *ctx, nir_intrinsic_instr *instr)
                                  * uniform block */
 
                                 void *entry = _mesa_hash_table_u64_search(ctx->uniform_nir_to_mdg, offset + 1);
-                                assert(entry);
+
+                                /* XXX */
+                                if (!entry) {
+                                        printf("WARNING: Unknown uniform %d\n", offset);
+                                        break;
+                                }
 
                                 uniform_offset = (uintptr_t) (entry) - 1;
                                 uniform_offset += ctx->special_uniforms;
