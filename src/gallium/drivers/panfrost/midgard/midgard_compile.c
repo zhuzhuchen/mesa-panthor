@@ -1632,13 +1632,13 @@ allocate_registers(compiler_context *ctx)
         /* If a node still hasn't been killed, kill it now */
 
         for (int i = 0; i < nodes; ++i) {
+                /* -1 most likely indicates a pinned output */
+
                 if (live_start[i] == -1)
                         printf("-1 start for %d?\n", i);
 
                 if (live_end[i] == -1)
                         live_end[i] = d;
-
-                printf("%i: %d, %d\n", i, live_start[i], live_end[i]);
         }
 
         /* Setup interference between nodes that are live at the same time */
