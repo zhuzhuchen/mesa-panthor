@@ -34,7 +34,10 @@
  * fragment shaders; accordingly, they do not perform I/O to maximize
  * flexibility.
  *
- * TODO: sRGB, logic ops, integer blending, extended blending
+ * Inputs are assumed to be clamped to [0, 1]. fsat instructions must be added
+ * by the caller if clamping is not otherwise performed.
+ *
+ * TODO: sRGB, logic ops, integers, dual-source blending, advanced blending
  */
 
 /* src and dst are vec4 */
@@ -135,10 +138,6 @@ nir_per_channel_blending_f(const struct pipe_rt_blend_state *blend, nir_builder 
                         result[i] = src_color[i];
                 return;
         }
-
-        /* Clamp the src color to [0, 1].  Dest is already clamped. */
-        for (int i = 0; i < 4; i++)
-                src_color[i] = nir_fsat(b, src_color[i]);
 
         nir_ssa_def *src_blend[4], *dst_blend[4];
         for (int i = 0; i < 4; i++) {

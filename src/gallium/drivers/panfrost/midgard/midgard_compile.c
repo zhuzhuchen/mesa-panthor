@@ -1161,7 +1161,7 @@ emit_intrinsic(compiler_context *ctx, nir_intrinsic_instr *instr)
                                 util_dynarray_append(ctx->current_block, midgard_instruction, u2f);
                                 midgard_insert_dummy(ctx);
 
-                                /* vmul.fmul r1, hr2, #0.00392151 */
+                                /* vmul.fmul.sat r1, hr2, #0.00392151 */
 
                                 alu_src.abs = false;
 
@@ -1179,7 +1179,7 @@ emit_intrinsic(compiler_context *ctx, nir_intrinsic_instr *instr)
                                                 .op = midgard_alu_op_fmul,
                                                 .reg_mode = midgard_reg_mode_full,
                                                 .dest_override = midgard_dest_override_none,
-                                                .outmod = midgard_outmod_none,
+                                                .outmod = midgard_outmod_sat,
                                                 .mask = 0xFF,
                                                 .src1 = vector_alu_srco_unsigned(alu_src),
                                                 .src2 = vector_alu_srco_unsigned(blank_alu_src),
