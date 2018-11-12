@@ -84,7 +84,7 @@ struct panfrost_context {
         struct pipe_framebuffer_state pipe_framebuffer;
 
         /* The number of concurrent FBOs allowed depends on the number of rings used */
-        struct panfrost_memory cmdstream_rings[2];
+        struct panfrost_memory cmdstream_rings[4];
         int cmdstream_i;
 
         struct panfrost_memory cmdstream;

@@ -287,7 +287,7 @@ panfrost_emit_fbd(struct panfrost_context *ctx)
                 /* Presumably corresponds to unknown_address_X of SFBD */
                 .zero2 = ctx->scratchpad.gpu,
                 .zero5 = ctx->misc_0.gpu,
-                .zero6 = ctx->misc_0.gpu + /*ctx->misc_0.size*/4096, /* Size depends on the size of the framebuffer and the number of vertices */
+                .zero6 = ctx->misc_0.gpu + /*ctx->misc_0.size*/40960, /* Size depends on the size of the framebuffer and the number of vertices */
 
                 /* tiler_heap_start */
                 .zero7 = ctx->tiler_heap.gpu,
@@ -1375,7 +1375,7 @@ panfrost_link_jobs(struct panfrost_context *ctx)
         for (int i = 0; i < ctx->draw_count; ++i) {
                 bool isLast = (i + 1) == ctx->draw_count;
 
-                panfrost_link_job_pair(ctx->cmdstream, ctx->vertex_jobs[i], isLast ? ctx->tiler_jobs[0] : ctx->vertex_jobs[i + 1]);
+                panfrost_link_job_pair(ctx->cmdstream, ctx->vertex_jobs[i], isLast ? ctx->tiler_jobs[0]: ctx->vertex_jobs[i + 1]);
                 panfrost_link_job_pair(ctx->cmdstream, ctx->tiler_jobs[i], isLast ? 0 : ctx->tiler_jobs[i + 1]);
         }
 }
@@ -1426,7 +1426,7 @@ panfrost_submit_frame(struct panfrost_context *ctx, bool flush_immediate)
         bool has_draws = ctx->draw_count > 0;
 
         /* Workaround a bizarre lockup (a hardware errata?) */
-        if (!has_draws)
+        //if (!has_draws)
                 flush_immediate = true;
 
         /* A number of jobs are batched -- this must be linked and cleared */
@@ -1696,7 +1696,7 @@ panfrost_set_scissor(struct panfrost_context *ctx)
 {
         const struct pipe_scissor_state *ss = &ctx->scissor;
 
-        if (ss && ctx->rasterizer && ctx->rasterizer->base.scissor) {
+        if (ss && ctx->rasterizer && ctx->rasterizer->base.scissor && 0) {
                 ctx->viewport.viewport0[0] = ss->minx;
                 ctx->viewport.viewport0[1] = ss->miny;
                 ctx->viewport.viewport1[0] = MALI_POSITIVE(ss->maxx);
@@ -2302,8 +2302,8 @@ panfrost_set_framebuffer_state(struct pipe_context *pctx,
         ctx->pipe_framebuffer.nr_cbufs = fb->nr_cbufs;
         ctx->pipe_framebuffer.samples = fb->samples;
         ctx->pipe_framebuffer.layers = fb->layers;
-        ctx->pipe_framebuffer.width = fb->width;
-        ctx->pipe_framebuffer.height = fb->height;
+        ctx->pipe_framebuffer.width = MIN2(fb->width, 2048);
+        ctx->pipe_framebuffer.height = MIN2(fb->height, 1280);
 
         for (int i = 0; i < PIPE_MAX_COLOR_BUFS; i++) {
                 struct pipe_surface *cb = i < fb->nr_cbufs ? fb->cbufs[i] : NULL;
