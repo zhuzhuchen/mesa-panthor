@@ -2549,6 +2549,9 @@ struct anv_format_plane {
 
    /* How to map sampled ycbcr planes to a single 4 component element. */
    struct isl_swizzle ycbcr_swizzle;
+
+   /* What aspect is associated to this plane */
+   VkImageAspectFlags aspect;
 };
 
 
@@ -2579,28 +2582,6 @@ anv_image_aspect_to_plane(VkImageAspectFlags image_aspects,
       /* Purposefully assert with depth/stencil aspects. */
       unreachable("invalid image aspect");
    }
-}
-
-static inline uint32_t
-anv_image_aspect_get_planes(VkImageAspectFlags aspect_mask)
-{
-   uint32_t planes = 0;
-
-   if (aspect_mask & (VK_IMAGE_ASPECT_COLOR_BIT |
-                      VK_IMAGE_ASPECT_DEPTH_BIT |
-                      VK_IMAGE_ASPECT_STENCIL_BIT |
-                      VK_IMAGE_ASPECT_PLANE_0_BIT))
-      planes++;
-   if (aspect_mask & VK_IMAGE_ASPECT_PLANE_1_BIT)
-      planes++;
-   if (aspect_mask & VK_IMAGE_ASPECT_PLANE_2_BIT)
-      planes++;
-
-   if ((aspect_mask & VK_IMAGE_ASPECT_DEPTH_BIT) != 0 &&
-       (aspect_mask & VK_IMAGE_ASPECT_STENCIL_BIT) != 0)
-      planes++;
-
-   return planes;
 }
 
 static inline VkImageAspectFlags
@@ -2864,8 +2845,7 @@ anv_image_get_fast_clear_type_addr(const struct anv_device *device,
    const unsigned clear_color_state_size = device->info.gen >= 10 ?
       device->isl_dev.ss.clear_color_state_size :
       device->isl_dev.ss.clear_value_size;
-   addr.offset += clear_color_state_size;
-   return addr;
+   return anv_address_add(addr, clear_color_state_size);
 }
 
 static inline struct anv_address

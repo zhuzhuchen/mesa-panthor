@@ -245,7 +245,6 @@ all_formats_ccs_e_compatible(const struct gen_device_info *devinfo,
  */
 static void
 add_aux_state_tracking_buffer(struct anv_image *image,
-                              VkImageAspectFlagBits aspect,
                               uint32_t plane,
                               const struct anv_device *device)
 {
@@ -463,7 +462,7 @@ make_surface(const struct anv_device *dev,
             }
 
             add_surface(image, &image->planes[plane].aux_surface, plane);
-            add_aux_state_tracking_buffer(image, aspect, plane, dev);
+            add_aux_state_tracking_buffer(image, plane, dev);
 
             /* For images created without MUTABLE_FORMAT_BIT set, we know that
              * they will always be used with the original format.  In
@@ -487,7 +486,7 @@ make_surface(const struct anv_device *dev,
                                  &image->planes[plane].aux_surface.isl);
       if (ok) {
          add_surface(image, &image->planes[plane].aux_surface, plane);
-         add_aux_state_tracking_buffer(image, aspect, plane, dev);
+         add_aux_state_tracking_buffer(image, plane, dev);
          image->planes[plane].aux_usage = ISL_AUX_USAGE_MCS;
       }
    }
@@ -1246,6 +1245,28 @@ remap_aspect_flags(VkImageAspectFlags view_aspects)
    return view_aspects;
 }
 
+static uint32_t
+anv_image_aspect_get_planes(VkImageAspectFlags aspect_mask)
+{
+   uint32_t planes = 0;
+
+   if (aspect_mask & (VK_IMAGE_ASPECT_COLOR_BIT |
+                      VK_IMAGE_ASPECT_DEPTH_BIT |
+                      VK_IMAGE_ASPECT_STENCIL_BIT |
+                      VK_IMAGE_ASPECT_PLANE_0_BIT))
+      planes++;
+   if (aspect_mask & VK_IMAGE_ASPECT_PLANE_1_BIT)
+      planes++;
+   if (aspect_mask & VK_IMAGE_ASPECT_PLANE_2_BIT)
+      planes++;
+
+   if ((aspect_mask & VK_IMAGE_ASPECT_DEPTH_BIT) != 0 &&
+       (aspect_mask & VK_IMAGE_ASPECT_STENCIL_BIT) != 0)
+      planes++;
+
+   return planes;
+}
+
 VkResult
 anv_CreateImageView(VkDevice _device,
                     const VkImageViewCreateInfo *pCreateInfo,
@@ -1322,7 +1343,7 @@ anv_CreateImageView(VkDevice _device,
    uint32_t iaspect_bit, vplane = 0;
    anv_foreach_image_aspect_bit(iaspect_bit, image, expanded_aspects) {
       uint32_t iplane =
-         anv_image_aspect_to_plane(expanded_aspects, 1UL << iaspect_bit);
+         anv_image_aspect_to_plane(image->aspects, 1UL << iaspect_bit);
       VkImageAspectFlags vplane_aspect =
          anv_plane_to_aspect(iview->aspect_mask, vplane);
       struct anv_format_plane format =

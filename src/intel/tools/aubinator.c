@@ -40,7 +40,6 @@
 
 #include "util/macros.h"
 
-#include "common/gen_decoder.h"
 #include "aub_read.h"
 #include "aub_mem.h"
 
@@ -131,7 +130,7 @@ aubinator_init(void *user_data, int aub_pci_id, const char *app_name)
 }
 
 static void
-handle_execlist_write(void *user_data, enum gen_engine engine, uint64_t context_descriptor)
+handle_execlist_write(void *user_data, enum drm_i915_gem_engine_class engine, uint64_t context_descriptor)
 {
    const uint32_t pphwsp_size = 4096;
    uint32_t pphwsp_addr = context_descriptor & 0xfffff000;
@@ -158,19 +157,20 @@ handle_execlist_write(void *user_data, enum gen_engine engine, uint64_t context_
       batch_ctx.get_bo = aub_mem_get_ggtt_bo;
    }
 
-   (void)engine; /* TODO */
+   batch_ctx.engine = engine;
    gen_print_batch(&batch_ctx, commands, ring_buffer_tail - ring_buffer_head,
                    0);
    aub_mem_clear_bo_maps(&mem);
 }
 
 static void
-handle_ring_write(void *user_data, enum gen_engine engine,
+handle_ring_write(void *user_data, enum drm_i915_gem_engine_class engine,
                   const void *data, uint32_t data_len)
 {
    batch_ctx.user_data = &mem;
    batch_ctx.get_bo = aub_mem_get_ggtt_bo;
 
+   batch_ctx.engine = engine;
    gen_print_batch(&batch_ctx, data, data_len, 0);
 
    aub_mem_clear_bo_maps(&mem);

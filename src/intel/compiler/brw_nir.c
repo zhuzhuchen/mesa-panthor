@@ -740,6 +740,9 @@ brw_nir_link_shaders(const struct brw_compiler *compiler,
       *consumer = brw_nir_optimize(*consumer, compiler, c_is_scalar, false);
    }
 
+   if (nir_link_constant_varyings(*producer, *consumer))
+      *consumer = brw_nir_optimize(*consumer, compiler, c_is_scalar, false);
+
    NIR_PASS_V(*producer, nir_remove_dead_variables, nir_var_shader_out);
    NIR_PASS_V(*consumer, nir_remove_dead_variables, nir_var_shader_in);
 
@@ -793,7 +796,7 @@ brw_postprocess_nir(nir_shader *nir, const struct brw_compiler *compiler,
 
    OPT(nir_opt_algebraic_late);
 
-   OPT(nir_lower_to_source_mods);
+   OPT(nir_lower_to_source_mods, nir_lower_all_source_mods);
    OPT(nir_copy_prop);
    OPT(nir_opt_dce);
    OPT(nir_opt_move_comparisons);
@@ -877,6 +880,7 @@ brw_nir_apply_sampler_key(nir_shader *nir,
    tex_options.lower_y_u_v_external = key_tex->y_u_v_image_mask;
    tex_options.lower_yx_xuxv_external = key_tex->yx_xuxv_image_mask;
    tex_options.lower_xy_uxvx_external = key_tex->xy_uxvx_image_mask;
+   tex_options.lower_ayuv_external = key_tex->ayuv_image_mask;
 
    if (nir_lower_tex(nir, &tex_options)) {
       nir_validate_shader(nir, "after nir_lower_tex");
