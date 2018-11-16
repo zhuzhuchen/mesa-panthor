@@ -779,17 +779,6 @@ emit_condition(compiler_context *ctx, nir_src *src, bool for_branch)
         emit_mir_instruction(ctx, ins);
 }
 
-/* Insert a dummy instruction (unused set) to make space for later movement */
-
-static void
-midgard_insert_dummy(compiler_context *ctx)
-{
-        midgard_instruction dummy = { .unused = true, .type = TAG_ALU_4 };
-        emit_mir_instruction(ctx, dummy);
-        emit_mir_instruction(ctx, dummy);
-}
-
-
 /* Components: Number/style of arguments:
  * 	3: One-argument op with r24 (i2f, f2i)
  * 	2: Standard two argument op (fadd, fmul)
@@ -994,8 +983,6 @@ emit_alu(compiler_context *ctx, nir_alu_instr *instr)
 
         ins.alu = alu;
 
-        midgard_insert_dummy(ctx);
-
         if (_unit == UNIT_VLUT) {
                 /* To avoid duplicating the LUTs (we think?), LUT instructions can only
                  * operate as if they were scalars. Lower them here by changing the
@@ -1157,7 +1144,6 @@ emit_intrinsic(compiler_context *ctx, nir_intrinsic_instr *instr)
                                         ins.load_store.mask = (1 << c);
                                         ins.load_store.unknown = c;
                                         emit_mir_instruction(ctx, ins);
-                                        midgard_insert_dummy(ctx);
                                 }
 
                                 /* vadd.u2f hr2, abs(hr2), #0 */
@@ -1187,7 +1173,6 @@ emit_intrinsic(compiler_context *ctx, nir_intrinsic_instr *instr)
                                 };
 
                                 emit_mir_instruction(ctx, u2f);
-                                midgard_insert_dummy(ctx);
 
                                 /* vmul.fmul.sat r1, hr2, #0.00392151 */
 
@@ -1215,7 +1200,6 @@ emit_intrinsic(compiler_context *ctx, nir_intrinsic_instr *instr)
                                 };
 
                                 emit_mir_instruction(ctx, fmul);
-                                midgard_insert_dummy(ctx);
                         } else {
                                 printf("Unknown input in blend shader\n");
                                 assert(0);
@@ -1301,9 +1285,6 @@ emit_intrinsic(compiler_context *ctx, nir_intrinsic_instr *instr)
                 assert(0);
                 break;
         }
-
-        /* Add a dummy to allow loads to move around */
-        midgard_insert_dummy(ctx);
 }
 
 static unsigned
