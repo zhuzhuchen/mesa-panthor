@@ -2464,6 +2464,9 @@ inline_alu_constants(compiler_context *ctx)
                                  * instruction.  Copy the new move into that.
                                  * */
 
+                                /* TODO INSERT */
+                                assert(0);
+
                                 memcpy(alu - 1, alu - 2, sizeof(ins));
                                 memcpy(alu - 2, &ins, sizeof(ins));
                         }
@@ -2699,6 +2702,8 @@ midgard_pair_load_store(compiler_context *ctx, midgard_block *block)
 
                                 /* We found one! Move it up to pair and remove it from the old location */
 
+                                /* TODO: MOVEMENT */
+                                assert(0);
                                 memcpy(ins + 1, c, sizeof(midgard_instruction));
                                 c->unused = true;
 
@@ -2975,7 +2980,7 @@ emit_block(compiler_context *ctx, nir_block *block)
         actualise_ssa_to_alias(ctx);
 
         midgard_eliminate_orphan_moves(ctx, &this_block);
-        midgard_pair_load_store(ctx, &this_block);
+        //midgard_pair_load_store(ctx, &this_block);
 
 #ifdef MIR_DEBUG
         print_mir_block(&this_block);
