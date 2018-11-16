@@ -168,7 +168,6 @@ typedef struct midgard_block {
 				.uname = -1, \
 				.src1 = -1 \
 			}, \
-			.unused = false, \
 			.load_store = { \
 				.op = midgard_op_##name, \
 				.mask = 0xF, \
@@ -229,7 +228,6 @@ m_alu_vector(midgard_alu_op op, int unit, unsigned src0, midgard_vector_alu_src 
 {
         midgard_instruction ins = {
                 .type = TAG_ALU_4,
-                .unused = false,
                 .uses_ssa = true,
                 .ssa_args = {
                         .src0 = src0,
@@ -291,7 +289,6 @@ v_alu_br_compact_cond(midgard_jmp_writeout_op op, unsigned tag, signed offset, u
         midgard_instruction ins = {
                 .type = TAG_ALU_4,
                 .unit = ALU_ENAB_BR_COMPACT,
-                .unused = false,
                 .uses_ssa = false,
 
                 .prepacked_branch = true,
@@ -428,6 +425,13 @@ static void
 emit_mir_instruction(struct compiler_context *ctx, struct midgard_instruction ins)
 {
         util_dynarray_append(&ctx->current_block->instructions, midgard_instruction, ins);
+}
+
+static void
+mir_remove_instruction(struct midgard_instruction *ins)
+{
+        ins->unused = true;
+        //list_del(&ins->node);
 }
 
 #define mir_foreach_instr(ctx, v) util_dynarray_foreach(&ctx->current_block->instructions, midgard_instruction, v)
@@ -940,7 +944,6 @@ emit_alu(compiler_context *ctx, nir_alu_instr *instr)
 
         midgard_instruction ins = {
                 .type = TAG_ALU_4,
-                .unused = false,
                 .uses_ssa = true,
                 .ssa_args = {
                         .src0 = components == 3 || components == 2 || components == 0 ? src0 : SSA_UNUSED_1,
@@ -2644,7 +2647,7 @@ midgard_eliminate_orphan_moves(compiler_context *ctx, midgard_block *block)
 
                 if (is_live_after(block, ins, ins->ssa_args.dest)) continue;
 
-                ins->unused = true;
+                mir_remove_instruction(ins);
         }
 }
 
@@ -2686,7 +2689,7 @@ midgard_pair_load_store(compiler_context *ctx, midgard_block *block)
                                 /* TODO: MOVEMENT */
                                 assert(0);
                                 memcpy(ins + 1, c, sizeof(midgard_instruction));
-                                c->unused = true;
+                                mir_remove_instruction(ins);
 
                                 break;
                         }
@@ -3035,7 +3038,7 @@ emit_if(struct compiler_context *ctx, nir_if *nif)
 
         if (ctx->instruction_count == count_in) {
                 /* The else block is empty, so don't emit an exit jump */
-                then_exit->unused = true;
+                mir_remove_instruction(then_exit);
                 then_branch->branch.target_start = else_idx + 1;
         } else {
                 then_branch->branch.target_start = else_idx;
