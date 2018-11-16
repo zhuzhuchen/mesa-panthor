@@ -521,6 +521,8 @@ emit_mir_instruction(struct compiler_context *ctx, struct midgard_instruction in
         util_dynarray_append(ctx->current_block, midgard_instruction, ins);
 }
 
+#define mir_foreach_instr(ctx, v) util_dynarray_foreach(ctx->current_block, midgard_instruction, v)
+
 static void
 attach_constants(compiler_context *ctx, midgard_instruction *ins, void *constants, int name)
 {
@@ -1344,7 +1346,7 @@ emit_tex(compiler_context *ctx, nir_tex_instr *instr)
                         alu_src.swizzle = (COMPONENT_Y << 2);
 
                         midgard_instruction ins = v_fmov(index, alu_src, REGISTER_TEXTURE_BASE + in_reg, true, midgard_outmod_none);
-                        util_dynarray_append((ctx->current_block), midgard_instruction, ins);
+                        emit_mir_instruction(ctx, ins);
 
                         break;
                 }
@@ -2411,7 +2413,7 @@ emit_binary_bundle(compiler_context *ctx, midgard_bundle *bundle, struct util_dy
 static void
 inline_alu_constants(compiler_context *ctx)
 {
-        util_dynarray_foreach(ctx->current_block, midgard_instruction, alu) {
+        mir_foreach_instr(ctx, alu) {
                 /* Other instructions cannot inline constants */
                 if (alu->type != TAG_ALU_4) continue;
 
@@ -2468,7 +2470,7 @@ inline_alu_constants(compiler_context *ctx)
 static void
 embedded_to_inline_constant(compiler_context *ctx)
 {
-        util_dynarray_foreach(ctx->current_block, midgard_instruction, ins) {
+        mir_foreach_instr(ctx, ins) {
                 if (!ins->has_constants) continue;
 
                 if (ins->ssa_args.inline_constant) continue;
@@ -2715,7 +2717,7 @@ emit_leftover_move(compiler_context *ctx)
 static void
 actualise_ssa_to_alias(compiler_context *ctx)
 {
-        util_dynarray_foreach(ctx->current_block, midgard_instruction, ins) {
+        mir_foreach_instr(ctx, ins) {
                 if (!ins->uses_ssa) continue;
 
                 map_ssa_to_alias(ctx, &ins->ssa_args.src0);
