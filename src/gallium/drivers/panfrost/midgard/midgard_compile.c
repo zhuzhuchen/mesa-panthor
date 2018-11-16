@@ -458,7 +458,7 @@ typedef struct compiler_context {
         midgard_block *final_block;
 
         /* List of midgard_instructions emitted for the current block */
-        struct util_dynarray *current_block;
+        midgard_block *current_block;
 
         /* Constants which have been loaded, for later inlining */
         struct hash_table_u64 *ssa_constants;
@@ -518,10 +518,16 @@ typedef struct compiler_context {
 static void
 emit_mir_instruction(struct compiler_context *ctx, struct midgard_instruction ins)
 {
-        util_dynarray_append(ctx->current_block, midgard_instruction, ins);
+        util_dynarray_append(&ctx->current_block->instructions, midgard_instruction, ins);
 }
 
-#define mir_foreach_instr(ctx, v) util_dynarray_foreach(ctx->current_block, midgard_instruction, v)
+#define mir_foreach_instr(ctx, v) util_dynarray_foreach(&ctx->current_block->instructions, midgard_instruction, v)
+
+static midgard_instruction *
+mir_last_in_block(struct midgard_block *block)
+{
+        return util_dynarray_top_ptr(&block->instructions, midgard_instruction);
+}
 
 static void
 attach_constants(compiler_context *ctx, midgard_instruction *ins, void *constants, int name)
@@ -2952,7 +2958,7 @@ emit_block(compiler_context *ctx, nir_block *block)
 
         /* Set up current block */
         util_dynarray_init(&this_block.instructions, NULL);
-        ctx->current_block = &this_block.instructions;
+        ctx->current_block = &this_block;
 
         nir_foreach_instr(instr, block) {
                 emit_instr(ctx, instr);
@@ -2998,7 +3004,7 @@ emit_block(compiler_context *ctx, nir_block *block)
 
         /* Allow the next control flow to access us retroactively, for
          * branching etc */
-        ctx->current_block = &block_ptr->instructions;
+        ctx->current_block = block_ptr;
 
         /* Document the fallthrough chain */
         ctx->previous_source_block = block_ptr;
@@ -3017,14 +3023,14 @@ emit_if(struct compiler_context *ctx, nir_if *nif)
 
         /* Speculatively emit the branch, but we can't fill it in until later */
         EMIT(branch, true, true);
-        midgard_instruction *then_branch = util_dynarray_top_ptr(ctx->current_block, midgard_instruction);
+        midgard_instruction *then_branch = mir_last_in_block(ctx->current_block);
 
         /* Emit the two subblocks */
         midgard_block *then_block = emit_cf_list(ctx, &nif->then_list);
 
         /* Emit a jump from the end of the then block to the end of the else */
         EMIT(branch, false, false);
-        midgard_instruction *then_exit = util_dynarray_top_ptr(ctx->current_block, midgard_instruction);
+        midgard_instruction *then_exit = mir_last_in_block(ctx->current_block);
 
         /* Emit second block, and check if it's empty */
 
