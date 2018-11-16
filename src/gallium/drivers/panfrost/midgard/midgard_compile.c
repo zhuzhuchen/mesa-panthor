@@ -153,97 +153,6 @@ typedef struct midgard_block {
         struct midgard_block *next_fallthrough;
 } midgard_block;
 
-/* Pretty printer for internal Midgard IR */
-
-static void
-print_mir_source(int source)
-{
-        if (source >= SSA_FIXED_MINIMUM) {
-                /* Specific register */
-                int reg = SSA_REG_FROM_FIXED(source);
-
-                /* TODO: Moving threshold */
-                if (reg > 16 && reg < 24)
-                        printf("u%d", 23 - reg);
-                else
-                        printf("r%d", reg);
-        } else {
-                printf("%d", source);
-        }
-}
-
-static void
-print_mir_instruction(midgard_instruction *ins)
-{
-        if (ins->unused)
-                return;
-
-        printf("\t");
-
-        switch (ins->type) {
-        case TAG_ALU_4: {
-                midgard_alu_op op = ins->alu.op;
-                const char *name = alu_opcode_names[op];
-
-                if (ins->unit)
-                        printf("%d.", ins->unit);
-
-                printf("%s", name ? name : "??");
-                break;
-        }
-
-        case TAG_LOAD_STORE_4: {
-                midgard_load_store_op op = ins->load_store.op;
-                const char *name = load_store_opcode_names[op];
-
-                assert(name);
-                printf("%s", name);
-                break;
-        }
-
-        case TAG_TEXTURE_4: {
-                printf("texture");
-                break;
-        }
-
-        default:
-                assert(0);
-        }
-
-        if (ins->uses_ssa) {
-                ssa_args *args = &ins->ssa_args;
-
-                printf(" %s%d, ", args->literal_out ? "r" : "", args->dest);
-
-                print_mir_source(args->src0);
-                printf(", ");
-
-                if (args->inline_constant)
-                        printf("#%d", args->src1);
-                else
-                        print_mir_source(args->src1);
-        } else {
-                printf(" nonssa");
-        }
-
-        if (ins->has_constants)
-                printf(" <%f, %f, %f, %f>", ins->constants[0], ins->constants[1], ins->constants[2], ins->constants[3]);
-
-        printf("\n");
-}
-
-static void
-print_mir_block(midgard_block *block)
-{
-        printf("{\n");
-
-        util_dynarray_foreach(&block->instructions, midgard_instruction, ins) {
-                print_mir_instruction(ins);
-        }
-
-        printf("}\n");
-}
-
 /* Helpers to generate midgard_instruction's using macro magic, since every
  * driver seems to do it that way */
 
@@ -522,12 +431,106 @@ emit_mir_instruction(struct compiler_context *ctx, struct midgard_instruction in
 }
 
 #define mir_foreach_instr(ctx, v) util_dynarray_foreach(&ctx->current_block->instructions, midgard_instruction, v)
+#define mir_foreach_instr_in_block(ctx, blk, v) util_dynarray_foreach(&blk->instructions, midgard_instruction, v)
 
 static midgard_instruction *
 mir_last_in_block(struct midgard_block *block)
 {
         return util_dynarray_top_ptr(&block->instructions, midgard_instruction);
 }
+
+/* Pretty printer for internal Midgard IR */
+
+static void
+print_mir_source(int source)
+{
+        if (source >= SSA_FIXED_MINIMUM) {
+                /* Specific register */
+                int reg = SSA_REG_FROM_FIXED(source);
+
+                /* TODO: Moving threshold */
+                if (reg > 16 && reg < 24)
+                        printf("u%d", 23 - reg);
+                else
+                        printf("r%d", reg);
+        } else {
+                printf("%d", source);
+        }
+}
+
+static void
+print_mir_instruction(midgard_instruction *ins)
+{
+        if (ins->unused)
+                return;
+
+        printf("\t");
+
+        switch (ins->type) {
+        case TAG_ALU_4: {
+                midgard_alu_op op = ins->alu.op;
+                const char *name = alu_opcode_names[op];
+
+                if (ins->unit)
+                        printf("%d.", ins->unit);
+
+                printf("%s", name ? name : "??");
+                break;
+        }
+
+        case TAG_LOAD_STORE_4: {
+                midgard_load_store_op op = ins->load_store.op;
+                const char *name = load_store_opcode_names[op];
+
+                assert(name);
+                printf("%s", name);
+                break;
+        }
+
+        case TAG_TEXTURE_4: {
+                printf("texture");
+                break;
+        }
+
+        default:
+                assert(0);
+        }
+
+        if (ins->uses_ssa) {
+                ssa_args *args = &ins->ssa_args;
+
+                printf(" %s%d, ", args->literal_out ? "r" : "", args->dest);
+
+                print_mir_source(args->src0);
+                printf(", ");
+
+                if (args->inline_constant)
+                        printf("#%d", args->src1);
+                else
+                        print_mir_source(args->src1);
+        } else {
+                printf(" nonssa");
+        }
+
+        if (ins->has_constants)
+                printf(" <%f, %f, %f, %f>", ins->constants[0], ins->constants[1], ins->constants[2], ins->constants[3]);
+
+        printf("\n");
+}
+
+static void
+print_mir_block(midgard_block *block)
+{
+        printf("{\n");
+
+        mir_foreach_instr_in_block(ctx, block, ins) {
+                print_mir_instruction(ins);
+        }
+
+        printf("}\n");
+}
+
+
 
 static void
 attach_constants(compiler_context *ctx, midgard_instruction *ins, void *constants, int name)
@@ -1547,7 +1550,7 @@ allocate_registers(compiler_context *ctx)
 
         /* Transform the MIR into squeezed index form */
         util_dynarray_foreach(&ctx->blocks, midgard_block, block) {
-                util_dynarray_foreach(&block->instructions, midgard_instruction, ins) {
+                mir_foreach_instr_in_block(ctx, block, ins) {
                         if (ins->unused) continue;
 
                         if (!ins->uses_ssa) continue;
@@ -1574,7 +1577,7 @@ allocate_registers(compiler_context *ctx)
          * special to go */
 
         util_dynarray_foreach(&ctx->blocks, midgard_block, block) {
-                util_dynarray_foreach(&block->instructions, midgard_instruction, ins) {
+                mir_foreach_instr_in_block(ctx, block, ins) {
                         if (ins->unused) continue;
 
                         if (!ins->uses_ssa) continue;
@@ -1615,7 +1618,7 @@ allocate_registers(compiler_context *ctx)
         int d = 0;
 
         util_dynarray_foreach(&ctx->blocks, midgard_block, block) {
-                util_dynarray_foreach(&block->instructions, midgard_instruction, ins) {
+                mir_foreach_instr_in_block(ctx, block, ins) {
                         if (ins->unused) continue;
 
                         if (!ins->uses_ssa) continue;
@@ -1683,7 +1686,7 @@ allocate_registers(compiler_context *ctx)
         free(live_end);
 
         util_dynarray_foreach(&ctx->blocks, midgard_block, block) {
-                util_dynarray_foreach(&block->instructions, midgard_instruction, ins) {
+                mir_foreach_instr_in_block(ctx, block, ins) {
                         if (ins->unused) continue;
 
                         if (!ins->uses_ssa) continue;
@@ -2269,7 +2272,7 @@ schedule_block(compiler_context *ctx, midgard_block *block)
 
         block->quadword_count = 0;
 
-        util_dynarray_foreach(&block->instructions, midgard_instruction, ins) {
+        mir_foreach_instr_in_block(ctx, block, ins) {
                 if (!ins->unused) {
                         int skip;
                         midgard_bundle bundle = schedule_bundle(ctx, block, ins, &skip);
@@ -2640,7 +2643,7 @@ map_ssa_to_alias(compiler_context *ctx, int *ref)
 static void
 midgard_eliminate_orphan_moves(compiler_context *ctx, midgard_block *block)
 {
-        util_dynarray_foreach(&block->instructions, midgard_instruction, ins) {
+        mir_foreach_instr_in_block(ctx, block, ins) {
                 if (ins->unused) continue;
 
                 if (!ins->uses_ssa) continue;
@@ -2666,7 +2669,7 @@ midgard_eliminate_orphan_moves(compiler_context *ctx, midgard_block *block)
 static void
 midgard_pair_load_store(compiler_context *ctx, midgard_block *block)
 {
-        util_dynarray_foreach(&block->instructions, midgard_instruction, ins) {
+        mir_foreach_instr_in_block(ctx, block, ins) {
                 if (ins->unused) continue;
 
                 if (!ins->uses_ssa) continue;
