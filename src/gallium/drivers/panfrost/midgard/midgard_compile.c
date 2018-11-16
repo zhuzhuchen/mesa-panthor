@@ -37,6 +37,7 @@
 #include "util/half_float.h"
 #include "util/register_allocate.h"
 #include "util/u_dynarray.h"
+#include "util/list.h"
 #include "main/mtypes.h"
 
 #include "midgard.h"
@@ -96,6 +97,8 @@ typedef struct midgard_branch {
  */
 
 typedef struct midgard_instruction {
+        struct list_head node;
+
         unsigned type; /* ALU, load/store, texture */
 
         /* If the register allocator has not run yet... */
