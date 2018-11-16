@@ -1244,11 +1244,10 @@ emit_intrinsic(compiler_context *ctx, nir_intrinsic_instr *instr)
 
                         /* Look up how it was actually laid out */
 
-                        printf("Trying %d\n", offset + 1);
                         void *entry = _mesa_hash_table_u64_search(ctx->varying_nir_to_mdg, offset + 1);
 
                         if (!entry) {
-                                printf("Skipping varying\n");
+                                printf("WARNING: skipping varying\n");
                                 break;
                         }
 
@@ -1637,10 +1636,7 @@ allocate_registers(compiler_context *ctx)
         /* If a node still hasn't been killed, kill it now */
 
         for (int i = 0; i < nodes; ++i) {
-                /* -1 most likely indicates a pinned output */
-
-                if (live_start[i] == -1)
-                        printf("-1 start for %d?\n", i);
+                /* live_start == -1 most likely indicates a pinned output */
 
                 if (live_end[i] == -1)
                         live_end[i] = d;
@@ -3145,19 +3141,14 @@ midgard_compile_shader_nir(nir_shader *nir, midgard_program *program, bool is_bl
 
                 nir_foreach_variable(var, &nir->outputs) {
                         if (var->data.location < VARYING_SLOT_VAR0) {
-                                if (var->data.location == VARYING_SLOT_POS) {
-                                        printf("Adding pos %d\n", var->data.driver_location + 1);
+                                if (var->data.location == VARYING_SLOT_POS)
                                         _mesa_hash_table_u64_insert(ctx->varying_nir_to_mdg, var->data.driver_location + 1, (void *) ((uintptr_t) (1)));
-                                } else {
-                                        printf("Skipping unknown\n");
-                                }
 
                                 continue;
                         }
 
                         for (int col = 0; col < glsl_get_matrix_columns(var->type); ++col) {
                                 int id = ctx->varying_count++;
-                                printf("Adding varying %d\n", var->data.driver_location + col + 1);
                                 _mesa_hash_table_u64_insert(ctx->varying_nir_to_mdg, var->data.driver_location + col + 1, (void *) ((uintptr_t) (id + 1)));
                         }
                 }
@@ -3345,7 +3336,6 @@ midgard_compile_shader_nir(nir_shader *nir, midgard_program *program, bool is_bl
         program->uniform_cutoff = ctx->uniform_cutoff;
 
         program->blend_patch_offset = ctx->blend_constant_offset;
-        printf("Patch %d\n", program->blend_patch_offset);
 
 #ifdef MDG_DEBUG
         disassemble_midgard(program->compiled.data, program->compiled.size);
