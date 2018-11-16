@@ -247,7 +247,7 @@ print_mir_block(midgard_block *block)
 /* Helpers to generate midgard_instruction's using macro magic, since every
  * driver seems to do it that way */
 
-#define EMIT(op, ...) util_dynarray_append((ctx->current_block), midgard_instruction, v_##op(__VA_ARGS__));
+#define EMIT(op, ...) emit_mir_instruction(ctx, v_##op(__VA_ARGS__));
 
 #define M_LOAD_STORE(name, rname, uname) \
 	static midgard_instruction m_##name(unsigned ssa, unsigned address) { \
@@ -513,6 +513,14 @@ typedef struct compiler_context {
         int instruction_count;
 } compiler_context;
 
+/* Append instruction to end of current block */
+
+static void
+emit_mir_instruction(struct compiler_context *ctx, struct midgard_instruction ins)
+{
+        util_dynarray_append(ctx->current_block, midgard_instruction, ins);
+}
+
 static void
 attach_constants(compiler_context *ctx, midgard_instruction *ins, void *constants, int name)
 {
@@ -757,7 +765,7 @@ emit_condition(compiler_context *ctx, nir_src *src, bool for_branch)
                 },
         };
 
-        util_dynarray_append(ctx->current_block, midgard_instruction, ins);
+        emit_mir_instruction(ctx, ins);
 }
 
 /* Insert a dummy instruction (unused set) to make space for later movement */
@@ -766,7 +774,8 @@ static void
 midgard_insert_dummy(compiler_context *ctx)
 {
         midgard_instruction dummy = { .unused = true, .type = TAG_ALU_4 };
-        util_dynarray_append(ctx->current_block, midgard_instruction, dummy);
+        emit_mir_instruction(ctx, dummy);
+        emit_mir_instruction(ctx, dummy);
 }
 
 
@@ -993,10 +1002,10 @@ emit_alu(compiler_context *ctx, nir_alu_instr *instr)
                                 nirmod0->swizzle[j] = original_swizzle[i]; /* Pull from the correct component */
 
                         ins.alu.src1 = vector_alu_srco_unsigned(vector_alu_modifiers(nirmod0));
-                        util_dynarray_append(ctx->current_block, midgard_instruction, ins);
+                        emit_mir_instruction(ctx, ins);
                 }
         } else {
-                util_dynarray_append(ctx->current_block, midgard_instruction, ins);
+                emit_mir_instruction(ctx, ins);
         }
 }
 
@@ -1075,7 +1084,7 @@ emit_intrinsic(compiler_context *ctx, nir_intrinsic_instr *instr)
                                 ins.load_store.address = uniform_offset >> 3;
 
                                 ins.load_store.unknown = 0x1E00; /* xxx: what is this? */
-                                util_dynarray_append(ctx->current_block, midgard_instruction, ins);
+                                emit_mir_instruction(ctx, ins);
                         }
                 } else if (ctx->stage == MESA_SHADER_FRAGMENT && !ctx->is_blend) {
                         /* XXX: Half-floats? */
@@ -1094,14 +1103,14 @@ emit_intrinsic(compiler_context *ctx, nir_intrinsic_instr *instr)
                         ins.load_store.varying_parameters = u;
 
                         ins.load_store.unknown = 0x1e9e; /* xxx: what is this? */
-                        util_dynarray_append(ctx->current_block, midgard_instruction, ins);
+                        emit_mir_instruction(ctx, ins);
                 } else if (ctx->is_blend && instr->intrinsic == nir_intrinsic_load_uniform) {
                         /* Constant encoded as a pinned constant */
 
                         midgard_instruction ins = v_fmov(SSA_FIXED_REGISTER(REGISTER_CONSTANT), blank_alu_src, reg, false, midgard_outmod_none);
                         ins.has_constants = true;
                         ins.has_blend_constant = true;
-                        util_dynarray_append(ctx->current_block, midgard_instruction, ins);
+                        emit_mir_instruction(ctx, ins);
                 } else if (ctx->is_blend) {
                         /* For blend shaders, a load might be
                          * translated various ways depending on what
@@ -1136,7 +1145,7 @@ emit_intrinsic(compiler_context *ctx, nir_intrinsic_instr *instr)
                                 for (int c = 0; c < 4; ++c) {
                                         ins.load_store.mask = (1 << c);
                                         ins.load_store.unknown = c;
-                                        util_dynarray_append(ctx->current_block, midgard_instruction, ins);
+                                        emit_mir_instruction(ctx, ins);
                                         midgard_insert_dummy(ctx);
                                 }
 
@@ -1166,7 +1175,7 @@ emit_intrinsic(compiler_context *ctx, nir_intrinsic_instr *instr)
                                         }
                                 };
 
-                                util_dynarray_append(ctx->current_block, midgard_instruction, u2f);
+                                emit_mir_instruction(ctx, u2f);
                                 midgard_insert_dummy(ctx);
 
                                 /* vmul.fmul.sat r1, hr2, #0.00392151 */
@@ -1194,7 +1203,7 @@ emit_intrinsic(compiler_context *ctx, nir_intrinsic_instr *instr)
                                         }
                                 };
 
-                                util_dynarray_append(ctx->current_block, midgard_instruction, fmul);
+                                emit_mir_instruction(ctx, fmul);
                                 midgard_insert_dummy(ctx);
                         } else {
                                 printf("Unknown input in blend shader\n");
@@ -1203,7 +1212,7 @@ emit_intrinsic(compiler_context *ctx, nir_intrinsic_instr *instr)
                 } else if (ctx->stage == MESA_SHADER_VERTEX) {
                         midgard_instruction ins = m_load_attr_32(reg, offset);
                         ins.load_store.unknown = 0x1E1E; /* XXX: What is this? */
-                        util_dynarray_append(ctx->current_block, midgard_instruction, ins);
+                        emit_mir_instruction(ctx, ins);
                 } else {
                         printf("Unknown load\n");
                         assert(0);
@@ -1268,7 +1277,7 @@ emit_intrinsic(compiler_context *ctx, nir_intrinsic_instr *instr)
                         midgard_instruction ins = m_store_vary_32(high_varying_register, offset);
                         ins.load_store.unknown = 0x1E9E; /* XXX: What is this? */
                         ins.uses_ssa = false;
-                        util_dynarray_append(ctx->current_block, midgard_instruction, ins);
+                        emit_mir_instruction(ctx, ins);
                 } else {
                         printf("Unknown store\n");
                         assert(0);
@@ -1390,7 +1399,7 @@ emit_tex(compiler_context *ctx, nir_tex_instr *instr)
                 //ins.texture.in_reg_swizzle_third = COMPONENT_X;
         }
 
-        util_dynarray_append(ctx->current_block, midgard_instruction, ins);
+        emit_mir_instruction(ctx, ins);
 
         /* Simultaneously alias the destination and emit a move for it. The move will be eliminated if possible */
 
@@ -1399,7 +1408,7 @@ emit_tex(compiler_context *ctx, nir_tex_instr *instr)
         ctx->texture_index[reg] = o_index;
 
         midgard_instruction ins2 = v_fmov(SSA_FIXED_REGISTER(o_reg), blank_alu_src, o_index, false, midgard_outmod_none);
-        util_dynarray_append(ctx->current_block, midgard_instruction, ins2);
+        emit_mir_instruction(ctx, ins2);
 
         /* Used for .cont and .last hinting */
         ctx->texture_op_count++;
@@ -2874,7 +2883,7 @@ emit_blend_epilogue(compiler_context *ctx)
                 }
         };
 
-        util_dynarray_append(ctx->current_block, midgard_instruction, scale);
+        emit_mir_instruction(ctx, scale);
 
         /* vadd.f2u8.pos.low hr0, hr48, #0 */
 
@@ -2902,7 +2911,7 @@ emit_blend_epilogue(compiler_context *ctx)
                 }
         };
 
-        util_dynarray_append(ctx->current_block, midgard_instruction, f2u8);
+        emit_mir_instruction(ctx, f2u8);
 
         /* vmul.imov.quarter r0, r0, r0 */
 
@@ -2922,10 +2931,10 @@ emit_blend_epilogue(compiler_context *ctx)
 
         /* Emit branch epilogue with the 8-bit move as the source */
 
-        util_dynarray_append(ctx->current_block, midgard_instruction, imov_8);
+        emit_mir_instruction(ctx, imov_8);
         EMIT(alu_br_compact_cond, midgard_jmp_writeout_op_writeout, TAG_ALU_4, 0, midgard_condition_always);
 
-        util_dynarray_append(ctx->current_block, midgard_instruction, imov_8);
+        emit_mir_instruction(ctx, imov_8);
         EMIT(alu_br_compact_cond, midgard_jmp_writeout_op_writeout, TAG_ALU_4, -1, midgard_condition_always);
 }
 
