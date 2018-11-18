@@ -41,7 +41,7 @@
 #include <ctype.h>
 
 #include <assert.h>
-#include <mali-ioctl.h>
+#include <panfrost-ioctl.h>
 #include "panwrap.h"
 
 static pthread_mutex_t l;

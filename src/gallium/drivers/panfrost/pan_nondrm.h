@@ -28,8 +28,8 @@
 #include <unistd.h>
 #include <sys/mman.h>
 #include <stdbool.h>
-#include <mali-ioctl.h>
-#include <mali-job.h>
+#include <panfrost-ioctl.h>
+#include <panfrost-job.h>
 #include <linux/ioctl.h>
 #include "pan_slowfb.h"
 

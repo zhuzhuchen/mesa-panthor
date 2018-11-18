@@ -24,10 +24,10 @@
  *
  */
 
-#ifndef __MALI_JOB_H__
-#define __MALI_JOB_H__
+#ifndef __PANFROST_JOB_H__
+#define __PANFROST_JOB_H__
 
-#include <mali-ioctl.h>
+#include <panfrost-ioctl.h>
 
 #define T8XX
 
@@ -1170,4 +1170,4 @@ struct bifrost_framebuffer {
         /* struct bifrost_render_target rts[] */
 } __attribute__((packed));
 
-#endif /* __MALI_JOB_H__ */
+#endif /* __PANFROST_JOB_H__ */
