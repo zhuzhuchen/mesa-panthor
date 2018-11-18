@@ -28,7 +28,7 @@
 #include <stdarg.h>
 #include <memory.h>
 
-#include <panfrost-ioctl.h>
+#include <mali-kbase-ioctl.h>
 #include "panwrap.h"
 #include "panwrap-mmap.h"
 #ifdef HAVE_LINUX_MMAN_H
@@ -159,7 +159,7 @@ panwrap_track_mmap(mali_ptr gpu_va, void *addr, size_t length,
 
 #define MEM_COOKIE_VA 0x41000
 
-        if (mem->flags & MALI_MEM_SAME_VA && gpu_va == MEM_COOKIE_VA) {
+        if (mem->flags & BASE_MEM_SAME_VA && gpu_va == MEM_COOKIE_VA) {
                 mapped_mem->gpu_va = (mali_ptr) (uintptr_t) addr;
         } else {
                 mapped_mem->gpu_va = gpu_va;
@@ -183,7 +183,7 @@ panwrap_track_mmap(mali_ptr gpu_va, void *addr, size_t length,
         /* Generate somewhat semantic name for the region */
         snprintf(mapped_mem->name, sizeof(mapped_mem->name),
                  "%s_%d",
-                 mem->flags & MALI_MEM_PROT_GPU_EX ? "shader" : "memory",
+                 mem->flags & BASE_MEM_PROT_GPU_EX ? "shader" : "memory",
                  mapped_mem->allocation_number);
 
         /* Map region itself */
@@ -276,7 +276,7 @@ __panwrap_fetch_mem_err(const struct panwrap_mapped_memory *mem,
                 panwrap_msg("Length: %zu bytes\n", mem->length);
                 panwrap_indent--;
 
-                if (!(mem->prot & MALI_MEM_PROT_CPU_RD))
+                if (!(mem->prot & BASE_MEM_PROT_CPU_RD))
                         panwrap_msg("Memory is only accessible from GPU\n");
                 else
                         panwrap_msg("Access length was out of bounds\n");

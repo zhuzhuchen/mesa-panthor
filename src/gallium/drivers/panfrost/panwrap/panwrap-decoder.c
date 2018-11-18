@@ -19,10 +19,9 @@
  * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
- 
  */
 
-#include <panfrost-ioctl.h>
+#include <mali-kbase-ioctl.h>
 #include <panfrost-job.h>
 #include <stdio.h>
 #include <memory.h>
@@ -1965,14 +1964,14 @@ panwrap_replay_jc(mali_ptr jc_gpu_va, bool bifrost)
 static void
 panwrap_replay_soft_replay_payload(mali_ptr jc_gpu_va, int job_no)
 {
-        struct mali_jd_replay_payload *v;
+        struct base_jd_replay_payload *v;
 
         struct panwrap_mapped_memory *mem =
                 panwrap_find_mapped_gpu_mem_containing(jc_gpu_va);
 
-        v = PANWRAP_PTR(mem, jc_gpu_va, struct mali_jd_replay_payload);
+        v = PANWRAP_PTR(mem, jc_gpu_va, struct base_jd_replay_payload);
 
-        panwrap_log("struct mali_jd_replay_payload soft_replay_payload_%d = {\n", job_no);
+        panwrap_log("struct base_jd_replay_payload soft_replay_payload_%d = {\n", job_no);
         panwrap_indent++;
 
         MEMORY_PROP(v, tiler_jc_list);
@@ -2010,7 +2009,7 @@ panwrap_replay_soft_replay_payload(mali_ptr jc_gpu_va, int job_no)
 int
 panwrap_replay_soft_replay(mali_ptr jc_gpu_va)
 {
-        struct mali_jd_replay_jc *v;
+        struct base_jd_replay_jc *v;
         int start_no;
         bool first = true;
 
@@ -2018,7 +2017,7 @@ panwrap_replay_soft_replay(mali_ptr jc_gpu_va)
                 struct panwrap_mapped_memory *mem =
                         panwrap_find_mapped_gpu_mem_containing(jc_gpu_va);
 
-                v = PANWRAP_PTR(mem, jc_gpu_va, struct mali_jd_replay_jc);
+                v = PANWRAP_PTR(mem, jc_gpu_va, struct base_jd_replay_jc);
 
                 int job_no = job_descriptor_number++;
 
@@ -2027,7 +2026,7 @@ panwrap_replay_soft_replay(mali_ptr jc_gpu_va)
 
                 first = false;
 
-                panwrap_log("struct mali_jd_replay_jc job_%d = {\n", job_no);
+                panwrap_log("struct base_jd_replay_jc job_%d = {\n", job_no);
                 panwrap_indent++;
 
                 MEMORY_PROP(v, next);
@@ -2036,7 +2035,7 @@ panwrap_replay_soft_replay(mali_ptr jc_gpu_va)
                 panwrap_indent--;
                 panwrap_log("};\n");
 
-                panwrap_replay_soft_replay_payload(jc_gpu_va /* + sizeof(struct mali_jd_replay_jc) */, job_no);
+                panwrap_replay_soft_replay_payload(jc_gpu_va /* + sizeof(struct base_jd_replay_jc) */, job_no);
 
                 TOUCH(mem, jc_gpu_va, *v, "job", job_no, false);
         } while ((jc_gpu_va = v->next));

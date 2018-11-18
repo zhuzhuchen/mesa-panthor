@@ -41,7 +41,9 @@
 #include <ctype.h>
 
 #include <assert.h>
-#include <panfrost-ioctl.h>
+#include <panfrost-misc.h>
+#include <panfrost-mali-base.h>
+#include <mali-kbase-ioctl.h>
 #include "panwrap.h"
 
 static pthread_mutex_t l;
@@ -63,27 +65,21 @@ struct ioctl_info {
 
 struct device_info {
         const char *name;
-        const struct ioctl_info info[MALI_IOCTL_TYPE_COUNT][_IOC_NR(0xffffffff)];
+        const struct ioctl_info info[_IOC_NR(0xffffffff)];
 };
 
 typedef void *(mmap_func)(void *, size_t, int, int, int, loff_t);
 typedef int (open_func)(const char *, int flags, ...);
 
-#define IOCTL_TYPE(type) [type - MALI_IOCTL_TYPE_BASE] =
-#define IOCTL_INFO(n) [_IOC_NR(MALI_IOCTL_##n)] = { .name = #n }
+#define IOCTL_TYPE(type) [type - KBASE_IOCTL_TYPE_BASE] =
+#define IOCTL_INFO(n) [_IOC_NR(KBASE_IOCTL_##n)] = { .name = #n }
 static struct device_info mali_info = {
         .name = "mali",
         .info = {
-                IOCTL_TYPE(0x80)
-                {
-                        IOCTL_INFO(GET_VERSION),
-                },
-                IOCTL_TYPE(0x82)
-                {
-                        IOCTL_INFO(MEM_ALLOC),
-                        IOCTL_INFO(MEM_IMPORT),
-                        IOCTL_INFO(JOB_SUBMIT),
-                },
+                IOCTL_INFO(VERSION_CHECK),
+                IOCTL_INFO(MEM_ALLOC),
+                IOCTL_INFO(MEM_IMPORT),
+                IOCTL_INFO(JOB_SUBMIT),
         },
 };
 #undef IOCTL_INFO
@@ -92,8 +88,7 @@ static struct device_info mali_info = {
 static inline const struct ioctl_info *
 ioctl_get_info(unsigned long int request)
 {
-        return &mali_info.info[_IOC_TYPE(request) - MALI_IOCTL_TYPE_BASE]
-               [_IOC_NR(request)];
+        return &mali_info.info[_IOC_NR(request)];
 }
 
 static int mali_fd = 0;
@@ -101,7 +96,8 @@ static int mali_fd = 0;
 #define LOCK()   pthread_mutex_lock(&l);
 #define UNLOCK() panwrap_log_flush(); pthread_mutex_unlock(&l)
 
-#define FLAG_INFO(flag) { MALI_JD_REQ_##flag, "MALI_JD_REQ_" #flag }
+#define FLAG_INFO(flag)  { BASE_JD_REQ_##flag, "BASE_JD_REQ_" #flag }
+#define PFLAG_INFO(flag) { BASEP_JD_REQ_##flag, "BASEP_JD_REQ_" #flag}
 static const struct panwrap_flag_info jd_req_flag_info[] = {
         FLAG_INFO(FS),
         FLAG_INFO(CS),
@@ -116,27 +112,28 @@ static const struct panwrap_flag_info jd_req_flag_info[] = {
         FLAG_INFO(ONLY_COMPUTE),
         FLAG_INFO(SPECIFIC_COHERENT_GROUP),
         FLAG_INFO(EVENT_ONLY_ON_FAILURE),
-        FLAG_INFO(EVENT_NEVER),
+        PFLAG_INFO(EVENT_NEVER),
         FLAG_INFO(SKIP_CACHE_START),
         FLAG_INFO(SKIP_CACHE_END),
         {}
 };
 #undef FLAG_INFO
+#undef PFLAG_INFO
 
 #define SOFT_FLAG(flag)                                  \
-	case MALI_JD_REQ_SOFT_##flag:                    \
-		panwrap_log_cont("MALI_JD_REQ_%s", "SOFT_" #flag); \
+	case BASE_JD_REQ_SOFT_##flag:                    \
+		panwrap_log_cont("BASE_JD_REQ_%s", "SOFT_" #flag); \
 		break
 /* Decodes the actual jd_core_req flags, but not their meanings */
 void
 ioctl_log_decoded_jd_core_req(mali_jd_core_req req)
 {
-        if (req & MALI_JD_REQ_SOFT_JOB) {
+        if (req & BASE_JD_REQ_SOFT_JOB) {
                 /* External resources are allowed in e.g. replay jobs */
 
-                if (req & MALI_JD_REQ_EXTERNAL_RESOURCES) {
-                        panwrap_log_cont("MALI_JD_REQ_EXTERNAL_RESOURCES | ");
-                        req &= ~(MALI_JD_REQ_EXTERNAL_RESOURCES);
+                if (req & BASE_JD_REQ_EXTERNAL_RESOURCES) {
+                        panwrap_log_cont("BASE_JD_REQ_EXTERNAL_RESOURCES | ");
+                        req &= ~(BASE_JD_REQ_EXTERNAL_RESOURCES);
                 }
 
                 switch (req) {
@@ -157,36 +154,36 @@ static int job_count = 0;
 static void
 emit_atoms(void *ptr, bool bifrost)
 {
-        const struct mali_ioctl_job_submit *args = ptr;
-        const struct mali_jd_atom_v2 *atoms = args->addr;
+        const struct kbase_ioctl_job_submit *args = ptr;
+        const struct base_jd_atom_v2 *atoms = (void*)args->addr;
 
         int job_no = job_count++;
 
         int job_numbers[256] = { 0 };
 
         for (int i = 0; i < args->nr_atoms; i++) {
-                const struct mali_jd_atom_v2 *a = &atoms[i];
+                const struct base_jd_atom_v2 *a = &atoms[i];
 
                 if (a->jc) {
                         int req = a->core_req | a->compat_core_req;
 
-                        if (!(req & MALI_JD_REQ_SOFT_JOB))
+                        if (!(req & BASE_JD_REQ_SOFT_JOB))
                                 job_numbers[i] = panwrap_replay_jc(a->jc, bifrost);
-                        else if (req & MALI_JD_REQ_SOFT_REPLAY)
+                        else if (req & BASE_JD_REQ_SOFT_REPLAY)
                                 job_numbers[i] = panwrap_replay_soft_replay(a->jc);
                 }
         }
 
         for (int i = 0; i < args->nr_atoms; i++) {
-                const struct mali_jd_atom_v2 *a = &atoms[i];
+                const struct base_jd_atom_v2 *a = &atoms[i];
 
-                if (a->ext_res_list) {
-                        panwrap_log("mali_external_resource resources_%d_%d[] = {\n", job_no, i);
+                if (a->extres_list) {
+                        panwrap_log("base_external_resource resources_%d_%d[] = {\n", job_no, i);
                         panwrap_indent++;
 
-                        for (int j = 0; j < a->nr_ext_res; j++) {
+                        for (int j = 0; j < a->nr_extres; j++) {
                                 /* Substitute in our framebuffer */
-                                panwrap_log("framebuffer_va | MALI_EXT_RES_ACCESS_EXCLUSIVE,\n");
+                                panwrap_log("framebuffer_va | BASE_EXT_RES_ACCESS_EXCLUSIVE,\n");
                         }
 
                         panwrap_indent--;
@@ -195,11 +192,11 @@ emit_atoms(void *ptr, bool bifrost)
                 }
         }
 
-        panwrap_log("struct mali_jd_atom_v2 atoms_%d[] = {\n", job_no);
+        panwrap_log("struct base_jd_atom_v2 atoms_%d[] = {\n", job_no);
         panwrap_indent++;
 
         for (int i = 0; i < args->nr_atoms; i++) {
-                const struct mali_jd_atom_v2 *a = &atoms[i];
+                const struct base_jd_atom_v2 *a = &atoms[i];
 
                 panwrap_log("{\n");
                 panwrap_indent++;
@@ -208,10 +205,10 @@ emit_atoms(void *ptr, bool bifrost)
 
                 /* Don't passthrough udata; it's nondeterministic and for userspace use only */
 
-                panwrap_prop("nr_ext_res = %d", a->nr_ext_res);
+                panwrap_prop("nr_extres = %d", a->nr_extres);
 
-                if (a->ext_res_list)
-                        panwrap_prop("ext_res_list = resources_%d_%d", job_no, i);
+                if (a->extres_list)
+                        panwrap_prop("extres_list = resources_%d_%d", job_no, i);
 
                 if (a->compat_core_req)
                         panwrap_prop("compat_core_req = 0x%x", a->compat_core_req);
@@ -253,8 +250,8 @@ emit_atoms(void *ptr, bool bifrost)
 static inline void
 ioctl_decode_pre_job_submit(unsigned long int request, void *ptr)
 {
-        const struct mali_ioctl_job_submit *args = ptr;
-        const struct mali_jd_atom_v2 *atoms = args->addr;
+        const struct kbase_ioctl_job_submit *args = ptr;
+        const struct base_jd_atom_v2 *atoms = (void*)args->addr;
 
         panwrap_prop("addr = atoms_%d", job_count - 1); /* XXX */
         panwrap_prop("nr_atoms = %d", args->nr_atoms);
@@ -353,6 +350,7 @@ ioctl(int fd, unsigned long int _request, ...)
         unsigned long int request = _request;
         int ioc_size = _IOC_SIZE(request);
         int ret;
+        size_t va_pages;
         void *ptr;
 
         if (ioc_size) {
@@ -372,19 +370,24 @@ ioctl(int fd, unsigned long int _request, ...)
 
         number = ioctl_count++;
 
-        if (IOCTL_CASE(request) == IOCTL_CASE(MALI_IOCTL_JOB_SUBMIT)) {
+        switch (IOCTL_CASE(request)) {
+        case IOCTL_CASE(KBASE_IOCTL_JOB_SUBMIT):
                 emit_atoms(ptr, bifrost);
                 ioctl_decode_pre_job_submit(request, ptr);
+                break;
+        case IOCTL_CASE(KBASE_IOCTL_MEM_ALLOC):
+                va_pages = ((union kbase_ioctl_mem_alloc *)ptr)->in.va_pages;
+                break;
         }
-
 
         ret = orig_ioctl(fd, request, ptr);
 
         /* Track memory allocation if needed  */
-        if (IOCTL_CASE(request) == IOCTL_CASE(MALI_IOCTL_MEM_ALLOC)) {
-                const struct mali_ioctl_mem_alloc *args = ptr;
+        if (IOCTL_CASE(request) == IOCTL_CASE(KBASE_IOCTL_MEM_ALLOC)) {
+                const union kbase_ioctl_mem_alloc *args = ptr;
 
-                panwrap_track_allocation(args->gpu_va, args->flags, number, args->va_pages * 4096);
+                panwrap_track_allocation(args->out.gpu_va, args->out.flags,
+                                         number, va_pages * 4096);
         }
 
         /* Call the actual ioctl */
@@ -407,7 +410,7 @@ panwrap_mmap_wrap(mmap_func *func,
         ret = func(addr, length, prot, flags, fd, offset);
 
         switch (offset) { /* offset == gpu_va */
-        case MALI_MEM_MAP_TRACKING_HANDLE:
+        case BASE_MEM_MAP_TRACKING_HANDLE:
                 /* MTP is mapped automatically for us by pandev_open */
                 break;
 

@@ -25,9 +25,11 @@
 #ifndef __MMAP_TRACE_H__
 #define __MMAP_TRACE_H__
 
-#include <panfrost-ioctl.h>
 #include <stdlib.h>
 #include <stddef.h>
+#include <mali-kbase-ioctl.h>
+#include <panfrost-misc.h>
+#include <panfrost-mali-base.h>
 #include "panwrap.h"
 #include "util/list.h"
 
@@ -118,7 +120,7 @@ __panwrap_fetch_gpu_mem(const struct panwrap_mapped_memory *mem,
 
         if (!mem ||
                         size + (gpu_va - mem->gpu_va) > mem->length ||
-                        !(mem->prot & MALI_MEM_PROT_CPU_RD))
+                        !(mem->prot & BASE_MEM_PROT_CPU_RD))
                 __panwrap_fetch_mem_err(mem, gpu_va, size, line, filename);
 
         return mem->addr + gpu_va - mem->gpu_va;

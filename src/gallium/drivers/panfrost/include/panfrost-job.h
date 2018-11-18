@@ -27,7 +27,8 @@
 #ifndef __PANFROST_JOB_H__
 #define __PANFROST_JOB_H__
 
-#include <panfrost-ioctl.h>
+#include <stdint.h>
+#include <panfrost-misc.h>
 
 #define T8XX
 
@@ -36,6 +37,18 @@
 #define MALI_FBD_HIERARCHY_WEIGHTS 8
 
 #define MALI_PAYLOAD_SIZE 256
+
+/**
+ * @brief Job chain hardware requirements.
+ *
+ * A job chain must specify what GPU features it needs to allow the
+ * driver to schedule the job correctly.  By not specifying the
+ * correct settings can/will cause an early job termination.  Multiple
+ * values can be ORed together to specify multiple requirements.
+ * Special case is ::MALI_JD_REQ_DEP, which is used to express complex
+ * dependencies, and that doesn't execute anything on the hardware.
+ */
+typedef u32 mali_jd_core_req;
 
 enum mali_job_type {
         JOB_NOT_STARTED	= 0,

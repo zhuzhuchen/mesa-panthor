@@ -26,6 +26,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
+#include <panfrost-misc.h>
+#include <panfrost-job.h>
 #include "pan_nondrm.h"
 
 /* TODO: What does this actually have to be? */

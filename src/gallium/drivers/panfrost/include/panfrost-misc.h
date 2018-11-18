@@ -22,8 +22,8 @@
  *
  */
 
-#ifndef __PANFROST_INT_H__
-#define __PANFROST_INT_H__
+#ifndef __PANFROST_MISC_H__
+#define __PANFROST_MISC_H__
 
 #include <inttypes.h>
 
@@ -36,5 +36,12 @@ typedef int8_t  s8;
 typedef int16_t s16;
 typedef int32_t s32;
 typedef int64_t s64;
+
+typedef uintptr_t mali_ptr;
+
+#define MALI_PTR_FMT "0x%" PRIx64
+
+/* FIXME: put this somewhere more fitting */
+#define MALI_MEM_MAP_TRACKING_HANDLE (3ull << 12)
 
 #endif

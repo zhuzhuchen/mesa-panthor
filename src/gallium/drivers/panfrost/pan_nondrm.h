@@ -28,7 +28,6 @@
 #include <unistd.h>
 #include <sys/mman.h>
 #include <stdbool.h>
-#include <panfrost-ioctl.h>
 #include <panfrost-job.h>
 #include <linux/ioctl.h>
 #include "pan_slowfb.h"

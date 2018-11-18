@@ -19,17 +19,26 @@
  * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
- * 
+ *
+ * The bridge between our world, and ARM's. For the *_base_* headers, anyway.
+ *
  */
 
-#ifndef PANWRAP_DECODER_H
-#define PANWRAP_DECODER_H
+#ifndef PANFROST_MALI_BASE_H
+#define PANFROST_MALI_BASE_H
 
-#include <mali-kbase-ioctl.h>
-#include <panfrost-job.h>
-#include "panwrap.h"
+#include <assert.h>
+#include <stddef.h>
+#include <util/macros.h>
 
-int panwrap_replay_jc(mali_ptr jc_gpu_va, bool bifrost);
-int panwrap_replay_soft_replay(mali_ptr jc_gpu_va);
+#include <panfrost-misc.h>
 
-#endif /* !PANWRAP_DECODER_H */
+#define KBASE_DEBUG_ASSERT assert
+
+#mesondefine PAGE_SHIFT
+#define PAGE_SIZE (1UL << PAGE_SHIFT)
+#define PAGE_MASK (~(PAGE_SIZE-1))
+
+#include <mali_base_kernel.h>
+
+#endif /* !PANFROST_MALI_BASE_H */

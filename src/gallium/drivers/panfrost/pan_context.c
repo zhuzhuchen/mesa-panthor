@@ -23,6 +23,8 @@
  */
 
 #include <sys/poll.h>
+#include <panfrost-mali-base.h>
+#include <mali-kbase-ioctl.h>
 
 #include "pan_context.h"
 #include "pan_swizzle.h"
@@ -1432,51 +1434,51 @@ panfrost_submit_frame(struct panfrost_context *ctx, bool flush_immediate)
 #ifndef DRY_RUN
         /* XXX: flush_immediate was causing lock-ups wrt readpixels in dEQP. Investigate. */
 
-        mali_external_resource framebuffer[] = {
-                ctx->framebuffer.gpu | MALI_EXT_RES_ACCESS_EXCLUSIVE,
+        base_external_resource framebuffer[] = {
+                {ctx->framebuffer.gpu | BASE_EXT_RES_ACCESS_EXCLUSIVE},
         };
 
         int vt_atom = allocate_atom();
 
-        struct mali_jd_atom_v2 atoms[] = {
+        struct base_jd_atom_v2 atoms[] = {
                 {
                         .jc = ctx->set_value_job,
                         .atom_number = vt_atom,
-                        .core_req = MALI_JD_REQ_CS | MALI_JD_REQ_T | MALI_JD_REQ_CF | MALI_JD_REQ_COHERENT_GROUP | MALI_JD_REQ_EVENT_NEVER | MALI_JD_REQ_SKIP_CACHE_END,
+                        .core_req = BASE_JD_REQ_CS | BASE_JD_REQ_T | BASE_JD_REQ_CF | BASE_JD_REQ_COHERENT_GROUP | BASEP_JD_REQ_EVENT_NEVER | BASE_JD_REQ_SKIP_CACHE_END,
                 },
                 {
                         .jc = panfrost_fragment_job(ctx),
-                        .nr_ext_res = 1,
-                        .ext_res_list = framebuffer,
+                        .nr_extres = 1,
+                        .extres_list = (u64)framebuffer,
                         .atom_number = allocate_atom(),
-                        .core_req = MALI_JD_REQ_FS | MALI_JD_REQ_SKIP_CACHE_START,
+                        .core_req = BASE_JD_REQ_FS | BASE_JD_REQ_SKIP_CACHE_START,
                 },
         };
 
         if (last_fragment_id != -1) {
                 atoms[0].pre_dep[0].atom_id = last_fragment_id;
-                atoms[0].pre_dep[0].dependency_type = MALI_JD_DEP_TYPE_ORDER;
+                atoms[0].pre_dep[0].dependency_type = BASE_JD_DEP_TYPE_ORDER;
         }
 
         if (has_draws) {
                 atoms[1].pre_dep[0].atom_id = vt_atom;
-                atoms[1].pre_dep[0].dependency_type = MALI_JD_DEP_TYPE_DATA;
+                atoms[1].pre_dep[0].dependency_type = BASE_JD_DEP_TYPE_DATA;
         }
 
-        atoms[1].core_req |= panfrost_is_scanout(ctx) ? MALI_JD_REQ_EXTERNAL_RESOURCES : MALI_JD_REQ_FS_AFBC;
+        atoms[1].core_req |= panfrost_is_scanout(ctx) ? BASE_JD_REQ_EXTERNAL_RESOURCES : BASE_JD_REQ_FS_AFBC;
 
         /* Copy over core reqs for old kernels */
 
         for (int i = 0; i < 2; ++i)
                 atoms[i].compat_core_req = atoms[i].core_req;
 
-        struct mali_ioctl_job_submit submit = {
-                .addr = atoms + (has_draws ? 0 : 1),
+        struct kbase_ioctl_job_submit submit = {
+                .addr = (mali_ptr)atoms + (has_draws ? 0 : 1),
                 .nr_atoms = has_draws ? 2 : 1,
-                .stride = sizeof(struct mali_jd_atom_v2),
+                .stride = sizeof(struct base_jd_atom_v2),
         };
 
-        if (pandev_ioctl(ctx->fd, MALI_IOCTL_JOB_SUBMIT, &submit))
+        if (pandev_ioctl(ctx->fd, KBASE_IOCTL_JOB_SUBMIT, &submit))
                 printf("Error submitting\n");
 
         /* If visual, we can stall a frame */
@@ -2690,16 +2692,16 @@ panfrost_allocate_slab(struct panfrost_context *ctx,
                        int commit_count,
                        int extent)
 {
-        int flags = MALI_MEM_PROT_CPU_RD | MALI_MEM_PROT_CPU_WR | MALI_MEM_PROT_GPU_RD | MALI_MEM_PROT_GPU_WR;
+        int flags = BASE_MEM_PROT_CPU_RD | BASE_MEM_PROT_CPU_WR | BASE_MEM_PROT_GPU_RD | BASE_MEM_PROT_GPU_WR;
 
         flags |= extra_flags;
 
         /* w+x are mutually exclusive */
-        if (extra_flags & MALI_MEM_PROT_GPU_EX)
-                flags &= ~MALI_MEM_PROT_GPU_WR;
+        if (extra_flags & BASE_MEM_PROT_GPU_EX)
+                flags &= ~BASE_MEM_PROT_GPU_WR;
 
         if (same_va)
-                flags |= MALI_MEM_SAME_VA;
+                flags |= BASE_MEM_SAME_VA;
 
         if (commit_count || extent)
                 pandev_general_allocate(ctx->fd, pages, commit_count, extent, flags, &mem->gpu);
@@ -2736,18 +2738,30 @@ panfrost_setup_framebuffer(struct panfrost_context *ctx, int width, int height)
         /* May not be the same as our original alloc if we're using XShm, etc */
         ctx->framebuffer.cpu = info.framebuffer;
 
-        struct mali_mem_import_user_buffer framebuffer_handle = { .ptr = (uint64_t) (uintptr_t) ctx->framebuffer.cpu, .length = framebuffer_sz };
-
-        struct mali_ioctl_mem_import framebuffer_import = {
-                .phandle = (uint64_t) (uintptr_t) &framebuffer_handle,
-                .type = MALI_MEM_IMPORT_TYPE_USER_BUFFER,
-                .flags = MALI_MEM_PROT_CPU_RD | MALI_MEM_PROT_CPU_WR | MALI_MEM_PROT_GPU_RD | MALI_MEM_PROT_GPU_WR | MALI_MEM_IMPORT_SHARED,
+        struct base_mem_import_user_buffer framebuffer_handle = {
+                .ptr = (uint64_t) (uintptr_t) ctx->framebuffer.cpu,
+                .length = framebuffer_sz
         };
 
-        pandev_ioctl(ctx->fd, MALI_IOCTL_MEM_IMPORT, &framebuffer_import);
+        union kbase_ioctl_mem_import framebuffer_import = {
+                .in = {
+                        .phandle = (uint64_t) (uintptr_t) &framebuffer_handle,
+                        .type = BASE_MEM_IMPORT_TYPE_USER_BUFFER,
+                        .flags = BASE_MEM_PROT_CPU_RD |
+                                 BASE_MEM_PROT_CPU_WR |
+                                 BASE_MEM_PROT_GPU_RD |
+                                 BASE_MEM_PROT_GPU_WR |
+                                 BASE_MEM_IMPORT_SHARED,
+                }
+        };
+
+        pandev_ioctl(ctx->fd, KBASE_IOCTL_MEM_IMPORT, &framebuffer_import);
 
         /* It feels like this mmap is backwards :p */
-        uint64_t gpu_addr = (uint64_t) mmap(NULL, framebuffer_import.va_pages * 4096, 3, 1, ctx->fd, framebuffer_import.gpu_va);
+        uint64_t gpu_addr = (uint64_t) mmap(NULL,
+                                            framebuffer_import.out.va_pages * 4096,
+                                            3, 1, ctx->fd,
+                                            framebuffer_import.out.gpu_va);
 
         ctx->framebuffer.gpu = gpu_addr;
         ctx->framebuffer.size = info.stride * height;
@@ -2774,7 +2788,7 @@ panfrost_setup_hardware(struct panfrost_context *ctx)
         panfrost_allocate_slab(ctx, &ctx->textures, 4 * 64 * 64 * 4, true, true, 0, 0, 0);
         panfrost_allocate_slab(ctx, &ctx->scratchpad, 64, true, true, 0, 0, 0);
         panfrost_allocate_slab(ctx, &ctx->varying_mem, 16384, false, true, 0, 0, 0);
-        panfrost_allocate_slab(ctx, &ctx->shaders, 4096, true, false, MALI_MEM_PROT_GPU_EX, 0, 0);
+        panfrost_allocate_slab(ctx, &ctx->shaders, 4096, true, false, BASE_MEM_PROT_GPU_EX, 0, 0);
         panfrost_allocate_slab(ctx, &ctx->tiler_heap, 32768, false, false, 0, 0, 0);
         panfrost_allocate_slab(ctx, &ctx->misc_0, 128, false, false, 0, 0, 0);
 

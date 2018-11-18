@@ -29,38 +29,39 @@
 #include <sys/mman.h>
 #include <assert.h>
 
-#include <panfrost-ioctl.h>
+#include <mali-kbase-ioctl.h>
+#include <panfrost-misc.h>
 #include "pan_nondrm.h"
 
 /* From the kernel module */
 
 #define USE_LEGACY_KERNEL
-#define MALI_MEM_MAP_TRACKING_HANDLE (3ull << 12)
+#define BASE_MEM_MAP_TRACKING_HANDLE (3ull << 12)
 
 int
 pandev_ioctl(int fd, unsigned long request, void *args)
 {
-        union mali_ioctl_header *h = args;
-        h->id = ((_IOC_TYPE(request) & 0xF) << 8) | _IOC_NR(request);
         return ioctl(fd, request, args);
 }
 
 int
 pandev_general_allocate(int fd, int va_pages, int commit_pages, int extent, int flags, u64 *out)
 {
-        struct mali_ioctl_mem_alloc args = {
-                .va_pages = va_pages,
-                .commit_pages = commit_pages,
-                .extent = extent,
-                .flags = flags
+        int ret;
+        union kbase_ioctl_mem_alloc args = {
+                .in.va_pages = va_pages,
+                .in.commit_pages = commit_pages,
+                .in.extent = extent,
+                .in.flags = flags,
         };
 
-        if (pandev_ioctl(fd, MALI_IOCTL_MEM_ALLOC, &args) != 0) {
-                perror("pandev_ioctl MALI_IOCTL_MEM_ALLOC");
+        ret = ioctl(fd, KBASE_IOCTL_MEM_ALLOC, &args);
+        if (ret) {
+                fprintf(stderr, "panfrost: Failed to allocate memory, va_pages=%d commit_pages=%d extent=%d flags=0x%x rc=%d\n",
+                        va_pages, commit_pages, extent, flags, ret);
                 abort();
         }
-
-        *out = args.gpu_va;
+        *out = args.out.gpu_va;
 
         return 0;
 }
@@ -79,23 +80,26 @@ pandev_open()
         assert(fd != -1);
 
 #ifdef USE_LEGACY_KERNEL
-        struct mali_ioctl_get_version version = { .major = 10, .minor = 4 };
-        struct mali_ioctl_set_flags args = {};
+        struct kbase_ioctl_version_check version = { .major = 11, .minor = 11 };
+        struct kbase_ioctl_set_flags set_flags = {};
+        int ret;
 
-        if (pandev_ioctl(fd, MALI_IOCTL_GET_VERSION, &version) != 0) {
-                perror("pandev_ioctl: MALI_IOCTL_GET_VERSION");
+        ret = ioctl(fd, KBASE_IOCTL_VERSION_CHECK, &version);
+        if (ret != 0) {
+                fprintf(stderr, "Version check failed with %d (reporting UK %d.%d)\n",
+                        ret, version.major, version.minor);
                 abort();
         }
+        printf("panfrost: Using kbase UK version %d.%d\n", version.major, version.minor);
 
-        printf("(%d, %d)\n", version.major, version.minor);
-
-        if (mmap(NULL, 4096, PROT_NONE, MAP_SHARED, fd, MALI_MEM_MAP_TRACKING_HANDLE) == MAP_FAILED) {
+        if (mmap(NULL, 4096, PROT_NONE, MAP_SHARED, fd, BASE_MEM_MAP_TRACKING_HANDLE) == MAP_FAILED) {
                 perror("mmap");
                 abort();
         }
 
-        if (pandev_ioctl(fd, MALI_IOCTL_SET_FLAGS, &args) != 0) {
-                perror("pandev_ioctl: MALI_IOCTL_SET_FLAGS");
+        ret = ioctl(fd, KBASE_IOCTL_SET_FLAGS, &set_flags);
+        if (ret != 0) {
+                fprintf(stderr, "Setting context flags failed with %d\n", ret);
                 abort();
         }
 
