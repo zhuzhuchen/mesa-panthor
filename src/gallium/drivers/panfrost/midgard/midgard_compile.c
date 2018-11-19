@@ -2660,7 +2660,7 @@ map_ssa_to_alias(compiler_context *ctx, int *ref)
 static void
 midgard_eliminate_orphan_moves(compiler_context *ctx, midgard_block *block)
 {
-        mir_foreach_instr_in_block(ctx, block, ins) {
+        mir_foreach_instr_in_block_safe(ctx, block, ins) {
                 if (!ins->uses_ssa) continue;
 
                 if (ins->type != TAG_ALU_4) continue;
@@ -2991,7 +2991,7 @@ emit_block(compiler_context *ctx, nir_block *block)
         /* Perform heavylifting for aliasing */
         actualise_ssa_to_alias(ctx);
 
-        //midgard_eliminate_orphan_moves(ctx, this_block);
+        midgard_eliminate_orphan_moves(ctx, this_block);
         midgard_pair_load_store(ctx, this_block);
 
         /* Append fragment shader epilogue (value writeout) */
