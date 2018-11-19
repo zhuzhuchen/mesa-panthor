@@ -47,11 +47,9 @@
 
 #include "disassemble.h"
 
-#define IN_ARRAY(n, arr) ((uintptr_t) (n) < (((uintptr_t) ((arr)->data)) + ((arr)->size)))
-
 #define NIR_DEBUG
 //#define NIR_DEBUG_FINE
-//#define MIR_DEBUG
+#define MIR_DEBUG
 #define MDG_DEBUG
 
 /* Instruction arguments represented as block-local SSA indices, rather than
@@ -97,7 +95,7 @@ typedef struct midgard_branch {
  */
 
 typedef struct midgard_instruction {
-        struct list_head node;
+        struct list_head link;
 
         unsigned type; /* ALU, load/store, texture */
 
@@ -140,7 +138,7 @@ typedef struct midgard_instruction {
 
 typedef struct midgard_block {
         /* List of midgard_instructions emitted for the current block */
-        struct util_dynarray instructions;
+        struct list_head instructions;
 
         bool is_scheduled;
 
@@ -424,23 +422,41 @@ typedef struct compiler_context {
 static void
 emit_mir_instruction(struct compiler_context *ctx, struct midgard_instruction ins)
 {
-        util_dynarray_append(&ctx->current_block->instructions, midgard_instruction, ins);
+        //util_dynarray_append(&ctx->current_block->instructions, midgard_instruction, ins);
+        midgard_instruction *heap = malloc(sizeof(ins));
+        memcpy(heap, &ins, sizeof(ins));
+        list_addtail(&heap->link, &ctx->current_block->instructions);
 }
 
 static void
 mir_remove_instruction(struct midgard_instruction *ins)
 {
         ins->unused = true;
-        //list_del(&ins->node);
+        list_del(&ins->link);
 }
 
+static midgard_instruction*
+mir_next_op(struct midgard_instruction *ins)
+{
+        return list_first_entry(&(ins->link), midgard_instruction, link);
+}
+
+#if 0
 #define mir_foreach_instr(ctx, v) util_dynarray_foreach(&ctx->current_block->instructions, midgard_instruction, v)
 #define mir_foreach_instr_in_block(ctx, blk, v) util_dynarray_foreach(&blk->instructions, midgard_instruction, v)
+#endif
+
+
+#define mir_foreach_instr(ctx, v) list_for_each_entry(struct midgard_instruction, v, &ctx->current_block->instructions, link) 
+#define mir_foreach_instr_in_block(ctx, block, v) list_for_each_entry(struct midgard_instruction, v, &block->instructions, link) 
+#define mir_foreach_instr_in_block_from(block, v, from) list_for_each_entry_from(struct midgard_instruction, v, from, &block->instructions, link) 
+
 
 static midgard_instruction *
 mir_last_in_block(struct midgard_block *block)
 {
-        return util_dynarray_top_ptr(&block->instructions, midgard_instruction);
+        //return util_dynarray_top_ptr(&block->instructions, midgard_instruction);
+        return list_last_entry(&block->instructions, struct midgard_instruction, link);
 }
 
 /* Pretty printer for internal Midgard IR */
@@ -1495,7 +1511,7 @@ static bool
 is_live_after(midgard_block *block, midgard_instruction *start, int src)
 {
         /* Check the rest of the block for liveness */
-        for (midgard_instruction *ins = start + 1; IN_ARRAY(ins, &block->instructions); ++ins) {
+        mir_foreach_instr_in_block_from(block, ins, mir_next_op(start)) {
                 if (ins->unused) continue;
 
                 if (!ins->uses_ssa) continue;
@@ -1534,9 +1550,9 @@ allocate_registers(compiler_context *ctx)
 
         /* Transform the MIR into squeezed index form */
         util_dynarray_foreach(&ctx->blocks, midgard_block, block) {
+                printf("Dumping %p\n", block);
+                print_mir_block(block);
                 mir_foreach_instr_in_block(ctx, block, ins) {
-                        if (ins->unused) continue;
-
                         if (!ins->uses_ssa) continue;
 
                         ins->ssa_args.src0 = find_or_allocate_temp(ctx, ins->ssa_args.src0);
@@ -1917,9 +1933,20 @@ schedule_bundle(compiler_context *ctx, midgard_block *block, midgard_instruction
                 int segment_size = 0;
 
                 instructions_emitted = -1;
+                midgard_instruction *pins = ins;
 
-                while (IN_ARRAY(ins + index, &block->instructions)) {
-                        midgard_instruction *ains = ins + index;
+                for (;;) {
+                        midgard_instruction *ains = pins;
+
+                        /* Advance instruction pointer */
+                        if (index) {
+                                ains = mir_next_op(pins);
+                                pins = ains;
+                        }
+
+                        /* Out-of-work condition */
+                        if ((struct list_head *) ains == &block->instructions)
+                                break;
 
                         /* Ensure that the chain can continue */
                         if (ains->unused) goto skip_instruction;
@@ -2069,31 +2096,32 @@ schedule_bundle(compiler_context *ctx, midgard_block *block, midgard_instruction
                                                 uint16_t register_dep_mask = 0;
                                                 uint16_t written_mask = 0;
 
+                                                midgard_instruction *qins = ins;
                                                 for (int t = 0; t < index; ++t) {
-                                                        midgard_instruction *qins = ins + t;
-
                                                         if (qins->unused) continue;
 
-                                                        /* Mark down writes */
-
                                                         if (qins->registers.out_reg != 0) {
+                                                                /* Mark down writes */
+
                                                                 written_mask |= (1 << qins->registers.out_reg);
-                                                                continue;
+                                                        } else {
+                                                                /* Mark down the register dependencies for errata check */
+
+                                                                if (qins->registers.src1_reg < 16)
+                                                                        register_dep_mask |= (1 << qins->registers.src1_reg);
+
+                                                                if (qins->registers.src2_reg < 16)
+                                                                        register_dep_mask |= (1 << qins->registers.src2_reg);
+
+                                                                int mask = qins->alu.mask;
+
+                                                                for (int c = 0; c < 4; ++c)
+                                                                        if (mask & (0x3 << (2 * c)))
+                                                                                components[c] = true;
                                                         }
 
-                                                        /* Mark down the register dependencies for errata check */
-
-                                                        if (qins->registers.src1_reg < 16)
-                                                                register_dep_mask |= (1 << qins->registers.src1_reg);
-
-                                                        if (qins->registers.src2_reg < 16)
-                                                                register_dep_mask |= (1 << qins->registers.src2_reg);
-
-                                                        int mask = qins->alu.mask;
-
-                                                        for (int c = 0; c < 4; ++c)
-                                                                if (mask & (0x3 << (2 * c)))
-                                                                        components[c] = true;
+                                                        /* Advance instruction pointer */
+                                                        qins = mir_next_op(qins);
                                                 }
 
 
@@ -2172,18 +2200,15 @@ skip_instruction:
                  * scheduler.
                  */
 
-                int idx = 1;
+                midgard_instruction *next_op = mir_next_op(ins);
 
-                while (IN_ARRAY((ins + idx), &block->instructions) && (ins + idx)->unused)
-                        ++idx;
-
-                if (IN_ARRAY((ins + idx), &block->instructions) && ((ins + idx)->type == TAG_LOAD_STORE_4)) {
+                if ((struct list_head *) next_op != &block->instructions && next_op->type == TAG_LOAD_STORE_4) {
                         /* As the two operate concurrently, make sure
                          * they are not dependent */
 
-                        if (can_run_concurrent_ssa(ins, ins + idx) || true) {
+                        if (can_run_concurrent_ssa(ins, next_op) || true) {
                                 /* Skip ahead, since it's redundant with the pair */
-                                instructions_consumed = idx + (instructions_emitted++);
+                                instructions_consumed = (instructions_emitted++);
                         }
                 }
 
@@ -2207,10 +2232,10 @@ skip_instruction:
 
         int used_idx = 0;
 
+        midgard_instruction *uins = ins;
         for (int i = 0; used_idx < bundle.instruction_count; ++i) {
-                if ((ins + i)->unused) continue;
-
-                bundle.instructions[used_idx++] = *(ins + i);
+                bundle.instructions[used_idx++] = *uins;
+                uins = mir_next_op(uins);
         }
 
         *skip = (instructions_consumed == -1) ? instructions_emitted : instructions_consumed;
@@ -2257,20 +2282,20 @@ schedule_block(compiler_context *ctx, midgard_block *block)
         block->quadword_count = 0;
 
         mir_foreach_instr_in_block(ctx, block, ins) {
-                if (!ins->unused) {
-                        int skip;
-                        midgard_bundle bundle = schedule_bundle(ctx, block, ins, &skip);
-                        util_dynarray_append(&block->bundles, midgard_bundle, bundle);
+                int skip;
+                midgard_bundle bundle = schedule_bundle(ctx, block, ins, &skip);
+                util_dynarray_append(&block->bundles, midgard_bundle, bundle);
 
-                        if (bundle.has_blend_constant) {
-                                /* TODO: Multiblock? */
-                                int quadwords_within_block = block->quadword_count + quadword_size(bundle.tag) - 1;
-                                ctx->blend_constant_offset = quadwords_within_block * 0x10;
-                        }
-
-                        ins += skip;
-                        block->quadword_count += quadword_size(bundle.tag);
+                if (bundle.has_blend_constant) {
+                        /* TODO: Multiblock? */
+                        int quadwords_within_block = block->quadword_count + quadword_size(bundle.tag) - 1;
+                        ctx->blend_constant_offset = quadwords_within_block * 0x10;
                 }
+
+                while(skip--)
+                        ins = mir_next_op(ins);
+
+                block->quadword_count += quadword_size(bundle.tag);
         }
 
         block->is_scheduled = true;
@@ -2631,8 +2656,6 @@ static void
 midgard_eliminate_orphan_moves(compiler_context *ctx, midgard_block *block)
 {
         mir_foreach_instr_in_block(ctx, block, ins) {
-                if (ins->unused) continue;
-
                 if (!ins->uses_ssa) continue;
 
                 if (ins->type != TAG_ALU_4) continue;
@@ -2656,6 +2679,8 @@ midgard_eliminate_orphan_moves(compiler_context *ctx, midgard_block *block)
 static void
 midgard_pair_load_store(compiler_context *ctx, midgard_block *block)
 {
+        /* TODO: Listify */
+        assert (0);
         mir_foreach_instr_in_block(ctx, block, ins) {
                 if (ins->unused) continue;
 
@@ -2663,9 +2688,10 @@ midgard_pair_load_store(compiler_context *ctx, midgard_block *block)
 
                 if (ins->type != TAG_LOAD_STORE_4) continue;
 
-                /* We've found a load/store op. Check if next is also load/store. Mind the gap */
-                if (IN_ARRAY(ins + 2, &block->instructions)) {
-                        if ((ins + 2)->type == TAG_LOAD_STORE_4) {
+                /* We've found a load/store op. Check if next is also load/store. */
+                midgard_instruction *next_op = mir_next_op(ins);
+                if (next_op) {
+                        if (next_op->type == TAG_LOAD_STORE_4) {
                                 /* If so, we're done since we're a pair */
                                 ++ins;
                                 continue;
@@ -2675,7 +2701,7 @@ midgard_pair_load_store(compiler_context *ctx, midgard_block *block)
                         int search_distance = 8;
 
                         /* Otherwise, we have an orphaned load/store -- search for another load */
-                        for (midgard_instruction *c = ins + 1; IN_ARRAY(c, &block->instructions) && search_distance; ++c, --search_distance) {
+                        for (midgard_instruction *c = ins + 1; search_distance; ++c, --search_distance) {
                                 if (c->unused) continue;
 
                                 if (!c->uses_ssa) continue;
@@ -2941,16 +2967,16 @@ emit_blend_epilogue(compiler_context *ctx)
 static midgard_block *
 emit_block(compiler_context *ctx, nir_block *block)
 {
-        midgard_block this_block;
-        this_block.is_scheduled = false;
+        midgard_block *this_block = util_dynarray_grow(&ctx->blocks, sizeof(midgard_block));
+        this_block->is_scheduled = false;
         ++ctx->block_count;
 
         ctx->texture_index[0] = -1;
         ctx->texture_index[1] = -1;
 
         /* Set up current block */
-        util_dynarray_init(&this_block.instructions, NULL);
-        ctx->current_block = &this_block;
+        list_inithead(&this_block->instructions);
+        ctx->current_block = this_block;
 
         nir_foreach_instr(instr, block) {
                 emit_instr(ctx, instr);
@@ -2963,12 +2989,8 @@ emit_block(compiler_context *ctx, nir_block *block)
         /* Perform heavylifting for aliasing */
         actualise_ssa_to_alias(ctx);
 
-        midgard_eliminate_orphan_moves(ctx, &this_block);
-        //midgard_pair_load_store(ctx, &this_block);
-
-#ifdef MIR_DEBUG
-        print_mir_block(&this_block);
-#endif
+        //midgard_eliminate_orphan_moves(ctx, this_block);
+        //midgard_pair_load_store(ctx, this_block);
 
         /* Append fragment shader epilogue (value writeout) */
         if (ctx->stage == MESA_SHADER_FRAGMENT) {
@@ -2981,27 +3003,27 @@ emit_block(compiler_context *ctx, nir_block *block)
         }
 
         /* Fallthrough save */
-        this_block.next_fallthrough = ctx->previous_source_block;
-
-        /* Save the block. Initial and final may be the same. */
-        util_dynarray_append(&ctx->blocks, midgard_block, this_block);
-
-        midgard_block *block_ptr = util_dynarray_top_ptr(&ctx->blocks, midgard_block);
+        this_block->next_fallthrough = ctx->previous_source_block;
 
         if (block == nir_start_block(ctx->func->impl))
-                ctx->initial_block = block_ptr;
+                ctx->initial_block = this_block;
 
         if (block == nir_impl_last_block(ctx->func->impl))
-                ctx->final_block = block_ptr;
+                ctx->final_block = this_block;
 
         /* Allow the next control flow to access us retroactively, for
          * branching etc */
-        ctx->current_block = block_ptr;
+        ctx->current_block = this_block;
 
         /* Document the fallthrough chain */
-        ctx->previous_source_block = block_ptr;
+        ctx->previous_source_block = this_block;
 
-        return block_ptr;
+#ifdef MIR_DEBUG
+        printf("Making %p\n", this_block);
+        print_mir_block(this_block);
+#endif
+
+        return this_block;
 }
 
 static midgard_block *emit_cf_list(struct compiler_context *ctx, struct exec_list *list);
@@ -3209,7 +3231,8 @@ midgard_compile_shader_nir(nir_shader *nir, midgard_program *program, bool is_bl
                 ctx->func = func;
 
                 emit_cf_list(ctx, &func->impl->body);
-                emit_block(ctx, func->impl->end_block);
+                /* TODO */
+                //emit_block(ctx, func->impl->end_block);
 
                 break; /* TODO: Multi-function shaders */
         }
@@ -3330,7 +3353,7 @@ midgard_compile_shader_nir(nir_shader *nir, midgard_program *program, bool is_bl
                 }
 
                 /* TODO: Free deeper */
-                util_dynarray_fini(&block->instructions);
+                //util_dynarray_fini(&block->instructions);
         }
 
         free(source_order_bundles);
