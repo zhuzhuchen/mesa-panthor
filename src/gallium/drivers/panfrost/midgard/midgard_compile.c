@@ -118,12 +118,6 @@ typedef struct midgard_instruction {
         bool writeout;
         bool prepacked_branch;
 
-        /* dynarray's are O(n) to delete from, which makes peephole
-         * optimisations a little awkward. Instead, just have an unused flag
-         * which the code gen will skip over */
-
-        bool unused;
-
         union {
                 midgard_load_store_word load_store;
                 midgard_vector_alu alu;
@@ -422,20 +416,36 @@ typedef struct compiler_context {
 
 /* Append instruction to end of current block */
 
+static midgard_instruction *
+mir_upload_ins(struct midgard_instruction ins)
+{
+        midgard_instruction *heap = malloc(sizeof(ins));
+        memcpy(heap, &ins, sizeof(ins));
+        return heap;
+}
+
 static void
 emit_mir_instruction(struct compiler_context *ctx, struct midgard_instruction ins)
 {
-        //util_dynarray_append(&ctx->current_block->instructions, midgard_instruction, ins);
-        midgard_instruction *heap = malloc(sizeof(ins));
-        memcpy(heap, &ins, sizeof(ins));
-        list_addtail(&heap->link, &ctx->current_block->instructions);
+        list_addtail(&(mir_upload_ins(ins))->link, &ctx->current_block->instructions);
+}
+
+static void
+mir_insert_instruction_before(struct midgard_instruction *tag, struct midgard_instruction ins)
+{
+        list_addtail(&(mir_upload_ins(ins))->link, &tag->link);
 }
 
 static void
 mir_remove_instruction(struct midgard_instruction *ins)
 {
-        ins->unused = true;
         list_del(&ins->link);
+}
+
+static midgard_instruction*
+mir_prev_op(struct midgard_instruction *ins)
+{
+        return list_last_entry(&(ins->link), midgard_instruction, link);
 }
 
 static midgard_instruction*
@@ -444,14 +454,10 @@ mir_next_op(struct midgard_instruction *ins)
         return list_first_entry(&(ins->link), midgard_instruction, link);
 }
 
-#if 0
-#define mir_foreach_instr(ctx, v) util_dynarray_foreach(&ctx->current_block->instructions, midgard_instruction, v)
-#define mir_foreach_instr_in_block(ctx, blk, v) util_dynarray_foreach(&blk->instructions, midgard_instruction, v)
-#endif
-
 
 #define mir_foreach_block(ctx, v) list_for_each_entry(struct midgard_block, v, &ctx->blocks, link) 
 #define mir_foreach_instr(ctx, v) list_for_each_entry(struct midgard_instruction, v, &ctx->current_block->instructions, link) 
+#define mir_foreach_instr_safe(ctx, v) list_for_each_entry_safe(struct midgard_instruction, v, &ctx->current_block->instructions, link) 
 #define mir_foreach_instr_in_block(ctx, block, v) list_for_each_entry(struct midgard_instruction, v, &block->instructions, link) 
 #define mir_foreach_instr_in_block_from(block, v, from) list_for_each_entry_from(struct midgard_instruction, v, from, &block->instructions, link) 
 
@@ -496,9 +502,6 @@ print_mir_source(int source)
 static void
 print_mir_instruction(midgard_instruction *ins)
 {
-        if (ins->unused)
-                return;
-
         printf("\t");
 
         switch (ins->type) {
@@ -1527,8 +1530,6 @@ is_live_after(midgard_block *block, midgard_instruction *start, int src)
 {
         /* Check the rest of the block for liveness */
         mir_foreach_instr_in_block_from(block, ins, mir_next_op(start)) {
-                if (ins->unused) continue;
-
                 if (!ins->uses_ssa) continue;
 
                 if (ins->ssa_args.src0 == src) return true;
@@ -1593,8 +1594,6 @@ allocate_registers(compiler_context *ctx)
 
         mir_foreach_block(ctx, block) {
                 mir_foreach_instr_in_block(ctx, block, ins) {
-                        if (ins->unused) continue;
-
                         if (!ins->uses_ssa) continue;
 
                         if (ins->ssa_args.literal_out) continue;
@@ -1634,8 +1633,6 @@ allocate_registers(compiler_context *ctx)
 
         mir_foreach_block(ctx, block) {
                 mir_foreach_instr_in_block(ctx, block, ins) {
-                        if (ins->unused) continue;
-
                         if (!ins->uses_ssa) continue;
 
                         if (!ins->ssa_args.literal_out) {
@@ -1702,8 +1699,6 @@ allocate_registers(compiler_context *ctx)
 
         mir_foreach_block(ctx, block) {
                 mir_foreach_instr_in_block(ctx, block, ins) {
-                        if (ins->unused) continue;
-
                         if (!ins->uses_ssa) continue;
 
                         ssa_args args = ins->ssa_args;
@@ -1964,8 +1959,6 @@ schedule_bundle(compiler_context *ctx, midgard_block *block, midgard_instruction
                                 break;
 
                         /* Ensure that the chain can continue */
-                        if (ains->unused) goto skip_instruction;
-
                         if (ains->type != TAG_ALU_4) break;
 
                         /* According to the presentation "The ARM
@@ -2113,8 +2106,6 @@ schedule_bundle(compiler_context *ctx, midgard_block *block, midgard_instruction
 
                                                 midgard_instruction *qins = ins;
                                                 for (int t = 0; t < index; ++t) {
-                                                        if (qins->unused) continue;
-
                                                         if (qins->registers.out_reg != 0) {
                                                                 /* Mark down writes */
 
@@ -2176,8 +2167,6 @@ schedule_bundle(compiler_context *ctx, midgard_block *block, midgard_instruction
                         control |= ains->unit;
                         last_unit = ains->unit;
                         ++instructions_emitted;
-
-skip_instruction:
                         ++index;
                 }
 
@@ -2347,7 +2336,6 @@ emit_binary_bundle(compiler_context *ctx, midgard_bundle *bundle, struct util_dy
                 /* Emit body words based on the instructions bundled */
                 for (int i = 0; i < bundle->instruction_count; ++i) {
                         midgard_instruction *ins = &bundle->instructions[i];
-                        assert(!ins->unused);
 
                         if (ins->unit & UNITS_ANY_VECTOR) {
                                 memcpy(util_dynarray_grow(emission, sizeof(midgard_vector_alu)), &ins->alu, sizeof(midgard_vector_alu));
@@ -2484,15 +2472,8 @@ inline_alu_constants(compiler_context *ctx)
                                 /* Set the source */
                                 alu->ssa_args.src1 = 4096 + alu->ssa_args.src1;
 
-                                /* Right before us (odd numbers) is a dummy
-                                 * instruction.  Copy the new move into that.
-                                 * */
-
-                                /* TODO INSERT */
-                                assert(0);
-
-                                memcpy(alu - 1, alu - 2, sizeof(ins));
-                                memcpy(alu - 2, &ins, sizeof(ins));
+                                /* Inject us -before- the last instruction which set r31 */
+                                mir_insert_instruction_before(mir_prev_op(alu), ins);
                         }
                 }
         }
@@ -2510,8 +2491,6 @@ embedded_to_inline_constant(compiler_context *ctx)
                 if (!ins->has_constants) continue;
 
                 if (ins->ssa_args.inline_constant) continue;
-
-                if (ins->unused) continue;
 
                 /* Blend constants must not be inlined by definition */
                 if (ins->has_blend_constant) continue;
@@ -2603,6 +2582,9 @@ embedded_to_inline_constant(compiler_context *ctx)
                                 printf("Bailing inline constant...\n");
                                 continue;
                         }
+
+                        /* Bail? */
+                        continue;
 
                         /* Make sure that the constant is not itself a
                          * vector by checking if all accessed values
@@ -2697,8 +2679,6 @@ midgard_pair_load_store(compiler_context *ctx, midgard_block *block)
         /* TODO: Listify */
         assert (0);
         mir_foreach_instr_in_block(ctx, block, ins) {
-                if (ins->unused) continue;
-
                 if (!ins->uses_ssa) continue;
 
                 if (ins->type != TAG_LOAD_STORE_4) continue;
@@ -2717,8 +2697,6 @@ midgard_pair_load_store(compiler_context *ctx, midgard_block *block)
 
                         /* Otherwise, we have an orphaned load/store -- search for another load */
                         for (midgard_instruction *c = ins + 1; search_distance; ++c, --search_distance) {
-                                if (c->unused) continue;
-
                                 if (!c->uses_ssa) continue;
 
                                 if (c->type != TAG_LOAD_STORE_4) continue;
@@ -3267,8 +3245,6 @@ midgard_compile_shader_nir(nir_shader *nir, midgard_program *program, bool is_bl
                 util_dynarray_foreach(&block->bundles, midgard_bundle, bundle) {
                         for (int c = 0; c < bundle->instruction_count; ++c) {
                                 midgard_instruction *ins = &bundle->instructions[c];
-
-                                if (ins->unused) continue;
 
                                 if (ins->unit != ALU_ENAB_BR_COMPACT) continue;
 
