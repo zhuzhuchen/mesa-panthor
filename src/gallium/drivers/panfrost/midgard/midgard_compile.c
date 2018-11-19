@@ -137,6 +137,9 @@ typedef struct midgard_instruction {
 } midgard_instruction;
 
 typedef struct midgard_block {
+        /* Link to next block. Must be first for mir_get_block */
+        struct list_head link;
+
         /* List of midgard_instructions emitted for the current block */
         struct list_head instructions;
 
@@ -353,9 +356,9 @@ typedef struct compiler_context {
         /* Current NIR function */
         nir_function *func;
 
-        /* Unordered array of midgard_block */
+        /* Unordered list of midgard_blocks */
         int block_count;
-        struct util_dynarray blocks;
+        struct list_head blocks;
 
         midgard_block *initial_block;
         midgard_block *previous_source_block;
@@ -447,6 +450,7 @@ mir_next_op(struct midgard_instruction *ins)
 #endif
 
 
+#define mir_foreach_block(ctx, v) list_for_each_entry(struct midgard_block, v, &ctx->blocks, link) 
 #define mir_foreach_instr(ctx, v) list_for_each_entry(struct midgard_instruction, v, &ctx->current_block->instructions, link) 
 #define mir_foreach_instr_in_block(ctx, block, v) list_for_each_entry(struct midgard_instruction, v, &block->instructions, link) 
 #define mir_foreach_instr_in_block_from(block, v, from) list_for_each_entry_from(struct midgard_instruction, v, from, &block->instructions, link) 
@@ -457,6 +461,17 @@ mir_last_in_block(struct midgard_block *block)
 {
         //return util_dynarray_top_ptr(&block->instructions, midgard_instruction);
         return list_last_entry(&block->instructions, struct midgard_instruction, link);
+}
+
+static midgard_block *
+mir_get_block(compiler_context *ctx, int idx)
+{
+        struct list_head *lst = &ctx->blocks;
+
+        while ((idx--) + 1)
+                lst = lst->next;
+
+        return (struct midgard_block *) lst;
 }
 
 /* Pretty printer for internal Midgard IR */
@@ -1549,7 +1564,7 @@ allocate_registers(compiler_context *ctx)
         ra_set_finalize(regs, NULL);
 
         /* Transform the MIR into squeezed index form */
-        util_dynarray_foreach(&ctx->blocks, midgard_block, block) {
+        mir_foreach_block(ctx, block) {
                 printf("Dumping %p\n", block);
                 print_mir_block(block);
                 mir_foreach_instr_in_block(ctx, block, ins) {
@@ -1576,7 +1591,7 @@ allocate_registers(compiler_context *ctx)
         /* Set everything to the work register class, unless it has somewhere
          * special to go */
 
-        util_dynarray_foreach(&ctx->blocks, midgard_block, block) {
+        mir_foreach_block(ctx, block) {
                 mir_foreach_instr_in_block(ctx, block, ins) {
                         if (ins->unused) continue;
 
@@ -1617,7 +1632,7 @@ allocate_registers(compiler_context *ctx)
 
         int d = 0;
 
-        util_dynarray_foreach(&ctx->blocks, midgard_block, block) {
+        mir_foreach_block(ctx, block) {
                 mir_foreach_instr_in_block(ctx, block, ins) {
                         if (ins->unused) continue;
 
@@ -1685,7 +1700,7 @@ allocate_registers(compiler_context *ctx)
         free(live_start);
         free(live_end);
 
-        util_dynarray_foreach(&ctx->blocks, midgard_block, block) {
+        mir_foreach_block(ctx, block) {
                 mir_foreach_instr_in_block(ctx, block, ins) {
                         if (ins->unused) continue;
 
@@ -2306,7 +2321,7 @@ schedule_program(compiler_context *ctx)
 {
         allocate_registers(ctx);
 
-        util_dynarray_foreach(&ctx->blocks, midgard_block, block) {
+        mir_foreach_block(ctx, block) {
                 schedule_block(ctx, block);
         }
 }
@@ -2967,7 +2982,9 @@ emit_blend_epilogue(compiler_context *ctx)
 static midgard_block *
 emit_block(compiler_context *ctx, nir_block *block)
 {
-        midgard_block *this_block = util_dynarray_grow(&ctx->blocks, sizeof(midgard_block));
+        midgard_block *this_block = malloc(sizeof(midgard_block));
+        list_addtail(&this_block->link, &ctx->blocks);
+
         this_block->is_scheduled = false;
         ++ctx->block_count;
 
@@ -3226,13 +3243,12 @@ midgard_compile_shader_nir(nir_shader *nir, midgard_program *program, bool is_bl
                 if (!func->impl)
                         continue;
 
-                util_dynarray_init(&ctx->blocks, NULL);
+                list_inithead(&ctx->blocks);
                 ctx->block_count = 0;
                 ctx->func = func;
 
                 emit_cf_list(ctx, &func->impl->body);
-                /* TODO */
-                //emit_block(ctx, func->impl->end_block);
+                emit_block(ctx, func->impl->end_block);
 
                 break; /* TODO: Multi-function shaders */
         }
@@ -3247,7 +3263,7 @@ midgard_compile_shader_nir(nir_shader *nir, midgard_program *program, bool is_bl
 
         int br_block_idx = 0;
 
-        util_dynarray_foreach(&ctx->blocks, midgard_block, block) {
+        mir_foreach_block(ctx, block) {
                 util_dynarray_foreach(&block->bundles, midgard_bundle, bundle) {
                         for (int c = 0; c < bundle->instruction_count; ++c) {
                                 midgard_instruction *ins = &bundle->instructions[c];
@@ -3263,7 +3279,7 @@ midgard_compile_shader_nir(nir_shader *nir, midgard_program *program, bool is_bl
                                 /* Determine the block we're jumping to */
                                 int target_number = ins->branch.target_start;
 
-                                midgard_block *target = util_dynarray_element(&ctx->blocks, midgard_block, target_number);
+                                midgard_block *target = mir_get_block(ctx, target_number);
                                 assert(target);
 
                                 /* Determine the destination tag */
@@ -3278,7 +3294,7 @@ midgard_compile_shader_nir(nir_shader *nir, midgard_program *program, bool is_bl
                                 int quadword_offset = 0;
 
                                 for (int idx = br_block_idx + 1; idx < target_number; ++idx) {
-                                        midgard_block *blk = util_dynarray_element(&ctx->blocks, midgard_block, idx);
+                                        midgard_block *blk = mir_get_block(ctx, idx);
                                         assert(blk);
 
                                         quadword_offset += blk->quadword_count;
@@ -3321,12 +3337,12 @@ midgard_compile_shader_nir(nir_shader *nir, midgard_program *program, bool is_bl
         /* Cache _all_ bundles in source order for lookahead across failed branches */
 
         int bundle_count = 0;
-        util_dynarray_foreach(&ctx->blocks, midgard_block, block) {
+        mir_foreach_block(ctx, block) {
                 bundle_count += block->bundles.size / sizeof(midgard_bundle);
         }
         midgard_bundle **source_order_bundles = malloc(sizeof(midgard_bundle *) * bundle_count);
         int bundle_idx = 0;
-        util_dynarray_foreach(&ctx->blocks, midgard_block, block) {
+        mir_foreach_block(ctx, block) {
                 util_dynarray_foreach(&block->bundles, midgard_bundle, bundle) {
                         source_order_bundles[bundle_idx++] = bundle;
                 }
@@ -3334,7 +3350,7 @@ midgard_compile_shader_nir(nir_shader *nir, midgard_program *program, bool is_bl
 
         int current_bundle = 0;
 
-        util_dynarray_foreach(&ctx->blocks, midgard_block, block) {
+        mir_foreach_block(ctx, block) {
                 util_dynarray_foreach(&block->bundles, midgard_bundle, bundle) {
                         int lookahead = 1;
 
@@ -3360,7 +3376,7 @@ midgard_compile_shader_nir(nir_shader *nir, midgard_program *program, bool is_bl
 
         /* Due to lookahead, we need to report in the command stream the first tag executed */
 
-        midgard_block *initial_block = util_dynarray_element(&ctx->blocks, midgard_block, 0);
+        midgard_block *initial_block = list_first_entry(&ctx->blocks, midgard_block, link);
         midgard_bundle *initial_bundle = util_dynarray_element(&initial_block->bundles, midgard_bundle, 0);
         program->first_tag = initial_bundle->tag;
 
