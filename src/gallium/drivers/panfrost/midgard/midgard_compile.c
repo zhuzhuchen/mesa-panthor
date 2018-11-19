@@ -95,6 +95,7 @@ typedef struct midgard_branch {
  */
 
 typedef struct midgard_instruction {
+        /* Must be first for casting */
         struct list_head link;
 
         unsigned type; /* ALU, load/store, texture */
@@ -459,6 +460,7 @@ mir_next_op(struct midgard_instruction *ins)
 #define mir_foreach_instr(ctx, v) list_for_each_entry(struct midgard_instruction, v, &ctx->current_block->instructions, link) 
 #define mir_foreach_instr_safe(ctx, v) list_for_each_entry_safe(struct midgard_instruction, v, &ctx->current_block->instructions, link) 
 #define mir_foreach_instr_in_block(ctx, block, v) list_for_each_entry(struct midgard_instruction, v, &block->instructions, link) 
+#define mir_foreach_instr_in_block_safe(ctx, block, v) list_for_each_entry_safe(struct midgard_instruction, v, &block->instructions, link) 
 #define mir_foreach_instr_in_block_from(block, v, from) list_for_each_entry_from(struct midgard_instruction, v, from, &block->instructions, link) 
 
 
@@ -2099,7 +2101,8 @@ schedule_bundle(compiler_context *ctx, midgard_block *block, midgard_instruction
                                                                                &bundle.register_words_count, bundle.body_words,
                                                                                bundle.body_size, &bundle.body_words_count, &bytes_emitted);
                                         } else {
-                                                /* Analyse the group to see if r0 is written in full */
+                                                /* Analyse the group to see if r0 is written in full, on-time, without hanging dependencies*/
+                                                bool written_late = false;
                                                 bool components[4] = { 0 };
                                                 uint16_t register_dep_mask = 0;
                                                 uint16_t written_mask = 0;
@@ -2124,6 +2127,11 @@ schedule_bundle(compiler_context *ctx, midgard_block *block, midgard_instruction
                                                                 for (int c = 0; c < 4; ++c)
                                                                         if (mask & (0x3 << (2 * c)))
                                                                                 components[c] = true;
+
+                                                                /* ..but if the writeout is too late, we have to break up anyway... for some reason */
+
+                                                                if (qins->unit == UNIT_VLUT)
+                                                                        written_late = true;
                                                         }
 
                                                         /* Advance instruction pointer */
@@ -2136,6 +2144,9 @@ schedule_bundle(compiler_context *ctx, midgard_block *block, midgard_instruction
                                                         printf("ERRATA WORKAROUND: Breakup for writeout dependency masks %X vs %X (common %X)\n", register_dep_mask, written_mask, register_dep_mask & written_mask);
                                                         break;
                                                 }
+
+                                                if (written_late)
+                                                        break;
 
                                                 /* If even a single component is not written, break it up (conservative check). */
                                                 bool breakup = false;
@@ -2212,7 +2223,7 @@ schedule_bundle(compiler_context *ctx, midgard_block *block, midgard_instruction
 
                         if (can_run_concurrent_ssa(ins, next_op) || true) {
                                 /* Skip ahead, since it's redundant with the pair */
-                                instructions_consumed = (instructions_emitted++);
+                                instructions_consumed = 1 + (instructions_emitted++);
                         }
                 }
 
@@ -2673,19 +2684,17 @@ midgard_eliminate_orphan_moves(compiler_context *ctx, midgard_block *block)
 static void
 midgard_pair_load_store(compiler_context *ctx, midgard_block *block)
 {
-        /* TODO: Listify */
-        assert (0);
-        mir_foreach_instr_in_block(ctx, block, ins) {
+        mir_foreach_instr_in_block_safe(ctx, block, ins) {
                 if (!ins->uses_ssa) continue;
 
                 if (ins->type != TAG_LOAD_STORE_4) continue;
 
                 /* We've found a load/store op. Check if next is also load/store. */
                 midgard_instruction *next_op = mir_next_op(ins);
-                if (next_op) {
+                if (&next_op->link != &block->instructions) {
                         if (next_op->type == TAG_LOAD_STORE_4) {
                                 /* If so, we're done since we're a pair */
-                                ++ins;
+                                ins = mir_next_op(ins);
                                 continue;
                         }
 
@@ -2693,7 +2702,10 @@ midgard_pair_load_store(compiler_context *ctx, midgard_block *block)
                         int search_distance = 8;
 
                         /* Otherwise, we have an orphaned load/store -- search for another load */
-                        for (midgard_instruction *c = ins + 1; search_distance; ++c, --search_distance) {
+                        mir_foreach_instr_in_block_from(block, c, mir_next_op(ins)) {
+                                /* Terminate search if necessary */
+                                if (!(search_distance--)) break;
+
                                 if (!c->uses_ssa) continue;
 
                                 if (c->type != TAG_LOAD_STORE_4) continue;
@@ -2702,10 +2714,8 @@ midgard_pair_load_store(compiler_context *ctx, midgard_block *block)
 
                                 /* We found one! Move it up to pair and remove it from the old location */
 
-                                /* TODO: MOVEMENT */
-                                assert(0);
-                                memcpy(ins + 1, c, sizeof(midgard_instruction));
-                                mir_remove_instruction(ins);
+                                mir_insert_instruction_before(ins, *c);
+                                mir_remove_instruction(c);
 
                                 break;
                         }
@@ -2982,7 +2992,7 @@ emit_block(compiler_context *ctx, nir_block *block)
         actualise_ssa_to_alias(ctx);
 
         //midgard_eliminate_orphan_moves(ctx, this_block);
-        //midgard_pair_load_store(ctx, this_block);
+        midgard_pair_load_store(ctx, this_block);
 
         /* Append fragment shader epilogue (value writeout) */
         if (ctx->stage == MESA_SHADER_FRAGMENT) {
