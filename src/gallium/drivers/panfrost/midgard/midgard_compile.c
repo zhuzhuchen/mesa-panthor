@@ -365,6 +365,9 @@ typedef struct compiler_context {
         /* Constants which have been loaded, for later inlining */
         struct hash_table_u64 *ssa_constants;
 
+        /* SSA indices to be outputted to corresponding varying offset */
+        struct hash_table_u64 *ssa_varyings;
+
         /* SSA values / registers which have been aliased. Naively, these
          * demand a fmov output; instead, we alias them in a later pass to
          * avoid the wasted op.
@@ -1283,11 +1286,6 @@ emit_intrinsic(compiler_context *ctx, nir_intrinsic_instr *instr)
                          * guarantee correctness when considering some
                          * (common) edge cases XXX: FIXME */
 
-                        /* TODO: Integrate with special purpose RA (and scheduler?) */
-                        bool high_varying_register = false;
-
-                        EMIT(fmov, reg, blank_alu_src, REGISTER_VARYING_BASE + high_varying_register, true, midgard_outmod_none);
-
                         /* Look up how it was actually laid out */
 
                         void *entry = _mesa_hash_table_u64_search(ctx->varying_nir_to_mdg, offset + 1);
@@ -1308,10 +1306,9 @@ emit_intrinsic(compiler_context *ctx, nir_intrinsic_instr *instr)
                         if (offset > 0)
                                 offset += 1;
 
-                        midgard_instruction ins = m_store_vary_32(high_varying_register, offset);
-                        ins.load_store.unknown = 0x1E9E; /* XXX: What is this? */
-                        ins.uses_ssa = false;
-                        emit_mir_instruction(ctx, ins);
+                        /* Do not emit the varying yet -- instead, just mark down that we need to later */
+
+                        _mesa_hash_table_u64_insert(ctx->ssa_varyings, reg + 1, (void *) ((uintptr_t) (offset + 1)));
                 } else {
                         printf("Unknown store\n");
                         assert(0);
@@ -2725,6 +2722,39 @@ midgard_pair_load_store(compiler_context *ctx, midgard_block *block)
         }
 }
 
+/* Emit varying stores late */
+
+static void
+midgard_emit_store(compiler_context *ctx, midgard_block *block) {
+        mir_foreach_instr_in_block_safe(ctx, block, ins) {
+                if (!ins->uses_ssa) continue;
+                if (ins->ssa_args.literal_out) continue;
+
+                /* Check if what we just wrote needs a store */
+                int idx = ins->ssa_args.dest;
+                uintptr_t varying = ((uintptr_t) _mesa_hash_table_u64_search(ctx->ssa_varyings, idx + 1));
+
+                if (!varying) continue;
+
+                varying -= 1;
+
+                /* We need to store to the appropriate varying, so emit the
+                 * move/store */
+
+                /* TODO: Integrate with special purpose RA (and scheduler?) */
+                bool high_varying_register = false;
+
+                midgard_instruction mov = v_fmov(idx, blank_alu_src, REGISTER_VARYING_BASE + high_varying_register, true, midgard_outmod_none);
+
+                midgard_instruction st = m_store_vary_32(high_varying_register, varying);
+                st.load_store.unknown = 0x1E9E; /* XXX: What is this? */
+                st.uses_ssa = false;
+
+                mir_insert_instruction_before(mir_next_op(ins), st);
+                mir_insert_instruction_before(mir_next_op(ins), mov);
+        }
+}
+
 /* If there are leftovers after the below pass, emit actual fmov
  * instructions for the slow-but-correct path */
 
@@ -2993,6 +3023,7 @@ emit_block(compiler_context *ctx, nir_block *block)
         /* Perform heavylifting for aliasing */
         actualise_ssa_to_alias(ctx);
 
+        midgard_emit_store(ctx, this_block);
         midgard_eliminate_orphan_moves(ctx, this_block);
         midgard_pair_load_store(ctx, this_block);
 
@@ -3155,6 +3186,7 @@ midgard_compile_shader_nir(nir_shader *nir, midgard_program *program, bool is_bl
         /* Initialize at a global (not block) level hash tables */
 
         ctx->ssa_constants = _mesa_hash_table_u64_create(NULL);
+        ctx->ssa_varyings = _mesa_hash_table_u64_create(NULL);
         ctx->ssa_to_alias = _mesa_hash_table_u64_create(NULL);
         ctx->ssa_to_register = _mesa_hash_table_u64_create(NULL);
         ctx->hash_to_temp = _mesa_hash_table_u64_create(NULL);
