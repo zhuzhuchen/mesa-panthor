@@ -27,7 +27,7 @@
 
 #include "pipe/p_state.h"
 #include "pipe/p_defines.h"
-#include <mali-job.h>
+#include <panfrost-job.h>
 #include "pan_context.h"
 
 void

@@ -25,7 +25,7 @@
 #ifndef __MMAP_TRACE_H__
 #define __MMAP_TRACE_H__
 
-#include <mali-ioctl.h>
+#include <panfrost-ioctl.h>
 #include <stdlib.h>
 #include <stddef.h>
 #include "panwrap.h"

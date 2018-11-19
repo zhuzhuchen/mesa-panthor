@@ -19,10 +19,10 @@
  * kernel driver, written by ARM.
  */
 
-#ifndef __MALI_IOCTL_H__
-#define __MALI_IOCTL_H__
+#ifndef __PANFROST_IOCTL_H__
+#define __PANFROST_IOCTL_H__
 
-#include "mali-int.h"
+#include "panfrost-int.h"
 
 #define MALI_GPU_NUM_TEXTURE_FEATURES_REGISTERS 3
 #define MALI_GPU_MAX_JOB_SLOTS 16
@@ -923,4 +923,4 @@ typedef struct {
 #define MALI_IOCTL_MEM_JIT_INIT            (_IOWR(0x82, 39, __ioctl_placeholder))
 #define MALI_IOCTL_TLSTREAM_ACQUIRE        (_IOWR(0x82, 40, __ioctl_placeholder))
 
-#endif /* __MALI_IOCTL_H__ */
+#endif /* __PANFROST_IOCTL_H__ */
