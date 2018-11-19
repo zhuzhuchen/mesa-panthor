@@ -1377,6 +1377,8 @@ emit_tex(compiler_context *ctx, nir_tex_instr *instr)
                         midgard_instruction ins = v_fmov(index, alu_src, REGISTER_TEXTURE_BASE + in_reg, true, midgard_outmod_none);
                         emit_mir_instruction(ctx, ins);
 
+                        //midgard_pin_output(ctx, index, REGISTER_TEXTURE_BASE + in_reg);
+
                         break;
                 }
 
