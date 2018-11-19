@@ -22,8 +22,8 @@
  
  */
 
-#include <mali-ioctl.h>
-#include <mali-job.h>
+#include <panfrost-ioctl.h>
+#include <panfrost-job.h>
 #include <stdio.h>
 #include <memory.h>
 #include "panwrap.h"

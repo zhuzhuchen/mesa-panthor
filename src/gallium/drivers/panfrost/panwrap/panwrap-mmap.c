@@ -28,7 +28,7 @@
 #include <stdarg.h>
 #include <memory.h>
 
-#include <mali-ioctl.h>
+#include <panfrost-ioctl.h>
 #include "panwrap.h"
 #include "panwrap-mmap.h"
 #ifdef HAVE_LINUX_MMAN_H

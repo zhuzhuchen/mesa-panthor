@@ -29,7 +29,7 @@
 #include <sys/mman.h>
 #include <assert.h>
 
-#include <mali-ioctl.h>
+#include <panfrost-ioctl.h>
 #include "pan_nondrm.h"
 
 /* From the kernel module */

@@ -25,8 +25,8 @@
 #ifndef PANWRAP_DECODER_H
 #define PANWRAP_DECODER_H
 
-#include <mali-ioctl.h>
-#include <mali-job.h>
+#include <panfrost-ioctl.h>
+#include <panfrost-job.h>
 #include "panwrap.h"
 
 int panwrap_replay_jc(mali_ptr jc_gpu_va, bool bifrost);

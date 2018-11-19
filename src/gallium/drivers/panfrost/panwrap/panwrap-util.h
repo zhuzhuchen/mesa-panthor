@@ -29,7 +29,7 @@
 #ifndef __PANLOADER_UTIL_H__
 #define __PANLOADER_UTIL_H__
 
-#include <mali-int.h>
+#include <panfrost-int.h>
 #include "util/macros.h"
 
 #define __PASTE_TOKENS(a, b) a ## b

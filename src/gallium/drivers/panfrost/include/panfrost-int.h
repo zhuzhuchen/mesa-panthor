@@ -22,8 +22,8 @@
  *
  */
 
-#ifndef __MALI_INT_H_
-#define __MALI_INT_H_
+#ifndef __PANFROST_INT_H__
+#define __PANFROST_INT_H__
 
 #include <inttypes.h>
 
