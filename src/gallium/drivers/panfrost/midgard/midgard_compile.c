@@ -1556,7 +1556,8 @@ allocate_registers(compiler_context *ctx)
         int varying_class  = ra_alloc_reg_class(regs);
 
         /* Add the full set of work registers */
-        for (int i = 0; i < 16; ++i)
+        int work_count = 16 - MAX2((ctx->uniform_cutoff - 8), 0);
+        for (int i = 0; i < work_count; ++i)
                 ra_class_add_reg(regs, primary_class, i);
 
         /* Add special registers */
@@ -3164,7 +3165,7 @@ midgard_compile_shader_nir(nir_shader *nir, midgard_program *program, bool is_bl
         compiler_context *ctx = &ictx;
 
         /* TODO: Decide this at runtime */
-        ctx->uniform_cutoff = 8;
+        ctx->uniform_cutoff = 12;
 
         switch (ctx->stage) {
         case MESA_SHADER_VERTEX:
