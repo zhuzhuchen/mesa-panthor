@@ -464,6 +464,7 @@ mir_next_op(struct midgard_instruction *ins)
 #define mir_foreach_instr_safe(ctx, v) list_for_each_entry_safe(struct midgard_instruction, v, &ctx->current_block->instructions, link) 
 #define mir_foreach_instr_in_block(ctx, block, v) list_for_each_entry(struct midgard_instruction, v, &block->instructions, link) 
 #define mir_foreach_instr_in_block_safe(ctx, block, v) list_for_each_entry_safe(struct midgard_instruction, v, &block->instructions, link) 
+#define mir_foreach_instr_in_block_safe_rev(ctx, block, v) list_for_each_entry_safe_rev(struct midgard_instruction, v, &block->instructions, link) 
 #define mir_foreach_instr_in_block_from(block, v, from) list_for_each_entry_from(struct midgard_instruction, v, from, &block->instructions, link) 
 
 
@@ -2726,7 +2727,9 @@ midgard_pair_load_store(compiler_context *ctx, midgard_block *block)
 
 static void
 midgard_emit_store(compiler_context *ctx, midgard_block *block) {
-        mir_foreach_instr_in_block_safe(ctx, block, ins) {
+        /* Iterate in reverse to get the final write, rather than the first */
+
+        mir_foreach_instr_in_block_safe_rev(ctx, block, ins) {
                 if (!ins->uses_ssa) continue;
                 if (ins->ssa_args.literal_out) continue;
 
@@ -2752,6 +2755,9 @@ midgard_emit_store(compiler_context *ctx, midgard_block *block) {
 
                 mir_insert_instruction_before(mir_next_op(ins), st);
                 mir_insert_instruction_before(mir_next_op(ins), mov);
+
+                /* We no longer need to store this varying */
+                _mesa_hash_table_u64_remove(ctx->ssa_varyings, idx + 1);
         }
 }
 
