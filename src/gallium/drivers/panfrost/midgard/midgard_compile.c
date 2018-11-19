@@ -1911,8 +1911,13 @@ can_run_concurrent_ssa(midgard_instruction *first, midgard_instruction *second)
         /* Otherwise, it's safe in that regard. Another data hazard is both
          * writing to the same place, of course */
 
-        if (!second->ssa_args.literal_out && second->ssa_args.dest == source)
-                return false;
+        if (!second->ssa_args.literal_out && second->ssa_args.dest == source) {
+                /* ...but only if the components overlap */
+                int dest_mask = second->type == TAG_ALU_4 ? squeeze_writemask(second->alu.mask) : 0xF;
+
+                if (dest_mask & source_mask)
+                        return false;
+        }
 
         /* ...That's it */
         return true;
