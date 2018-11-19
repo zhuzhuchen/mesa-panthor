@@ -2583,9 +2583,6 @@ embedded_to_inline_constant(compiler_context *ctx)
                                 continue;
                         }
 
-                        /* Bail? */
-                        continue;
-
                         /* Make sure that the constant is not itself a
                          * vector by checking if all accessed values
                          * (by the swizzle) are the same. */
@@ -2597,7 +2594,7 @@ embedded_to_inline_constant(compiler_context *ctx)
 
                         for (int c = 1; c < 4; ++c) {
                                 /* We only care if this component is actually used */
-                                if (ins->alu.mask & (1 << c))
+                                if (!(ins->alu.mask & (1 << c)))
                                         continue;
 
                                 uint32_t test = cons[(src->swizzle >> (2 * c)) & 3];
