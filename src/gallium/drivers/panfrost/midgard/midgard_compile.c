@@ -49,7 +49,7 @@
 
 #define NIR_DEBUG
 //#define NIR_DEBUG_FINE
-#define MIR_DEBUG
+//#define MIR_DEBUG
 #define MDG_DEBUG
 
 /* Instruction arguments represented as block-local SSA indices, rather than
@@ -467,11 +467,9 @@ mir_next_op(struct midgard_instruction *ins)
 #define mir_foreach_instr_in_block_safe_rev(ctx, block, v) list_for_each_entry_safe_rev(struct midgard_instruction, v, &block->instructions, link) 
 #define mir_foreach_instr_in_block_from(block, v, from) list_for_each_entry_from(struct midgard_instruction, v, from, &block->instructions, link) 
 
-
 static midgard_instruction *
 mir_last_in_block(struct midgard_block *block)
 {
-        //return util_dynarray_top_ptr(&block->instructions, midgard_instruction);
         return list_last_entry(&block->instructions, struct midgard_instruction, link);
 }
 
@@ -1569,7 +1567,6 @@ allocate_registers(compiler_context *ctx)
 
         /* Transform the MIR into squeezed index form */
         mir_foreach_block(ctx, block) {
-                printf("Dumping %p\n", block);
                 print_mir_block(block);
                 mir_foreach_instr_in_block(ctx, block, ins) {
                         if (!ins->uses_ssa) continue;
@@ -3066,7 +3063,6 @@ emit_block(compiler_context *ctx, nir_block *block)
         ctx->previous_source_block = this_block;
 
 #ifdef MIR_DEBUG
-        printf("Making %p\n", this_block);
         print_mir_block(this_block);
 #endif
 
