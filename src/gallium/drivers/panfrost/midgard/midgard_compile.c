@@ -285,8 +285,6 @@ v_alu_br_compact_cond(midgard_jmp_writeout_op op, unsigned tag, signed offset, u
         midgard_instruction ins = {
                 .type = TAG_ALU_4,
                 .unit = ALU_ENAB_BR_COMPACT,
-                .uses_ssa = false,
-
                 .prepacked_branch = true,
                 .compact_branch = true,
                 .br_compact = compact
