@@ -592,12 +592,65 @@ glsl_type_size(const struct glsl_type *type)
         return glsl_count_attribute_slots(type, false);
 }
 
+/* Lower fdot2 to a vector multiplication followed by channel addition  */
+static void
+midgard_nir_lower_fdot2_body(nir_builder *b, nir_alu_instr *alu)
+{
+        if (alu->op != nir_op_fdot2)
+                return;
+
+        b->cursor = nir_before_instr(&alu->instr);
+
+        nir_ssa_def *src0 = nir_ssa_for_alu_src(b, alu, 0);
+        nir_ssa_def *src1 = nir_ssa_for_alu_src(b, alu, 1);
+
+        nir_ssa_def *product = nir_fmul(b, src0, src1);
+
+        nir_ssa_def *sum = nir_fadd(b, 
+                        nir_channel(b, product, 0), 
+                        nir_channel(b, product, 1));
+
+        /* Replace the fdot2 with this sum */
+        nir_ssa_def_rewrite_uses(&alu->dest.dest.ssa, nir_src_for_ssa(sum));
+}
+
+static bool
+midgard_nir_lower_fdot2(nir_shader *shader)
+{
+        bool progress = false;
+
+        nir_foreach_function(function, shader) {
+                if (!function->impl) continue;
+
+                nir_builder _b;
+                nir_builder *b = &_b;
+                nir_builder_init(b, function->impl);
+
+                nir_foreach_block(block, function->impl) {
+                        nir_foreach_instr_safe(instr, block) {
+                                if (instr->type != nir_instr_type_alu) continue;
+
+                                nir_alu_instr *alu = nir_instr_as_alu(instr);
+                                midgard_nir_lower_fdot2_body(b, alu);
+
+                                progress |= true;
+                        }
+                }
+
+                nir_metadata_preserve(function->impl, nir_metadata_block_index | nir_metadata_dominance);
+
+        }
+
+        return progress;
+}
+
 static void
 optimise_nir(nir_shader *nir)
 {
         bool progress;
 
         NIR_PASS(progress, nir, nir_lower_regs_to_ssa);
+        NIR_PASS(progress, nir, midgard_nir_lower_fdot2);
 
         do {
                 progress = false;
