@@ -968,11 +968,6 @@ emit_alu(compiler_context *ctx, nir_alu_instr *instr)
                 break;
         }
 
-        case 0: {
-                printf("0 ALU op?\n");
-                return;
-        }
-
         default:
                 printf("Unhandled ALU op %s\n", nir_op_infos[instr->op].name);
                 assert(0);
