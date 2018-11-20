@@ -2604,10 +2604,11 @@ embedded_to_inline_constant(compiler_context *ctx)
                         uint32_t value = cons[component];
 
                         bool is_vector = false;
+                        unsigned mask = squeeze_writemask(ins->alu.mask);
 
                         for (int c = 1; c < 4; ++c) {
                                 /* We only care if this component is actually used */
-                                if (!(ins->alu.mask & (1 << c)))
+                                if (!(mask & (1 << c)))
                                         continue;
 
                                 uint32_t test = cons[(src->swizzle >> (2 * c)) & 3];
