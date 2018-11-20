@@ -101,7 +101,6 @@ typedef struct midgard_instruction {
         unsigned type; /* ALU, load/store, texture */
 
         /* If the register allocator has not run yet... */
-        bool uses_ssa;
         ssa_args ssa_args;
 
         /* Special fields for an ALU instruction */
@@ -158,7 +157,6 @@ typedef struct midgard_block {
 	static midgard_instruction m_##name(unsigned ssa, unsigned address) { \
 		midgard_instruction i = { \
 			.type = TAG_LOAD_STORE_4, \
-			.uses_ssa = true, \
 			.ssa_args = { \
 				.rname = ssa, \
 				.uname = -1, \
@@ -224,7 +222,6 @@ m_alu_vector(midgard_alu_op op, int unit, unsigned src0, midgard_vector_alu_src 
 {
         midgard_instruction ins = {
                 .type = TAG_ALU_4,
-                .uses_ssa = true,
                 .ssa_args = {
                         .src0 = src0,
                         .src1 = src1,
@@ -536,21 +533,17 @@ print_mir_instruction(midgard_instruction *ins)
                 assert(0);
         }
 
-        if (ins->uses_ssa) {
-                ssa_args *args = &ins->ssa_args;
+        ssa_args *args = &ins->ssa_args;
 
-                printf(" %s%d, ", args->literal_out ? "r" : "", args->dest);
+        printf(" %s%d, ", args->literal_out ? "r" : "", args->dest);
 
-                print_mir_source(args->src0);
-                printf(", ");
+        print_mir_source(args->src0);
+        printf(", ");
 
-                if (args->inline_constant)
-                        printf("#%d", args->src1);
-                else
-                        print_mir_source(args->src1);
-        } else {
-                printf(" nonssa");
-        }
+        if (args->inline_constant)
+                printf("#%d", args->src1);
+        else
+                print_mir_source(args->src1);
 
         if (ins->has_constants)
                 printf(" <%f, %f, %f, %f>", ins->constants[0], ins->constants[1], ins->constants[2], ins->constants[3]);
@@ -867,7 +860,6 @@ emit_condition(compiler_context *ctx, nir_src *src, bool for_branch)
         midgard_instruction ins = {
                 .type = TAG_ALU_4,
                 .unit = for_branch ? UNIT_SMUL : UNIT_SADD, /* TODO: DEDUCE THIS */
-                .uses_ssa = true,
                 .ssa_args = {
                         .src0 = condition,
                         .src1 = condition,
@@ -1050,7 +1042,6 @@ emit_alu(compiler_context *ctx, nir_alu_instr *instr)
 
         midgard_instruction ins = {
                 .type = TAG_ALU_4,
-                .uses_ssa = true,
                 .ssa_args = {
                         .src0 = components == 3 || components == 2 || components == 0 ? src0 : SSA_UNUSED_1,
                         .src1 = components == 2 ? src1 : components == 1 ? src0 : components == 0 ? SSA_UNUSED_0 : SSA_UNUSED_1,
@@ -1263,7 +1254,6 @@ emit_intrinsic(compiler_context *ctx, nir_intrinsic_instr *instr)
                                 midgard_instruction u2f = {
                                         .type = TAG_ALU_4,
                                         .vector = true,
-                                        .uses_ssa = true,
                                         .ssa_args = {
                                                 .src0 = reg,
                                                 .dest = reg,
@@ -1289,7 +1279,6 @@ emit_intrinsic(compiler_context *ctx, nir_intrinsic_instr *instr)
                                 midgard_instruction fmul = {
                                         .type = TAG_ALU_4,
                                         .vector = true,
-                                        .uses_ssa = true,
                                         .ssa_args = {
                                                 .src0 = reg,
                                                 .dest = reg,
@@ -1595,8 +1584,6 @@ is_live_after(midgard_block *block, midgard_instruction *start, int src)
 {
         /* Check the rest of the block for liveness */
         mir_foreach_instr_in_block_from(block, ins, mir_next_op(start)) {
-                if (!ins->uses_ssa) continue;
-
                 if (ins->ssa_args.src0 == src) return true;
 
                 if (!ins->ssa_args.inline_constant && ins->ssa_args.src1 == src) return true;
@@ -1633,7 +1620,7 @@ allocate_registers(compiler_context *ctx)
         /* Transform the MIR into squeezed index form */
         mir_foreach_block(ctx, block) {
                 mir_foreach_instr_in_block(ctx, block, ins) {
-                        if (!ins->uses_ssa) continue;
+                        if (ins->compact_branch) continue;
 
                         ins->ssa_args.src0 = find_or_allocate_temp(ctx, ins->ssa_args.src0);
 
@@ -1658,7 +1645,7 @@ allocate_registers(compiler_context *ctx)
 
         mir_foreach_block(ctx, block) {
                 mir_foreach_instr_in_block(ctx, block, ins) {
-                        if (!ins->uses_ssa) continue;
+                        if (ins->compact_branch) continue;
 
                         if (ins->ssa_args.literal_out) continue;
 
@@ -1697,7 +1684,7 @@ allocate_registers(compiler_context *ctx)
 
         mir_foreach_block(ctx, block) {
                 mir_foreach_instr_in_block(ctx, block, ins) {
-                        if (!ins->uses_ssa) continue;
+                        if (ins->compact_branch) continue;
 
                         if (!ins->ssa_args.literal_out) {
                                 /* If this destination is not yet live, it is now since we just wrote it */
@@ -1763,7 +1750,7 @@ allocate_registers(compiler_context *ctx)
 
         mir_foreach_block(ctx, block) {
                 mir_foreach_instr_in_block(ctx, block, ins) {
-                        if (!ins->uses_ssa) continue;
+                        if (ins->compact_branch) continue;
 
                         ssa_args args = ins->ssa_args;
 
@@ -1792,7 +1779,7 @@ allocate_registers(compiler_context *ctx)
 
                         case TAG_LOAD_STORE_4: {
                                 if (OP_IS_STORE(ins->load_store.op)) {
-                                        /* ssa_args invalid for store_vary */
+                                        /* TODO: use ssa_args for store_vary */
                                         ins->load_store.reg = 0;
                                 } else {
                                         bool has_dest = args.dest >= 0;
@@ -1936,10 +1923,6 @@ emit_binary_vector_instruction(midgard_instruction *ains,
 static bool
 can_run_concurrent_ssa(midgard_instruction *first, midgard_instruction *second)
 {
-        /* If it's non-SSA... it's probably fine? */
-        if (!first->uses_ssa || !second->uses_ssa)
-                return true;
-
         /* Each instruction reads some registers and writes to a register. See
          * where the first writes */
 
@@ -2519,9 +2502,6 @@ inline_alu_constants(compiler_context *ctx)
                 /* If there is already a constant here, we can do nothing */
                 if (alu->has_constants) continue;
 
-                /* Constants should always be SSA... */
-                if (!alu->uses_ssa) continue;
-
                 CONDITIONAL_ATTACH(src0);
 
                 if (!alu->has_constants) {
@@ -2729,8 +2709,6 @@ static void
 midgard_eliminate_orphan_moves(compiler_context *ctx, midgard_block *block)
 {
         mir_foreach_instr_in_block_safe(ctx, block, ins) {
-                if (!ins->uses_ssa) continue;
-
                 if (ins->type != TAG_ALU_4) continue;
 
                 if (ins->alu.op != midgard_alu_op_fmov) continue;
@@ -2753,8 +2731,6 @@ static void
 midgard_pair_load_store(compiler_context *ctx, midgard_block *block)
 {
         mir_foreach_instr_in_block_safe(ctx, block, ins) {
-                if (!ins->uses_ssa) continue;
-
                 if (ins->type != TAG_LOAD_STORE_4) continue;
 
                 /* We've found a load/store op. Check if next is also load/store. */
@@ -2773,8 +2749,6 @@ midgard_pair_load_store(compiler_context *ctx, midgard_block *block)
                         mir_foreach_instr_in_block_from(block, c, mir_next_op(ins)) {
                                 /* Terminate search if necessary */
                                 if (!(search_distance--)) break;
-
-                                if (!c->uses_ssa) continue;
 
                                 if (c->type != TAG_LOAD_STORE_4) continue;
 
@@ -2798,7 +2772,6 @@ midgard_emit_store(compiler_context *ctx, midgard_block *block) {
         /* Iterate in reverse to get the final write, rather than the first */
 
         mir_foreach_instr_in_block_safe_rev(ctx, block, ins) {
-                if (!ins->uses_ssa) continue;
                 if (ins->ssa_args.literal_out) continue;
 
                 /* Check if what we just wrote needs a store */
@@ -2817,9 +2790,8 @@ midgard_emit_store(compiler_context *ctx, midgard_block *block) {
 
                 midgard_instruction mov = v_fmov(idx, blank_alu_src, REGISTER_VARYING_BASE + high_varying_register, true, midgard_outmod_none);
 
-                midgard_instruction st = m_store_vary_32(high_varying_register, varying);
+                midgard_instruction st = m_store_vary_32(SSA_FIXED_REGISTER(high_varying_register), varying);
                 st.load_store.unknown = 0x1E9E; /* XXX: What is this? */
-                st.uses_ssa = false;
 
                 mir_insert_instruction_before(mir_next_op(ins), st);
                 mir_insert_instruction_before(mir_next_op(ins), mov);
@@ -2848,8 +2820,6 @@ static void
 actualise_ssa_to_alias(compiler_context *ctx)
 {
         mir_foreach_instr(ctx, ins) {
-                if (!ins->uses_ssa) continue;
-
                 map_ssa_to_alias(ctx, &ins->ssa_args.src0);
 
                 if (!ins->ssa_args.inline_constant)
@@ -2992,7 +2962,6 @@ emit_blend_epilogue(compiler_context *ctx)
         midgard_instruction scale = {
                 .type = TAG_ALU_4,
                 .vector = true,
-                .uses_ssa = true,
                 .unit = UNIT_VMUL,
                 .ssa_args = {
                         .src0 = SSA_FIXED_REGISTER(0),
@@ -3022,7 +2991,6 @@ emit_blend_epilogue(compiler_context *ctx)
         midgard_instruction f2u8 = {
                 .type = TAG_ALU_4,
                 .vector = true,
-                .uses_ssa = true,
                 .ssa_args = {
                         .src0 = SSA_FIXED_REGISTER(24),
                         .dest = 0,
