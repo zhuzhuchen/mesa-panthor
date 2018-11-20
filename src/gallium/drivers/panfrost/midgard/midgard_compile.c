@@ -1567,7 +1567,6 @@ allocate_registers(compiler_context *ctx)
 
         /* Transform the MIR into squeezed index form */
         mir_foreach_block(ctx, block) {
-                print_mir_block(block);
                 mir_foreach_instr_in_block(ctx, block, ins) {
                         if (!ins->uses_ssa) continue;
 
