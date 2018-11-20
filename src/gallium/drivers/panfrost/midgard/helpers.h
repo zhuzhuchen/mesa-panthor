@@ -171,8 +171,8 @@ midgard_is_integer_op(int op)
 static int alu_opcode_props[256] = {
         [midgard_alu_op_fadd]		 = UNITS_ADD,
         [midgard_alu_op_fmul]		 = UNITS_MUL | UNIT_VLUT,
-        [midgard_alu_op_fmin]		 = UNITS_MUL,
-        [midgard_alu_op_fmax]		 = UNITS_MUL,
+        [midgard_alu_op_fmin]		 = UNITS_MUL | UNITS_ADD,
+        [midgard_alu_op_fmax]		 = UNITS_MUL | UNITS_ADD,
         [midgard_alu_op_imin]		 = UNITS_ALL,
         [midgard_alu_op_imax]		 = UNITS_ALL,
         [midgard_alu_op_fmov]		 = UNITS_ALL | UNIT_VLUT,
