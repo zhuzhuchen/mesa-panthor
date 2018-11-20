@@ -1186,7 +1186,6 @@ emit_intrinsic(compiler_context *ctx, nir_intrinsic_instr *instr)
                         if (out->data.location == VARYING_SLOT_COL0) {
                                 /* Source color preloaded to r0 */
 
-                                //alias_ssa(ctx, reg, SSA_FIXED_REGISTER(0));
                                 midgard_pin_output(ctx, reg, 0);
                         } else if (out->data.location == VARYING_SLOT_COL1) {
                                 /* Destination color must be read from framebuffer */
@@ -1286,7 +1285,6 @@ emit_intrinsic(compiler_context *ctx, nir_intrinsic_instr *instr)
                          * framebuffer writeout dance. TODO: Defer
                          * writes */
 
-                        //EMIT(fmov, reg, blank_alu_src, 0, true, midgard_outmod_none);
                         midgard_pin_output(ctx, reg, 0);
                 } else if (ctx->stage == MESA_SHADER_VERTEX) {
                         /* Varyings are written into one of two special
@@ -1489,7 +1487,6 @@ emit_instr(compiler_context *ctx, struct nir_instr *instr)
 
         default:
                 printf("Unhandled instruction type\n");
-                //assert(0);
                 break;
         }
 }
