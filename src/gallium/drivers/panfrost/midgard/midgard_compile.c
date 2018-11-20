@@ -2956,6 +2956,11 @@ emit_blend_epilogue(compiler_context *ctx)
 
         midgard_instruction imov_8 = {
                 .type = TAG_ALU_4,
+                .ssa_args = {
+                        .src0 = SSA_UNUSED_1,
+                        .src1 = SSA_FIXED_REGISTER(0),
+                        .dest = SSA_FIXED_REGISTER(0),
+                },
                 .alu = {
                         .op = midgard_alu_op_imov,
                         .reg_mode = midgard_reg_mode_quarter,
