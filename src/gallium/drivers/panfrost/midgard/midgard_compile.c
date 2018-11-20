@@ -2829,8 +2829,8 @@ write_transformed_position(nir_builder *b, nir_src input_point_src, int uniform_
 
         /* Formatted as <width, height, centerx, centery> */
         nir_ssa_def *viewport_vec4 = &load->dest.ssa;
-        nir_ssa_def *viewport_width = nir_channel(b, viewport_vec4, 0);
-        nir_ssa_def *viewport_height = nir_channel(b, viewport_vec4, 1);
+        nir_ssa_def *viewport_width_2 = nir_channel(b, viewport_vec4, 0);
+        nir_ssa_def *viewport_height_2 = nir_channel(b, viewport_vec4, 1);
         nir_ssa_def *viewport_offset = nir_channels(b, viewport_vec4, 0x8 | 0x4);
 
         /* XXX: From uniforms? */
@@ -2844,10 +2844,7 @@ write_transformed_position(nir_builder *b, nir_src input_point_src, int uniform_
 
         /* Normalised device coordinates to screen space */
 
-        nir_ssa_def *viewport_multiplier = nir_vec2(b,
-                                           nir_fmul(b, viewport_width, nir_imm_float(b, 0.5f)),
-                                           nir_fmul(b, viewport_height, nir_imm_float(b, 0.5f)));
-
+        nir_ssa_def *viewport_multiplier = nir_vec2(b, viewport_width_2, viewport_height_2);
         nir_ssa_def *viewport_xy = nir_fadd(b, nir_fmul(b, nir_channels(b, ndc_point, 0x3), viewport_multiplier), viewport_offset);
 
         nir_ssa_def *depth_multiplier = nir_fmul(b, nir_fsub(b, depth_far, depth_near), nir_imm_float(b, 0.5f));

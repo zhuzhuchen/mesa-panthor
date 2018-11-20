@@ -1247,12 +1247,12 @@ panfrost_emit_for_draw(struct panfrost_context *ctx)
                 }
         }
 
-        /* Generate the viewport vector of the form: <width, height, centerx, centery> */
+        /* Generate the viewport vector of the form: <width/2, height/2, centerx, centery> */
         const struct pipe_viewport_state *vp = &ctx->pipe_viewport;
 
         float viewport_vec4[] = {
-                2.0 * vp->scale[0],
-                abs(2.0 * vp->scale[1]),
+                vp->scale[0],
+                abs(vp->scale[1]),
 
                 vp->translate[0],
                 /* -1.0 * vp->translate[1] */ abs(1.0 * vp->scale[1]) /* XXX */
