@@ -687,6 +687,8 @@ optimise_nir(nir_shader *nir)
                 NIR_PASS(progress, nir, nir_copy_prop);
         } while (progress);
 
+        NIR_PASS(progress, nir, nir_opt_algebraic_late);
+
         /* Lower mods */
         NIR_PASS(progress, nir, nir_lower_to_source_mods, nir_lower_all_source_mods);
         NIR_PASS(progress, nir, nir_copy_prop);
