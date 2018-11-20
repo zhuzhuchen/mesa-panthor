@@ -39,6 +39,15 @@
 #define ALU_ENAB_BR_COMPACT (1 << 26)
 #define ALU_ENAB_BRANCH   (1 << 27)
 
+/* Other opcode properties that don't conflict with the ALU_ENABs, non-ISA */
+
+/* Denotes an opcode that takes a vector input with a fixed-number of
+ * channels, but outputs to only a single output channel, like dot products.
+ * For these, to determine the effective mask, this quirk can be set */
+
+#define OP_CHANNEL_COUNT(c) (c << 0)
+#define OP_CHANNEL_MASK (0x3 << 0)
+
 /* Vector-independant shorthands for the above; these numbers are arbitrary and
  * not from the ISA. Convert to the above with unit_enum_to_midgard */
 
@@ -159,7 +168,7 @@ midgard_is_integer_op(int op)
 #define UNITS_VECTOR (UNIT_VMUL | UNIT_VADD)
 #define UNITS_ANY_VECTOR (UNITS_VECTOR | UNIT_VLUT)
 
-static int alu_opcode_unit[256] = {
+static int alu_opcode_props[256] = {
         [midgard_alu_op_fadd]		 = UNITS_ADD,
         [midgard_alu_op_fmul]		 = UNITS_MUL | UNIT_VLUT,
         [midgard_alu_op_fmin]		 = UNITS_MUL,
@@ -172,8 +181,8 @@ static int alu_opcode_unit[256] = {
 
         /* Though they output a scalar, they need to run on a vector unit
          * since they process vectors */
-        [midgard_alu_op_fdot3]		 = UNIT_VMUL,
-        [midgard_alu_op_fdot4]		 = UNIT_VMUL,
+        [midgard_alu_op_fdot3]		 = UNIT_VMUL | OP_CHANNEL_COUNT(3),
+        [midgard_alu_op_fdot4]		 = UNIT_VMUL | OP_CHANNEL_COUNT(4),
 
         [midgard_alu_op_iadd]		 = UNITS_ADD,
         [midgard_alu_op_isub]		 = UNITS_ADD,

@@ -722,6 +722,21 @@ squeeze_writemask(unsigned mask)
 
 }
 
+/* Determines effective writemask, taking quirks and expansion into account */
+static unsigned
+effective_writemask(midgard_vector_alu *alu)
+{
+        unsigned channel_count = alu_opcode_props[alu->op] & OP_CHANNEL_MASK;
+
+        /* If there is a fixed channel count, construct the appropriate mask */
+
+        if (channel_count)
+                return (1 << channel_count) - 1;
+
+        /* Otherwise, just squeeze the existing mask */
+        return squeeze_writemask(alu->mask);
+}
+
 /* Generate write mask when there are a specific number of components, e.g.
  * xyz -> 3 -> 0x7 */
 
@@ -955,7 +970,7 @@ emit_alu(compiler_context *ctx, nir_alu_instr *instr)
                 return;
         }
 
-        int _unit = alu_opcode_unit[op];
+        int _unit = alu_opcode_props[op];
 
         /* slut doesn't exist; lower to vlut which acts as scalar
          * despite the name */
@@ -1986,7 +2001,7 @@ schedule_bundle(compiler_context *ctx, midgard_block *block, midgard_instruction
 
                         if (!unit) {
                                 int op = ains->alu.op;
-                                int units = alu_opcode_unit[op];
+                                int units = alu_opcode_props[op];
 
                                 /* TODO: Promotion of scalars to vectors */
                                 int vector = ((!is_single_component_mask(ains->alu.mask)) || ((units & UNITS_SCALAR) == 0)) && (units & UNITS_ANY_VECTOR);
@@ -2604,7 +2619,7 @@ embedded_to_inline_constant(compiler_context *ctx)
                         uint32_t value = cons[component];
 
                         bool is_vector = false;
-                        unsigned mask = squeeze_writemask(ins->alu.mask);
+                        unsigned mask = effective_writemask(&ins->alu);
 
                         for (int c = 1; c < 4; ++c) {
                                 /* We only care if this component is actually used */
