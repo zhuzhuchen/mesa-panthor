@@ -769,20 +769,6 @@ effective_writemask(midgard_vector_alu *alu)
         return squeeze_writemask(alu->mask);
 }
 
-/* Generate write mask when there are a specific number of components, e.g.
- * xyz -> 3 -> 0x7 */
-
-static unsigned
-writemask_for_nr_components(int nr_components)
-{
-        unsigned mask = 0;
-
-        while (nr_components--)
-                mask = (mask << 1) | 1;
-
-        return mask;
-}
-
 static unsigned
 find_or_allocate_temp(compiler_context *ctx, unsigned hash)
 {
@@ -1037,7 +1023,7 @@ emit_alu(compiler_context *ctx, nir_alu_instr *instr)
                 .outmod = outmod,
 
                 /* Writemask only valid for non-SSA NIR */
-                .mask = expand_writemask(writemask_for_nr_components(nr_components)),
+                .mask = expand_writemask((1 << nr_components) - 1),
 
                 .src1 = vector_alu_srco_unsigned(vector_alu_modifiers(nirmod0)),
                 .src2 = vector_alu_srco_unsigned(vector_alu_modifiers(nirmod1)),
