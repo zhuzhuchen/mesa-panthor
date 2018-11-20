@@ -100,7 +100,6 @@ typedef struct midgard_instruction {
         ssa_args ssa_args;
 
         /* Special fields for an ALU instruction */
-        bool vector;
         midgard_reg_info registers;
 
         /* I.e. (1 << alu_bit) */
@@ -225,7 +224,6 @@ v_fmov(unsigned src, midgard_vector_alu_src mod, unsigned dest, midgard_outmod o
                         .src1 = src,
                         .dest = dest,
                 },
-                .vector = true,
                 .alu = {
                         .op = midgard_alu_op_fmov,
                         .reg_mode = midgard_reg_mode_full,
@@ -854,7 +852,6 @@ emit_condition(compiler_context *ctx, nir_src *src, bool for_branch)
                         .src1 = condition,
                         .dest = SSA_FIXED_REGISTER(31),
                 },
-                .vector = true,
                 .alu = {
                         .op = midgard_alu_op_iand,
                         .reg_mode = midgard_reg_mode_full,
@@ -891,11 +888,6 @@ emit_alu(compiler_context *ctx, nir_alu_instr *instr)
 
         unsigned dest = nir_dest_index(&instr->dest.dest);
         unsigned nr_components = is_ssa ? instr->dest.dest.ssa.num_components : instr->dest.dest.reg.reg->num_components;
-
-        /* ALU ops are unified in NIR between scalar/vector, but partially
-         * split in Midgard. Reconcile that here, to avoid diverging code paths
-         */
-        bool is_vector = nr_components != 1;
 
         /* Most Midgard ALU ops have a 1:1 correspondance to NIR ops; these are
          * supported. A few do not and are commented for now. Also, there are a
@@ -1005,16 +997,6 @@ emit_alu(compiler_context *ctx, nir_alu_instr *instr)
 
         int _unit = alu_opcode_props[op];
 
-        /* slut doesn't exist; lower to vlut which acts as scalar
-         * despite the name */
-
-        if (_unit == UNIT_VLUT)
-                is_vector = true;
-
-        /* Certain ops cannot run as scalars */
-        if (!(_unit & UNITS_SCALAR))
-                is_vector = true;
-
         /* Initialise fields common between scalar/vector instructions */
         midgard_outmod outmod = instr->dest.saturate ? midgard_outmod_sat : midgard_outmod_none;
 
@@ -1035,8 +1017,7 @@ emit_alu(compiler_context *ctx, nir_alu_instr *instr)
                         .src1 = components == 2 ? src1 : components == 1 ? src0 : components == 0 ? SSA_UNUSED_0 : SSA_UNUSED_1,
                         .dest = dest,
                         .inline_constant = components == 0
-                },
-                .vector = is_vector
+                }
         };
 
         nir_alu_src *nirmod0 = NULL;
@@ -1241,7 +1222,6 @@ emit_intrinsic(compiler_context *ctx, nir_intrinsic_instr *instr)
 
                                 midgard_instruction u2f = {
                                         .type = TAG_ALU_4,
-                                        .vector = true,
                                         .ssa_args = {
                                                 .src0 = reg,
                                                 .dest = reg,
@@ -1266,7 +1246,6 @@ emit_intrinsic(compiler_context *ctx, nir_intrinsic_instr *instr)
 
                                 midgard_instruction fmul = {
                                         .type = TAG_ALU_4,
-                                        .vector = true,
                                         .ssa_args = {
                                                 .src0 = reg,
                                                 .dest = reg,
@@ -2011,7 +1990,6 @@ schedule_bundle(compiler_context *ctx, midgard_block *block, midgard_instruction
                         /* Pick a unit for it if it doesn't force a particular unit */
 
                         int unit = ains->unit;
-                        bool vectorize = false;
 
                         if (!unit) {
                                 int op = ains->alu.op;
@@ -2045,10 +2023,9 @@ schedule_bundle(compiler_context *ctx, midgard_block *block, midgard_instruction
                                         if (last_unit >= UNIT_VADD) {
                                                 if ((units & UNIT_SMUL) && !(control & UNIT_SMUL))
                                                         unit = UNIT_SMUL;
-                                                else if (units & UNIT_VLUT) {
+                                                else if (units & UNIT_VLUT)
                                                         unit = UNIT_VLUT;
-                                                        vectorize = true;
-                                                } else
+                                                else
                                                         break;
                                         } else {
                                                 if ((units & UNIT_SADD) && !(control & UNIT_SADD))
@@ -2082,10 +2059,6 @@ schedule_bundle(compiler_context *ctx, midgard_block *block, midgard_instruction
 
                         /* We're good to go -- emit the instruction */
                         ains->unit = unit;
-
-                        /* Promote scalar to vector if needed */
-                        if (vectorize)
-                                ains->vector = true;
 
                         segment[segment_size++] = ains;
 
@@ -2938,7 +2911,6 @@ emit_blend_epilogue(compiler_context *ctx)
 
         midgard_instruction scale = {
                 .type = TAG_ALU_4,
-                .vector = true,
                 .unit = UNIT_VMUL,
                 .ssa_args = {
                         .src0 = SSA_FIXED_REGISTER(0),
@@ -2966,7 +2938,6 @@ emit_blend_epilogue(compiler_context *ctx)
 
         midgard_instruction f2u8 = {
                 .type = TAG_ALU_4,
-                .vector = true,
                 .ssa_args = {
                         .src0 = SSA_FIXED_REGISTER(24),
                         .dest = SSA_FIXED_REGISTER(0),
@@ -2989,7 +2960,6 @@ emit_blend_epilogue(compiler_context *ctx)
 
         midgard_instruction imov_8 = {
                 .type = TAG_ALU_4,
-                .vector = true,
                 .alu = {
                         .op = midgard_alu_op_imov,
                         .reg_mode = midgard_reg_mode_quarter,
