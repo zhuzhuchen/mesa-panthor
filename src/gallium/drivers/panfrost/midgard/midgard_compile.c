@@ -60,10 +60,6 @@ typedef struct {
         int src1;
         int dest;
 
-        /* The output is -not- SSA -- it's a direct register from I/O -- and
-         * must not be culled/renamed */
-        bool literal_out;
-
         /* src1 is -not- SSA but instead a 16-bit inline constant to be smudged
          * in. Only valid for ALU ops. */
         bool inline_constant;
@@ -225,8 +221,7 @@ m_alu_vector(midgard_alu_op op, int unit, unsigned src0, midgard_vector_alu_src 
                 .ssa_args = {
                         .src0 = src0,
                         .src1 = src1,
-                        .dest = dest,
-                        .literal_out = literal_out
+                        .dest = literal_out ? SSA_FIXED_REGISTER(dest) : dest,
                 },
                 .vector = true,
                 .alu = {
@@ -535,7 +530,7 @@ print_mir_instruction(midgard_instruction *ins)
 
         ssa_args *args = &ins->ssa_args;
 
-        printf(" %s%d, ", args->literal_out ? "r" : "", args->dest);
+        printf(" %d, ", args->dest);
 
         print_mir_source(args->src0);
         printf(", ");
@@ -863,8 +858,7 @@ emit_condition(compiler_context *ctx, nir_src *src, bool for_branch)
                 .ssa_args = {
                         .src0 = condition,
                         .src1 = condition,
-                        .dest = 31,
-                        .literal_out = true
+                        .dest = SSA_FIXED_REGISTER(31),
                 },
                 .vector = true,
                 .alu = {
@@ -1628,9 +1622,7 @@ allocate_registers(compiler_context *ctx)
                                 ins->ssa_args.src1 = find_or_allocate_temp(ctx, ins->ssa_args.src1);
                         }
 
-                        if (!ins->ssa_args.literal_out) {
-                                ins->ssa_args.dest = find_or_allocate_temp(ctx, ins->ssa_args.dest);
-                        }
+                        ins->ssa_args.dest = find_or_allocate_temp(ctx, ins->ssa_args.dest);
                 }
 
                 print_mir_block(block);
@@ -1646,8 +1638,6 @@ allocate_registers(compiler_context *ctx)
         mir_foreach_block(ctx, block) {
                 mir_foreach_instr_in_block(ctx, block, ins) {
                         if (ins->compact_branch) continue;
-
-                        if (ins->ssa_args.literal_out) continue;
 
                         if (ins->ssa_args.dest < 0) continue;
 
@@ -1686,7 +1676,7 @@ allocate_registers(compiler_context *ctx)
                 mir_foreach_instr_in_block(ctx, block, ins) {
                         if (ins->compact_branch) continue;
 
-                        if (!ins->ssa_args.literal_out) {
+                        if (ins->ssa_args.dest < SSA_FIXED_MINIMUM) {
                                 /* If this destination is not yet live, it is now since we just wrote it */
 
                                 int dest = ins->ssa_args.dest;
@@ -1773,7 +1763,7 @@ allocate_registers(compiler_context *ctx)
                                         ins->registers.src2_reg = dealias_register(ctx, g, args.src1, nodes);
                                 }
 
-                                ins->registers.out_reg = args.literal_out ? args.dest : dealias_register(ctx, g, args.dest, nodes);
+                                ins->registers.out_reg = dealias_register(ctx, g, args.dest, nodes);
 
                                 break;
 
@@ -1926,9 +1916,6 @@ can_run_concurrent_ssa(midgard_instruction *first, midgard_instruction *second)
         /* Each instruction reads some registers and writes to a register. See
          * where the first writes */
 
-        if (first->ssa_args.literal_out)
-                return false; /* Bail */
-
         /* Figure out where exactly we wrote to */
         int source = first->ssa_args.dest;
         int source_mask = first->type == TAG_ALU_4 ? squeeze_writemask(first->alu.mask) : 0xF;
@@ -1955,7 +1942,7 @@ can_run_concurrent_ssa(midgard_instruction *first, midgard_instruction *second)
         /* Otherwise, it's safe in that regard. Another data hazard is both
          * writing to the same place, of course */
 
-        if (!second->ssa_args.literal_out && second->ssa_args.dest == source) {
+        if (second->ssa_args.dest != source) {
                 /* ...but only if the components overlap */
                 int dest_mask = second->type == TAG_ALU_4 ? squeeze_writemask(second->alu.mask) : 0xF;
 
@@ -2713,8 +2700,6 @@ midgard_eliminate_orphan_moves(compiler_context *ctx, midgard_block *block)
 
                 if (ins->alu.op != midgard_alu_op_fmov) continue;
 
-                if (ins->ssa_args.literal_out) continue;
-
                 if (ins->ssa_args.dest >= SSA_FIXED_MINIMUM) continue;
 
                 if (midgard_is_pinned(ctx, ins->ssa_args.dest)) continue;
@@ -2772,8 +2757,6 @@ midgard_emit_store(compiler_context *ctx, midgard_block *block) {
         /* Iterate in reverse to get the final write, rather than the first */
 
         mir_foreach_instr_in_block_safe_rev(ctx, block, ins) {
-                if (ins->ssa_args.literal_out) continue;
-
                 /* Check if what we just wrote needs a store */
                 int idx = ins->ssa_args.dest;
                 uintptr_t varying = ((uintptr_t) _mesa_hash_table_u64_search(ctx->ssa_varyings, idx + 1));
@@ -2966,8 +2949,7 @@ emit_blend_epilogue(compiler_context *ctx)
                 .ssa_args = {
                         .src0 = SSA_FIXED_REGISTER(0),
                         .src1 = _mesa_float_to_half(255.0),
-                        .dest = 24,
-                        .literal_out = true,
+                        .dest = SSA_FIXED_REGISTER(24),
                         .inline_constant = true
                 },
                 .alu = {
@@ -2993,8 +2975,7 @@ emit_blend_epilogue(compiler_context *ctx)
                 .vector = true,
                 .ssa_args = {
                         .src0 = SSA_FIXED_REGISTER(24),
-                        .dest = 0,
-                        .literal_out = true,
+                        .dest = SSA_FIXED_REGISTER(0),
                         .inline_constant = true
                 },
                 .alu = {
