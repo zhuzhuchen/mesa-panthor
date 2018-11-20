@@ -213,35 +213,32 @@ vector_alu_modifiers(nir_alu_src *src)
         return alu_src;
 }
 
+/* 'Intrinsic' move for misc aliasing uses independent of actual NIR ALU code */
+
 static midgard_instruction
-m_alu_vector(midgard_alu_op op, int unit, unsigned src0, midgard_vector_alu_src mod1, unsigned src1, midgard_vector_alu_src mod2, unsigned dest, midgard_outmod outmod)
+v_fmov(unsigned src, midgard_vector_alu_src mod, unsigned dest, midgard_outmod outmod)
 {
         midgard_instruction ins = {
                 .type = TAG_ALU_4,
                 .ssa_args = {
-                        .src0 = src0,
-                        .src1 = src1,
+                        .src0 = SSA_UNUSED_1,
+                        .src1 = src,
                         .dest = dest,
                 },
                 .vector = true,
                 .alu = {
-                        .op = op,
+                        .op = midgard_alu_op_fmov,
                         .reg_mode = midgard_reg_mode_full,
                         .dest_override = midgard_dest_override_none,
                         .outmod = outmod,
                         .mask = 0xFF,
-                        .src1 = vector_alu_srco_unsigned(mod1),
-                        .src2 = vector_alu_srco_unsigned(mod2)
+                        .src1 = vector_alu_srco_unsigned(zero_alu_src),
+                        .src2 = vector_alu_srco_unsigned(mod)
                 },
         };
 
         return ins;
 }
-
-#define M_ALU_VECTOR_1(unit, name) \
-	static midgard_instruction v_##name(unsigned src, midgard_vector_alu_src mod1, unsigned dest, midgard_outmod outmod) { \
-		return m_alu_vector(midgard_alu_op_##name, ALU_ENAB_VEC_##unit, SSA_UNUSED_1, zero_alu_src, src, mod1, dest, outmod); \
-	}
 
 /* load/store instructions have both 32-bit and 16-bit variants, depending on
  * whether we are using vectors composed of highp or mediump. At the moment, we
@@ -257,9 +254,6 @@ M_LOAD(load_uniform_32);
 M_LOAD(load_color_buffer_8);
 //M_STORE(store_vary_16);
 M_STORE(store_vary_32);
-
-/* Used as a sort of intrinsic outside of the ALU code */
-M_ALU_VECTOR_1(MUL, fmov);
 
 static midgard_instruction
 v_alu_br_compact_cond(midgard_jmp_writeout_op op, unsigned tag, signed offset, unsigned cond)
