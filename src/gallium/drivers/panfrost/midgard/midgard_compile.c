@@ -215,7 +215,7 @@ vector_alu_modifiers(nir_alu_src *src)
 /* 'Intrinsic' move for misc aliasing uses independent of actual NIR ALU code */
 
 static midgard_instruction
-v_fmov(unsigned src, midgard_vector_alu_src mod, unsigned dest, midgard_outmod outmod)
+v_fmov(unsigned src, midgard_vector_alu_src mod, unsigned dest)
 {
         midgard_instruction ins = {
                 .type = TAG_ALU_4,
@@ -228,7 +228,6 @@ v_fmov(unsigned src, midgard_vector_alu_src mod, unsigned dest, midgard_outmod o
                         .op = midgard_alu_op_fmov,
                         .reg_mode = midgard_reg_mode_full,
                         .dest_override = midgard_dest_override_none,
-                        .outmod = outmod,
                         .mask = 0xFF,
                         .src1 = vector_alu_srco_unsigned(zero_alu_src),
                         .src2 = vector_alu_srco_unsigned(mod)
@@ -856,7 +855,6 @@ emit_condition(compiler_context *ctx, nir_src *src, bool for_branch)
                         .op = midgard_alu_op_iand,
                         .reg_mode = midgard_reg_mode_full,
                         .dest_override = midgard_dest_override_none,
-                        .outmod = midgard_outmod_none,
                         .mask = (0x3 << 6), /* w */
                         .src1 = vector_alu_srco_unsigned(alu_src),
                         .src2 = vector_alu_srco_unsigned(alu_src)
@@ -1174,7 +1172,7 @@ emit_intrinsic(compiler_context *ctx, nir_intrinsic_instr *instr)
                 } else if (ctx->is_blend && instr->intrinsic == nir_intrinsic_load_uniform) {
                         /* Constant encoded as a pinned constant */
 
-                        midgard_instruction ins = v_fmov(SSA_FIXED_REGISTER(REGISTER_CONSTANT), blank_alu_src, reg, midgard_outmod_none);
+                        midgard_instruction ins = v_fmov(SSA_FIXED_REGISTER(REGISTER_CONSTANT), blank_alu_src, reg);
                         ins.has_constants = true;
                         ins.has_blend_constant = true;
                         emit_mir_instruction(ctx, ins);
@@ -1231,7 +1229,6 @@ emit_intrinsic(compiler_context *ctx, nir_intrinsic_instr *instr)
                                                 .op = midgard_alu_op_u2f,
                                                 .reg_mode = midgard_reg_mode_half,
                                                 .dest_override = midgard_dest_override_none,
-                                                .outmod = midgard_outmod_none,
                                                 .mask = 0xF,
                                                 .src1 = vector_alu_srco_unsigned(alu_src),
                                                 .src2 = vector_alu_srco_unsigned(blank_alu_src),
@@ -1392,7 +1389,7 @@ emit_tex(compiler_context *ctx, nir_tex_instr *instr)
                         midgard_vector_alu_src alu_src = blank_alu_src;
                         alu_src.swizzle = (COMPONENT_Y << 2);
 
-                        midgard_instruction ins = v_fmov(index, alu_src, SSA_FIXED_REGISTER(REGISTER_TEXTURE_BASE + in_reg), midgard_outmod_none);
+                        midgard_instruction ins = v_fmov(index, alu_src, SSA_FIXED_REGISTER(REGISTER_TEXTURE_BASE + in_reg));
                         emit_mir_instruction(ctx, ins);
 
                         //midgard_pin_output(ctx, index, REGISTER_TEXTURE_BASE + in_reg);
@@ -1458,7 +1455,7 @@ emit_tex(compiler_context *ctx, nir_tex_instr *instr)
         alias_ssa(ctx, o_index, SSA_FIXED_REGISTER(o_reg));
         ctx->texture_index[reg] = o_index;
 
-        midgard_instruction ins2 = v_fmov(SSA_FIXED_REGISTER(o_reg), blank_alu_src, o_index, midgard_outmod_none);
+        midgard_instruction ins2 = v_fmov(SSA_FIXED_REGISTER(o_reg), blank_alu_src, o_index);
         emit_mir_instruction(ctx, ins2);
 
         /* Used for .cont and .last hinting */
@@ -2096,7 +2093,7 @@ schedule_bundle(compiler_context *ctx, midgard_block *block, midgard_instruction
 
                                 if (ains->writeout) {
                                         if (index == 0) {
-                                                midgard_instruction ins = v_fmov(0, blank_alu_src, SSA_FIXED_REGISTER(0), midgard_outmod_none);
+                                                midgard_instruction ins = v_fmov(0, blank_alu_src, SSA_FIXED_REGISTER(0));
                                                 ins.unit = UNIT_VMUL;
 
                                                 control |= ins.unit;
@@ -2357,7 +2354,7 @@ emit_binary_bundle(compiler_context *ctx, midgard_bundle *bundle, struct util_dy
                         } else if (ins->compact_branch) {
                                 /* Dummy move, XXX DRY */
                                 if ((i == 0) && ins->writeout) {
-                                        midgard_instruction ins = v_fmov(0, blank_alu_src, SSA_FIXED_REGISTER(0), midgard_outmod_none);
+                                        midgard_instruction ins = v_fmov(0, blank_alu_src, SSA_FIXED_REGISTER(0));
                                         memcpy(util_dynarray_grow(emission, sizeof(midgard_vector_alu)), &ins.alu, sizeof(midgard_vector_alu));
                                 }
 
@@ -2475,7 +2472,7 @@ inline_alu_constants(compiler_context *ctx)
                         void *entry = _mesa_hash_table_u64_search(ctx->ssa_constants, alu->ssa_args.src1 + 1);
 
                         if (entry) {
-                                midgard_instruction ins = v_fmov(SSA_FIXED_REGISTER(REGISTER_CONSTANT), blank_alu_src, 4096 + alu->ssa_args.src1, midgard_outmod_none);
+                                midgard_instruction ins = v_fmov(SSA_FIXED_REGISTER(REGISTER_CONSTANT), blank_alu_src, 4096 + alu->ssa_args.src1);
                                 attach_constants(ctx, &ins, entry, alu->ssa_args.src1 + 1);
 
                                 /* Force a break XXX Defer r31 writes */
@@ -2738,7 +2735,7 @@ midgard_emit_store(compiler_context *ctx, midgard_block *block) {
                 /* TODO: Integrate with special purpose RA (and scheduler?) */
                 bool high_varying_register = false;
 
-                midgard_instruction mov = v_fmov(idx, blank_alu_src, SSA_FIXED_REGISTER(REGISTER_VARYING_BASE + high_varying_register), midgard_outmod_none);
+                midgard_instruction mov = v_fmov(idx, blank_alu_src, SSA_FIXED_REGISTER(REGISTER_VARYING_BASE + high_varying_register));
 
                 midgard_instruction st = m_store_vary_32(SSA_FIXED_REGISTER(high_varying_register), varying);
                 st.load_store.unknown = 0x1E9E; /* XXX: What is this? */
@@ -2762,7 +2759,7 @@ emit_leftover_move(compiler_context *ctx)
                 int mapped = base;
 
                 map_ssa_to_alias(ctx, &mapped);
-                EMIT(fmov, mapped, blank_alu_src, base, midgard_outmod_none);
+                EMIT(fmov, mapped, blank_alu_src, base);
         }
 }
 
@@ -2922,7 +2919,6 @@ emit_blend_epilogue(compiler_context *ctx)
                         .op = midgard_alu_op_fmul,
                         .reg_mode = midgard_reg_mode_full,
                         .dest_override = midgard_dest_override_lower,
-                        .outmod = midgard_outmod_none,
                         .mask = 0xFF,
                         .src1 = vector_alu_srco_unsigned(blank_alu_src),
                         .src2 = vector_alu_srco_unsigned(blank_alu_src),
@@ -2964,7 +2960,6 @@ emit_blend_epilogue(compiler_context *ctx)
                         .op = midgard_alu_op_imov,
                         .reg_mode = midgard_reg_mode_quarter,
                         .dest_override = midgard_dest_override_none,
-                        .outmod = midgard_outmod_none,
                         .mask = 0xFF,
                         .src1 = vector_alu_srco_unsigned(blank_alu_src),
                         .src2 = vector_alu_srco_unsigned(blank_alu_src),
