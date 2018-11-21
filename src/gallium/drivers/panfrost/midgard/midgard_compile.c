@@ -2010,6 +2010,8 @@ schedule_bundle(compiler_context *ctx, midgard_block *block, midgard_instruction
                                                         unit = UNIT_SADD;
                                                 else if (units & UNIT_SMUL)
                                                         unit = UNIT_SMUL;
+                                                else if ((units & UNIT_VADD) && !(control & UNIT_VADD))
+                                                        unit = UNIT_VADD;
                                                 else
                                                         break;
                                         }
