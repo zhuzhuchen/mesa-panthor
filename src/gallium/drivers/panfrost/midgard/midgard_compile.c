@@ -1893,7 +1893,7 @@ can_run_concurrent_ssa(midgard_instruction *first, midgard_instruction *second)
         /* Otherwise, it's safe in that regard. Another data hazard is both
          * writing to the same place, of course */
 
-        if (second->ssa_args.dest != source) {
+        if (second->ssa_args.dest == source) {
                 /* ...but only if the components overlap */
                 int dest_mask = second->type == TAG_ALU_4 ? squeeze_writemask(second->alu.mask) : 0xF;
 
@@ -1981,16 +1981,14 @@ schedule_bundle(compiler_context *ctx, midgard_block *block, midgard_instruction
 
                                 if (vector) {
                                         if (last_unit >= UNIT_VADD) {
-                                                if (units & UNIT_VADD)
-                                                        unit = UNIT_VADD;
-                                                else if (units & UNIT_VLUT)
+                                                if (units & UNIT_VLUT)
                                                         unit = UNIT_VLUT;
                                                 else
                                                         break;
                                         } else {
                                                 if ((units & UNIT_VMUL) && !(control & UNIT_VMUL))
                                                         unit = UNIT_VMUL;
-                                                else if (units & UNIT_VADD)
+                                                else if ((units & UNIT_VADD) && !(control & UNIT_VADD))
                                                         unit = UNIT_VADD;
                                                 else if (units & UNIT_VLUT)
                                                         unit = UNIT_VLUT;
