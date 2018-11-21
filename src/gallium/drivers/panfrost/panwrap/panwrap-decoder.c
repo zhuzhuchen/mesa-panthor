@@ -442,16 +442,17 @@ panwrap_replay_mfbd_bfr(uint64_t gpu_va, int job_no)
         panwrap_prop("clear_stencil = 0x%x", fb->clear_stencil);
         panwrap_prop("clear_depth = %f", fb->clear_depth);
 
-        if (fb->zero1 || fb->zero2 || fb->zero3 || fb->zero4 || fb->zero5 || fb->zero6 || fb->zero7 || fb->zero8 || fb->zero9 || fb->zero10 || fb->zero11 || fb->zero12) {
+        panwrap_prop("unknown2 = 0x%x", fb->unknown2);
+        MEMORY_PROP(fb, scratchpad);
+        MEMORY_PROP(fb, tiler_scratch_start);
+        MEMORY_PROP(fb, tiler_scratch_middle);
+        MEMORY_PROP(fb, tiler_heap_start);
+        MEMORY_PROP(fb, tiler_heap_end);
+
+        if (fb->zero3 || fb->zero4 || fb->zero9 || fb->zero10 || fb->zero11 || fb->zero12) {
                 panwrap_msg("framebuffer zeros tripped\n");
-                panwrap_prop("zero1 = 0x%" PRIx32, fb->zero1);
-                MEMORY_PROP(fb, zero2);
                 panwrap_prop("zero3 = 0x%" PRIx32, fb->zero3);
                 panwrap_prop("zero4 = 0x%" PRIx32, fb->zero4);
-                MEMORY_PROP(fb, zero5);
-                MEMORY_PROP(fb, zero6);
-                MEMORY_PROP(fb, zero7);
-                MEMORY_PROP(fb, zero8);
                 panwrap_prop("zero9 = 0x%" PRIx64, fb->zero9);
                 panwrap_prop("zero10 = 0x%" PRIx64, fb->zero10);
                 panwrap_prop("zero11 = 0x%" PRIx64, fb->zero11);

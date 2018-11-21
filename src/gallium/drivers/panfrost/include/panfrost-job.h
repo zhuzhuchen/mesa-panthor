@@ -1144,8 +1144,10 @@ struct bifrost_fb_extra {
 
 struct bifrost_framebuffer {
         u32 unk0; // = 0x10
-        u32 zero1;
-        u64 zero2;
+
+        u32 unknown2; // = 0x1f, same as SFBD
+        mali_ptr scratchpad;
+
         /* 0x10 */
         mali_ptr sample_locations;
         mali_ptr unknown1;
@@ -1164,7 +1166,16 @@ struct bifrost_framebuffer {
         float clear_depth;
         mali_ptr tiler_meta;
         /* 0x40 */
-        u64 zero5, zero6, zero7, zero8, zero9, zero10, zero11, zero12;
+
+        /* Note: these are guesses! */
+        mali_ptr tiler_scratch_start;
+        mali_ptr tiler_scratch_middle;
+
+        /* These are not, since we see symmetry with replay jobs which name these explicitly */
+        mali_ptr tiler_heap_start;
+        mali_ptr tiler_heap_end;
+        
+        u64 zero9, zero10, zero11, zero12;
 
         /* optional: struct bifrost_fb_extra extra */
         /* struct bifrost_render_target rts[] */

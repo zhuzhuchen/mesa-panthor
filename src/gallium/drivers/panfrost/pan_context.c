@@ -280,20 +280,15 @@ panfrost_emit_fbd(struct panfrost_context *ctx)
                 .rt_count_1 = MALI_POSITIVE(1),
                 .rt_count_2 = 4,
 
-                /* TODO: Refactor to parallel SFBD */
-                /* unknown2 */
-                .zero1 = 0x1f,
+                .unknown2 = 0x1f,
 
                 /* Presumably corresponds to unknown_address_X of SFBD */
-                .zero2 = ctx->scratchpad.gpu,
-                .zero5 = ctx->misc_0.gpu,
-                .zero6 = ctx->misc_0.gpu + /*ctx->misc_0.size*/40960, /* Size depends on the size of the framebuffer and the number of vertices */
+                .scratchpad = ctx->scratchpad.gpu,
+                .tiler_scratch_start  = ctx->misc_0.gpu,
+                .tiler_scratch_middle = ctx->misc_0.gpu + /*ctx->misc_0.size*/40960, /* Size depends on the size of the framebuffer and the number of vertices */
 
-                /* tiler_heap_start */
-                .zero7 = ctx->tiler_heap.gpu,
-
-                /* tiler_heap_end */
-                .zero8 = ctx->tiler_heap.gpu + ctx->tiler_heap.size,
+                .tiler_heap_start = ctx->tiler_heap.gpu,
+                .tiler_heap_end = ctx->tiler_heap.gpu + ctx->tiler_heap.size,
         };
 
 #endif
