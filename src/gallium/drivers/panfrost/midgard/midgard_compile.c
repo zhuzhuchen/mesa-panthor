@@ -107,6 +107,7 @@ typedef struct midgard_instruction {
 
         bool has_constants;
         float constants[4];
+        uint16_t inline_constant;
         bool has_blend_constant;
 
         bool compact_branch;
@@ -527,7 +528,7 @@ print_mir_instruction(midgard_instruction *ins)
         printf(", ");
 
         if (args->inline_constant)
-                printf("#%d", args->src1);
+                printf("#%d", ins->inline_constant);
         else
                 print_mir_source(args->src1);
 
@@ -1203,6 +1204,7 @@ emit_intrinsic(compiler_context *ctx, nir_intrinsic_instr *instr)
                                         .type = TAG_ALU_4,
                                         .ssa_args = {
                                                 .src0 = reg,
+                                                .src1 = SSA_UNUSED_0,
                                                 .dest = reg,
                                                 .inline_constant = true
                                         },
@@ -1224,10 +1226,11 @@ emit_intrinsic(compiler_context *ctx, nir_intrinsic_instr *instr)
 
                                 midgard_instruction fmul = {
                                         .type = TAG_ALU_4,
+                                        .inline_constant = _mesa_float_to_half(1.0 / 255.0),
                                         .ssa_args = {
                                                 .src0 = reg,
                                                 .dest = reg,
-                                                .src1 = _mesa_float_to_half(1.0 / 255.0),
+                                                .src1 = SSA_UNUSED_0,
                                                 .inline_constant = true
                                         },
                                         .alu = {
@@ -1530,8 +1533,7 @@ is_live_after(midgard_block *block, midgard_instruction *start, int src)
         /* Check the rest of the block for liveness */
         mir_foreach_instr_in_block_from(block, ins, mir_next_op(start)) {
                 if (ins->ssa_args.src0 == src) return true;
-
-                if (!ins->ssa_args.inline_constant && ins->ssa_args.src1 == src) return true;
+                if (ins->ssa_args.src1 == src) return true;
         }
 
         /* TODO: Check the succeeding blocks */
@@ -1568,11 +1570,7 @@ allocate_registers(compiler_context *ctx)
                         if (ins->compact_branch) continue;
 
                         ins->ssa_args.src0 = find_or_allocate_temp(ctx, ins->ssa_args.src0);
-
-                        if (!ins->ssa_args.inline_constant) {
-                                ins->ssa_args.src1 = find_or_allocate_temp(ctx, ins->ssa_args.src1);
-                        }
-
+                        ins->ssa_args.src1 = find_or_allocate_temp(ctx, ins->ssa_args.src1);
                         ins->ssa_args.dest = find_or_allocate_temp(ctx, ins->ssa_args.dest);
                 }
 
@@ -1641,8 +1639,7 @@ allocate_registers(compiler_context *ctx)
                          * invocations, and if there are none, the source dies
                          * */
 
-                        int src2 = ins->ssa_args.inline_constant ? -1 : ins->ssa_args.src1;
-                        int sources[2] = { ins->ssa_args.src0, src2 };
+                        int sources[2] = { ins->ssa_args.src0, ins->ssa_args.src1 };
 
                         for (int src = 0; src < 2; ++src) {
                                 int s = sources[src];
@@ -1704,9 +1701,9 @@ allocate_registers(compiler_context *ctx)
                                 if (args.inline_constant) {
                                         /* Encode inline 16-bit constant as a vector by default */
 
-                                        ins->registers.src2_reg = args.src1 >> 11;
+                                        ins->registers.src2_reg = ins->inline_constant >> 11;
 
-                                        int lower_11 = args.src1 & ((1 << 12) - 1);
+                                        int lower_11 = ins->inline_constant & ((1 << 12) - 1);
 
                                         uint16_t imm = ((lower_11 >> 8) & 0x7) | ((lower_11 & 0xFF) << 3);
                                         ins->alu.src2 = imm << 2;
@@ -1803,7 +1800,7 @@ vector_to_scalar_source(unsigned u)
 }
 
 static midgard_scalar_alu
-vector_to_scalar_alu(midgard_vector_alu v, ssa_args *args)
+vector_to_scalar_alu(midgard_vector_alu v, midgard_instruction *ins)
 {
         /* The output component is from the mask */
         midgard_scalar_alu s = {
@@ -1819,9 +1816,9 @@ vector_to_scalar_alu(midgard_vector_alu v, ssa_args *args)
         /* Inline constant is passed along rather than trying to extract it
          * from v */
 
-        if (args->inline_constant) {
+        if (ins->ssa_args.inline_constant) {
                 uint16_t imm = 0;
-                int lower_11 = args->src1 & ((1 << 12) - 1);
+                int lower_11 = ins->inline_constant & ((1 << 12) - 1);
                 imm |= (lower_11 >> 9) & 3;
                 imm |= (lower_11 >> 6) & 4;
                 imm |= (lower_11 >> 2) & 0x38;
@@ -1887,7 +1884,7 @@ can_run_concurrent_ssa(midgard_instruction *first, midgard_instruction *second)
 
         }
 
-        if (second->ssa_args.src1 == source && !second->ssa_args.inline_constant)
+        if (second->ssa_args.src1 == source)
                 return false;
 
         /* Otherwise, it's safe in that regard. Another data hazard is both
@@ -2342,7 +2339,7 @@ emit_binary_bundle(compiler_context *ctx, midgard_bundle *bundle, struct util_dy
                                 memcpy(util_dynarray_grow(emission, sizeof(ins->br_compact)), &ins->br_compact, sizeof(ins->br_compact));
                         } else {
                                 /* Scalar */
-                                midgard_scalar_alu scalarised = vector_to_scalar_alu(ins->alu, &ins->ssa_args);
+                                midgard_scalar_alu scalarised = vector_to_scalar_alu(ins->alu, ins);
                                 memcpy(util_dynarray_grow(emission, sizeof(scalarised)), &scalarised, sizeof(scalarised));
                         }
                 }
@@ -2601,8 +2598,9 @@ embedded_to_inline_constant(compiler_context *ctx)
 
                         /* Get rid of the embedded constant */
                         ins->has_constants = false;
+                        ins->ssa_args.src1 = SSA_UNUSED_0;
                         ins->ssa_args.inline_constant = true;
-                        ins->ssa_args.src1 = scaled_constant;
+                        ins->inline_constant = scaled_constant;
                 }
         }
 }
@@ -2749,9 +2747,7 @@ actualise_ssa_to_alias(compiler_context *ctx)
 {
         mir_foreach_instr(ctx, ins) {
                 map_ssa_to_alias(ctx, &ins->ssa_args.src0);
-
-                if (!ins->ssa_args.inline_constant)
-                        map_ssa_to_alias(ctx, &ins->ssa_args.src1);
+                map_ssa_to_alias(ctx, &ins->ssa_args.src1);
         }
 
         emit_leftover_move(ctx);
@@ -2890,9 +2886,10 @@ emit_blend_epilogue(compiler_context *ctx)
         midgard_instruction scale = {
                 .type = TAG_ALU_4,
                 .unit = UNIT_VMUL,
+                .inline_constant = _mesa_float_to_half(255.0),
                 .ssa_args = {
                         .src0 = SSA_FIXED_REGISTER(0),
-                        .src1 = _mesa_float_to_half(255.0),
+                        .src1 = SSA_UNUSED_0,
                         .dest = SSA_FIXED_REGISTER(24),
                         .inline_constant = true
                 },
@@ -2917,6 +2914,7 @@ emit_blend_epilogue(compiler_context *ctx)
                 .type = TAG_ALU_4,
                 .ssa_args = {
                         .src0 = SSA_FIXED_REGISTER(24),
+                        .src1 = SSA_UNUSED_0,
                         .dest = SSA_FIXED_REGISTER(0),
                         .inline_constant = true
                 },
