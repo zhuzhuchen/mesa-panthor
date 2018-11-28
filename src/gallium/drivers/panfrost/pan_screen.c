@@ -714,6 +714,16 @@ panfrost_create_screen(int fd, struct renderonly *ro)
         if (!screen)
                 return NULL;
 
+        screen->fd = fd;
+        if (ro) {
+                screen->ro = renderonly_dup(ro);
+                if (!screen->ro) {
+                        fprintf(stderr, "Failed to dup renderonly object\n");
+                        free(screen);
+                        return NULL;
+                }
+        }
+
         screen->base.destroy = panfrost_destroy_screen;
 
         screen->base.get_name = panfrost_get_name;

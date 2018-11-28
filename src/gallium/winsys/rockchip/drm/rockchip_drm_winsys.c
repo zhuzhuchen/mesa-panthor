@@ -41,7 +41,7 @@ struct pipe_screen *rockchip_drm_screen_create(int fd)
        */
       .create_for_resource = renderonly_create_gpu_import_for_resource,
       .kms_fd = fd,
-      .gpu_fd = drmOpenWithType("panfrost", NULL, DRM_NODE_RENDER),
+      .gpu_fd = open("/dev/mali0", O_RDWR | O_CLOEXEC),
    };
 
    if (ro.gpu_fd < 0)

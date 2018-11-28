@@ -79,8 +79,6 @@ struct panfrost_context {
         /* Gallium context */
         struct pipe_context base;
 
-        /* TODO: DRM driver? */
-        int fd;
         struct pipe_framebuffer_state pipe_framebuffer;
 
         /* The number of concurrent FBOs allowed depends on the number of rings used */

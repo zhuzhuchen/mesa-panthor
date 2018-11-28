@@ -78,12 +78,8 @@ pandev_standard_allocate(int fd, int va_pages, int flags,
 }
 
 int
-pandev_open()
+pandev_open(int fd)
 {
-
-        int fd = open("/dev/mali0", O_RDWR | O_CLOEXEC);
-        assert(fd != -1);
-
 #ifdef USE_LEGACY_KERNEL
         struct kbase_ioctl_version_check version = { .major = 11, .minor = 11 };
         struct kbase_ioctl_set_flags set_flags = {};

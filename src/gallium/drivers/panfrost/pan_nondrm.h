@@ -32,7 +32,7 @@
 #include <linux/ioctl.h>
 #include "pan_slowfb.h"
 
-int pandev_open(void);
+int pandev_open(int fd);
 
 /* Calls used while replaying */
 int pandev_raw_open(void);

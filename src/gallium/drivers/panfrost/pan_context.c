@@ -1404,11 +1404,14 @@ int last_fragment_flushed = true;
 static void
 force_flush_fragment(struct panfrost_context *ctx)
 {
+        struct pipe_context *gallium = (struct pipe_context *) ctx;
+        struct panfrost_screen *screen = panfrost_screen(gallium->screen);
+
         if (!last_fragment_flushed) {
                 uint8_t ev[/* 1 */ 4 + 4 + 8 + 8];
 
                 do {
-                        read(ctx->fd, ev, sizeof(ev));
+                        read(screen->fd, ev, sizeof(ev));
                 } while (ev[4] != last_fragment_id);
 
                 last_fragment_flushed = true;
@@ -1420,6 +1423,9 @@ force_flush_fragment(struct panfrost_context *ctx)
 static void
 panfrost_submit_frame(struct panfrost_context *ctx, bool flush_immediate)
 {
+        struct pipe_context *gallium = (struct pipe_context *) ctx;
+        struct panfrost_screen *screen = panfrost_screen(gallium->screen);
+
         /* Edge case if screen is cleared and nothing else */
         bool has_draws = ctx->draw_count > 0;
 
@@ -1479,7 +1485,7 @@ panfrost_submit_frame(struct panfrost_context *ctx, bool flush_immediate)
                 .stride = sizeof(struct base_jd_atom_v2),
         };
 
-        if (pandev_ioctl(ctx->fd, KBASE_IOCTL_JOB_SUBMIT, &submit))
+        if (pandev_ioctl(screen->fd, KBASE_IOCTL_JOB_SUBMIT, &submit))
                 printf("Error submitting\n");
 
         /* If visual, we can stall a frame */
@@ -2694,6 +2700,8 @@ panfrost_allocate_slab(struct panfrost_context *ctx,
                        int commit_count,
                        int extent)
 {
+        struct pipe_context *gallium = (struct pipe_context *) ctx;
+        struct panfrost_screen *screen = panfrost_screen(gallium->screen);
         int flags = BASE_MEM_PROT_CPU_RD | BASE_MEM_PROT_CPU_WR |
                     BASE_MEM_PROT_GPU_RD | BASE_MEM_PROT_GPU_WR;
         int out_flags;
@@ -2708,11 +2716,11 @@ panfrost_allocate_slab(struct panfrost_context *ctx,
                 flags |= BASE_MEM_SAME_VA;
 
         if (commit_count || extent)
-                pandev_general_allocate(ctx->fd, pages,
+                pandev_general_allocate(screen->fd, pages,
                                         commit_count,
                                         extent, flags, &mem->gpu, &out_flags);
         else
-                pandev_standard_allocate(ctx->fd, pages, flags, &mem->gpu,
+                pandev_standard_allocate(screen->fd, pages, flags, &mem->gpu,
                                          &out_flags);
 
         mem->size = pages * 4096;
@@ -2722,7 +2730,7 @@ panfrost_allocate_slab(struct panfrost_context *ctx,
          */
         if (mem->gpu == 0x41000) {
                 if ((mem->cpu = mmap(NULL, mem->size, 3, 1,
-                                     ctx->fd, mem->gpu)) == MAP_FAILED) {
+                                     screen->fd, mem->gpu)) == MAP_FAILED) {
                         perror("mmap");
                         abort();
                 }
@@ -2739,6 +2747,9 @@ panfrost_allocate_slab(struct panfrost_context *ctx,
 static void
 panfrost_setup_framebuffer(struct panfrost_context *ctx, int width, int height)
 {
+        struct pipe_context *gallium = (struct pipe_context *) ctx;
+        struct panfrost_screen *screen = panfrost_screen(gallium->screen);
+
         /* drisw rounds the stride */
         int rw = 16.0 * (int) ceil((float) width / 16.0);
 
@@ -2766,12 +2777,12 @@ panfrost_setup_framebuffer(struct panfrost_context *ctx, int width, int height)
                 }
         };
 
-        pandev_ioctl(ctx->fd, KBASE_IOCTL_MEM_IMPORT, &framebuffer_import);
+        pandev_ioctl(screen->fd, KBASE_IOCTL_MEM_IMPORT, &framebuffer_import);
 
         /* It feels like this mmap is backwards :p */
         uint64_t gpu_addr = (uint64_t) mmap(NULL,
                                             framebuffer_import.out.va_pages * 4096,
-                                            3, 1, ctx->fd,
+                                            3, 1, screen->fd,
                                             framebuffer_import.out.gpu_va);
 
         ctx->framebuffer.gpu = gpu_addr;
@@ -2786,7 +2797,10 @@ panfrost_setup_framebuffer(struct panfrost_context *ctx, int width, int height)
 static void
 panfrost_setup_hardware(struct panfrost_context *ctx)
 {
-        ctx->fd = pandev_open();
+        struct pipe_context *gallium = (struct pipe_context *) ctx;
+        struct panfrost_screen *screen = panfrost_screen(gallium->screen);
+
+        pandev_open(screen->fd);
 
 #ifdef USE_SLOWFB
         panfrost_setup_framebuffer(ctx, 2048, 1280);
