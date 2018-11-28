@@ -82,14 +82,12 @@ DEFINE_LOADER_DRM_ENTRYPOINT(pl111)
 #endif
 #endif
 
-#if defined(GALLIUM_PANFROST)
-const __DRIextension **__driDriverGetExtensions_panfrost(void);
+#if defined(GALLIUM_ROCKCHIP)
+DEFINE_LOADER_DRM_ENTRYPOINT(rockchip)
+#endif
 
-PUBLIC const __DRIextension **__driDriverGetExtensions_panfrost(void)
-{
-   globalDriverAPI = &galliumsw_driver_api;
-   return galliumsw_driver_extensions;
-}
+#if defined(GALLIUM_PANFROST)
+DEFINE_LOADER_DRM_ENTRYPOINT(panfrost)
 #endif
 
 #if defined(GALLIUM_ETNAVIV)
