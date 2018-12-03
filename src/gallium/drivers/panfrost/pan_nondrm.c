@@ -45,7 +45,9 @@ pandev_ioctl(int fd, unsigned long request, void *args)
 }
 
 int
-pandev_general_allocate(int fd, int va_pages, int commit_pages, int extent, int flags, u64 *out)
+pandev_general_allocate(int fd, int va_pages, int commit_pages,
+                        int extent, int flags,
+                        u64 *out, int *out_flags)
 {
         int ret;
         union kbase_ioctl_mem_alloc args = {
@@ -62,14 +64,17 @@ pandev_general_allocate(int fd, int va_pages, int commit_pages, int extent, int 
                 abort();
         }
         *out = args.out.gpu_va;
+        *out_flags = args.out.flags;
 
         return 0;
 }
 
 int
-pandev_standard_allocate(int fd, int va_pages, int flags, u64 *out)
+pandev_standard_allocate(int fd, int va_pages, int flags,
+                         u64 *out, int *out_flags)
 {
-        return pandev_general_allocate(fd, va_pages, va_pages, 0, flags, out);
+        return pandev_general_allocate(fd, va_pages, va_pages, 0, flags, out,
+                                       out_flags);
 }
 
 int

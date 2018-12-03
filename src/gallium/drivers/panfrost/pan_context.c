@@ -54,7 +54,6 @@ static void
 panfrost_allocate_slab(struct panfrost_context *ctx,
                        struct panfrost_memory *mem,
                        size_t pages,
-                       bool mapped,
                        bool same_va,
                        int extra_flags,
                        int commit_count,
@@ -141,7 +140,9 @@ panfrost_enable_afbc(struct panfrost_context *ctx, struct panfrost_resource *rsr
         rsrc->afbc_metadata_size = tile_w * tile_h * 16;
 
         /* Allocate the AFBC slab itself, large enough to hold the above */
-        panfrost_allocate_slab(ctx, &rsrc->afbc_slab, (rsrc->afbc_metadata_size + main_size + 4095) / 4096, true, true, 0, 0, 0);
+        panfrost_allocate_slab(ctx, &rsrc->afbc_slab,
+                               (rsrc->afbc_metadata_size + main_size + 4095) / 4096,
+                               true, 0, 0, 0);
 
         rsrc->has_afbc = true;
 
@@ -164,7 +165,7 @@ panfrost_enable_checksum(struct panfrost_context *ctx, struct panfrost_resource 
         /* 8 byte checksum per tile */
         rsrc->checksum_stride = tile_w * 8;
         int pages = (((rsrc->checksum_stride * tile_h) + 4095) / 4096);
-        panfrost_allocate_slab(ctx, &rsrc->checksum_slab, pages, false, false, 0, 0, 0);
+        panfrost_allocate_slab(ctx, &rsrc->checksum_slab, pages, false, 0, 0, 0);
 
         rsrc->has_checksum = true;
 }
@@ -2178,7 +2179,7 @@ panfrost_resource_create_front(struct pipe_screen *screen,
 
                         /* Allocate the framebuffer as its own slab of GPU-accessible memory */
                         struct panfrost_memory slab;
-                        panfrost_allocate_slab(pscreen->any_context, &slab, (sz / 4096) + 1, true, false, 0, 0, 0);
+                        panfrost_allocate_slab(pscreen->any_context, &slab, (sz / 4096) + 1, false, 0, 0, 0);
 
                         /* Make the resource out of the slab */
                         so->cpu[0] = slab.cpu;
@@ -2202,7 +2203,9 @@ panfrost_resource_create_front(struct pipe_screen *screen,
                         /* But for linear, we can! */
 
                         struct panfrost_memory slab;
-                        panfrost_allocate_slab(pscreen->any_context, &slab, (sz / 4096) + 1, true, true, 0, 0, 0);
+                        panfrost_allocate_slab(pscreen->any_context,
+                                               &slab, (sz / 4096) + 1,
+                                               true, 0, 0, 0);
 
                         /* Make the resource out of the slab */
                         so->cpu[0] = slab.cpu;
@@ -2686,13 +2689,14 @@ static void
 panfrost_allocate_slab(struct panfrost_context *ctx,
                        struct panfrost_memory *mem,
                        size_t pages,
-                       bool mapped,
                        bool same_va,
                        int extra_flags,
                        int commit_count,
                        int extent)
 {
-        int flags = BASE_MEM_PROT_CPU_RD | BASE_MEM_PROT_CPU_WR | BASE_MEM_PROT_GPU_RD | BASE_MEM_PROT_GPU_WR;
+        int flags = BASE_MEM_PROT_CPU_RD | BASE_MEM_PROT_CPU_WR |
+                    BASE_MEM_PROT_GPU_RD | BASE_MEM_PROT_GPU_WR;
+        int out_flags;
 
         flags |= extra_flags;
 
@@ -2704,18 +2708,25 @@ panfrost_allocate_slab(struct panfrost_context *ctx,
                 flags |= BASE_MEM_SAME_VA;
 
         if (commit_count || extent)
-                pandev_general_allocate(ctx->fd, pages, commit_count, extent, flags, &mem->gpu);
+                pandev_general_allocate(ctx->fd, pages,
+                                        commit_count,
+                                        extent, flags, &mem->gpu, &out_flags);
         else
-                pandev_standard_allocate(ctx->fd, pages, flags, &mem->gpu);
+                pandev_standard_allocate(ctx->fd, pages, flags, &mem->gpu,
+                                         &out_flags);
 
         mem->size = pages * 4096;
 
-        /* mmap for 64-bit, mmap64 for 32-bit. ironic, I know */
-        if (mapped) {
-                if ((mem->cpu = mmap(NULL, mem->size, 3, 1, ctx->fd, mem->gpu)) == MAP_FAILED) {
+        /* The kernel can return a "cookie", long story short this means we
+         * mmap
+         */
+        if (mem->gpu == 0x41000) {
+                if ((mem->cpu = mmap(NULL, mem->size, 3, 1,
+                                     ctx->fd, mem->gpu)) == MAP_FAILED) {
                         perror("mmap");
                         abort();
                 }
+                mem->gpu = (mali_ptr)mem->cpu;
         }
 
         mem->stack_bottom = 0;
@@ -2781,16 +2792,20 @@ panfrost_setup_hardware(struct panfrost_context *ctx)
         panfrost_setup_framebuffer(ctx, 2048, 1280);
 #endif
 
-        for (int i = 0; i < sizeof(ctx->cmdstream_rings) / sizeof(ctx->cmdstream_rings[0]); ++i)
-                panfrost_allocate_slab(ctx, &ctx->cmdstream_rings[i], 8 * 64 * 8 * 16, true, true, 0, 0, 0);
+        for (int i = 0; i < ARRAY_SIZE(ctx->cmdstream_rings); ++i)
+                panfrost_allocate_slab(ctx, &ctx->cmdstream_rings[i],
+                                       8 * 64 * 8 * 16, true, 0, 0, 0);
 
-        panfrost_allocate_slab(ctx, &ctx->cmdstream_persistent, 8 * 64 * 8 * 2, true, true, 0, 0, 0);
-        panfrost_allocate_slab(ctx, &ctx->textures, 4 * 64 * 64 * 4, true, true, 0, 0, 0);
-        panfrost_allocate_slab(ctx, &ctx->scratchpad, 64, true, true, 0, 0, 0);
-        panfrost_allocate_slab(ctx, &ctx->varying_mem, 16384, false, true, 0, 0, 0);
-        panfrost_allocate_slab(ctx, &ctx->shaders, 4096, true, false, BASE_MEM_PROT_GPU_EX, 0, 0);
-        panfrost_allocate_slab(ctx, &ctx->tiler_heap, 32768, false, false, 0, 0, 0);
-        panfrost_allocate_slab(ctx, &ctx->misc_0, 128, false, false, 0, 0, 0);
+        panfrost_allocate_slab(ctx, &ctx->cmdstream_persistent, 8 * 64 * 8 * 2,
+                               true, 0, 0, 0);
+        panfrost_allocate_slab(ctx, &ctx->textures, 4 * 64 * 64 * 4, true,
+                               0, 0, 0);
+        panfrost_allocate_slab(ctx, &ctx->scratchpad, 64, true, 0, 0, 0);
+        panfrost_allocate_slab(ctx, &ctx->varying_mem, 16384, true, 0, 0, 0);
+        panfrost_allocate_slab(ctx, &ctx->shaders, 4096, false,
+                               BASE_MEM_PROT_GPU_EX, 0, 0);
+        panfrost_allocate_slab(ctx, &ctx->tiler_heap, 32768, false, 0, 0, 0);
+        panfrost_allocate_slab(ctx, &ctx->misc_0, 128, false, 0, 0, 0);
 
 }
 
