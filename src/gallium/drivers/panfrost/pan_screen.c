@@ -719,12 +719,13 @@ panfrost_resource_from_handle(struct pipe_screen *pscreen,
 }
 
 static boolean
-panfrost_resource_get_handle(struct pipe_screen *screen,
+panfrost_resource_get_handle(struct pipe_screen *pscreen,
                              struct pipe_context *ctx,
                              struct pipe_resource *pt,
                              struct winsys_handle *handle,
                              unsigned usage)
 {
+        struct panfrost_screen *screen = pan_screen(pscreen);
         struct panfrost_resource *rsrc = (struct panfrost_resource *) pt;
         struct renderonly_scanout *scanout = rsrc->scanout;
 
@@ -743,8 +744,24 @@ panfrost_resource_get_handle(struct pipe_screen *screen,
                         return FALSE;
                 }
         } else if (handle->type == WINSYS_HANDLE_TYPE_FD) {
-                printf("Missed dmabuf\n");
-                return FALSE;
+                if (scanout) {
+                        struct drm_prime_handle args = {
+                                .handle = scanout->handle,
+                                .flags = DRM_CLOEXEC,
+                        };
+
+                        int ret = pandev_ioctl(screen->ro->kms_fd, DRM_IOCTL_PRIME_HANDLE_TO_FD, &args);
+                        if (ret == -1)
+                                return FALSE;
+
+                        handle->handle = args.fd;
+
+                        return TRUE;
+                } else {
+                        printf("Missed nonrenderonly KMS handle\n");
+                        assert(0);
+                        return FALSE;
+                }
         }
 
         return FALSE;
