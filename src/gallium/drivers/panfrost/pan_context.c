@@ -312,7 +312,8 @@ panfrost_is_scanout(struct panfrost_context *ctx)
         if (!ctx->pipe_framebuffer.cbufs[0])
                 return true;
 
-        return ctx->pipe_framebuffer.cbufs[0]->texture->bind & PIPE_BIND_DISPLAY_TARGET;
+        return ctx->pipe_framebuffer.cbufs[0]->texture->bind & PIPE_BIND_DISPLAY_TARGET ||
+               ctx->pipe_framebuffer.cbufs[0]->texture->bind & PIPE_BIND_SCANOUT;
 }
 
 /* The above function is for generalised fbd emission, used in both fragment as
