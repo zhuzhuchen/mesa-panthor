@@ -43,6 +43,7 @@ inc_panfrost = [
   inc_common,
   inc_gallium,
   inc_gallium_aux,
+  inc_drm_uapi,
   inc_include,
   inc_src,
   include_directories('midgard'),
