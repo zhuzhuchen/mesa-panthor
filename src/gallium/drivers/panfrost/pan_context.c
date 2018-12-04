@@ -2796,6 +2796,18 @@ panfrost_setup_framebuffer(struct panfrost_context *ctx, int width, int height)
 }
 
 static void
+panfrost_flush_resource(struct pipe_context *pctx, struct pipe_resource *prsc)
+{
+        fprintf(stderr, "TODO %s\n", __func__);
+}
+
+static void
+panfrost_invalidate_resource(struct pipe_context *pctx, struct pipe_resource *prsc)
+{
+        fprintf(stderr, "TODO %s\n", __func__);
+}
+
+static void
 panfrost_setup_hardware(struct panfrost_context *ctx)
 {
         struct pipe_context *gallium = (struct pipe_context *) ctx;
@@ -2924,6 +2936,9 @@ panfrost_create_context(struct pipe_screen *screen, void *priv, unsigned flags)
         gallium->set_active_query_state = panfrost_set_active_query_state;
 
         gallium->blit = panfrost_blit;
+
+        gallium->flush_resource = panfrost_flush_resource;
+        gallium->invalidate_resource = panfrost_invalidate_resource;
 
         /* XXX: leaks */
         gallium->stream_uploader = u_upload_create_default(gallium);
