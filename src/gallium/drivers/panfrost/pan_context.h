@@ -93,7 +93,6 @@ struct panfrost_context {
         struct panfrost_memory scratchpad;
         struct panfrost_memory tiler_heap;
         struct panfrost_memory varying_mem;
-        struct panfrost_memory framebuffer;
         struct panfrost_memory misc_0;
         struct panfrost_memory misc_1;
         struct panfrost_memory depth_stencil_buffer;
@@ -104,8 +103,6 @@ struct panfrost_context {
                 double depth;
                 unsigned stencil;
         } last_clear;
-
-        int scanout_stride;
 
         /* Each render job has multiple framebuffer descriptors associated with
          * it, used for various purposes with more or less the same format. The
@@ -270,8 +267,31 @@ struct panfrost_sampler_view {
 
 struct sw_displaytarget;
 
+struct panfrost_bo {
+	//struct panfrost_device *dev;
+	uint32_t size;
+	uint32_t handle;
+	uint32_t name;
+	int32_t refcnt;
+	uint64_t iova;
+	void *map;
+	//const struct fd_bo_funcs *funcs;
+
+	enum {
+		NO_CACHE = 0,
+		BO_CACHE = 1,
+		RING_CACHE = 2,
+	} bo_reuse;
+
+	//struct list_head list;   /* bucket-list entry */
+	time_t free_time;        /* time when added to bucket-list */
+};
+
 struct panfrost_resource {
         struct pipe_resource base;
+
+        struct panfrost_bo *bo;
+        struct renderonly_scanout *scanout;
 
         /* Address to the resource in question */
 
@@ -316,6 +336,18 @@ static inline struct panfrost_context *
 panfrost_context(struct pipe_context *pcontext)
 {
         return (struct panfrost_context *) pcontext;
+}
+
+static inline struct panfrost_resource *
+pan_resource(struct pipe_resource *p)
+{
+   return (struct panfrost_resource *)p;
+}
+
+static inline struct panfrost_screen *
+pan_screen(struct pipe_screen *p)
+{
+   return (struct panfrost_screen *)p;
 }
 
 struct pipe_context *

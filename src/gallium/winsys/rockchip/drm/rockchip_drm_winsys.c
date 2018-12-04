@@ -35,11 +35,7 @@
 struct pipe_screen *rockchip_drm_screen_create(int fd)
 {
    struct renderonly ro = {
-      /* Passes the panfrost-allocated BO through to the rockchip DRM device using
-       * PRIME buffer sharing.  The VC4 BO must be linear, which the SCANOUT
-       * flag on allocation will have ensured.
-       */
-      .create_for_resource = renderonly_create_gpu_import_for_resource,
+      .create_for_resource = renderonly_create_kms_dumb_buffer_for_resource,
       .kms_fd = fd,
       .gpu_fd = open("/dev/mali0", O_RDWR | O_CLOEXEC),
    };

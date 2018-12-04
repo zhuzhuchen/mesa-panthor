@@ -33,7 +33,6 @@ files_panfrost = files(
   'pan_nondrm.c',
   'pan_allocate.c',
   'pan_assemble.c',
-  'pan_slowfb.c',
   'pan_swizzle.c',
   'pan_blending.c',
   'pan_blend_shaders.c',

@@ -62,9 +62,6 @@ panfrost_allocate_slab(struct panfrost_context *ctx,
 
 static bool USE_TRANSACTION_ELIMINATION = false;
 
-/* Don't use the mesa winsys; use our own X11 window with Xshm */
-#define USE_SLOWFB
-
 /* Do not actually send anything to the GPU; merely generate the cmdstream as fast as possible. Disables framebuffer writes */
 //#define DRY_RUN
 
@@ -323,21 +320,21 @@ panfrost_is_scanout(struct panfrost_context *ctx)
 static void
 panfrost_new_frag_framebuffer(struct panfrost_context *ctx)
 {
-        mali_ptr framebuffer = ctx->framebuffer.gpu;
+        mali_ptr framebuffer = ((struct panfrost_resource *) ctx->pipe_framebuffer.cbufs[0]->texture)->gpu[0];
         int stride;
 
-        /* The default is upside down from OpenGL's perspective. Plus, for scanout we supply our own framebuffer / stride */
-        if (panfrost_is_scanout(ctx)) {
-                stride = ctx->scanout_stride;
-
-                framebuffer += stride * (ctx->pipe_framebuffer.height - 1);
-                stride = -stride;
-        } else if (ctx->pipe_framebuffer.nr_cbufs > 0) {
+        if (ctx->pipe_framebuffer.nr_cbufs > 0) {
                 stride = util_format_get_stride(ctx->pipe_framebuffer.cbufs[0]->format, ctx->pipe_framebuffer.width);
         } else {
                 /* Depth-only framebuffer -> dummy RT */
                 framebuffer = 0;
                 stride = 0;
+        }
+
+        /* The default is upside down from OpenGL's perspective. */
+        if (panfrost_is_scanout(ctx)) {
+                framebuffer += stride * (ctx->pipe_framebuffer.height - 1);
+                stride = -stride;
         }
 
 #ifdef SFBD
@@ -933,6 +930,7 @@ panfrost_fragment_job(struct panfrost_context *ctx)
 
         if (ctx->pipe_framebuffer.nr_cbufs == 1) {
                 struct panfrost_resource *rsrc = (struct panfrost_resource *) ctx->pipe_framebuffer.cbufs[0]->texture;
+                int stride = util_format_get_stride(rsrc->base.format, rsrc->base.width0);
 
                 if (rsrc->has_checksum) {
                         //ctx->fragment_fbd.unk3 |= 0xa00000;
@@ -940,7 +938,7 @@ panfrost_fragment_job(struct panfrost_context *ctx)
                         ctx->fragment_fbd.unk3 |= MALI_MFBD_EXTRA;
                         ctx->fragment_extra.unk = 0x420;
                         ctx->fragment_extra.checksum_stride = rsrc->checksum_stride;
-                        ctx->fragment_extra.checksum = /*rsrc->checksum_slab.gpu*/ctx->framebuffer.gpu + (ctx->scanout_stride) * rsrc->base.height0;
+                        ctx->fragment_extra.checksum = rsrc->gpu[0] + stride * rsrc->base.height0;
                 }
         }
 
@@ -1443,7 +1441,7 @@ panfrost_submit_frame(struct panfrost_context *ctx, bool flush_immediate)
         /* XXX: flush_immediate was causing lock-ups wrt readpixels in dEQP. Investigate. */
 
         base_external_resource framebuffer[] = {
-                {ctx->framebuffer.gpu | BASE_EXT_RES_ACCESS_EXCLUSIVE},
+                {.ext_resource = ((struct panfrost_resource *) ctx->pipe_framebuffer.cbufs[0]->texture)->gpu[0] | (BASE_EXT_RES_ACCESS_SHARED & LOCAL_PAGE_LSB)},
         };
 
         int vt_atom = allocate_atom();
@@ -1525,17 +1523,6 @@ panfrost_flush(
 
         /* Prepare for the next frame */
         panfrost_invalidate_frame(ctx);
-
-#ifdef USE_SLOWFB
-#ifndef DRY_RUN
-
-        if (panfrost_is_scanout(ctx) && !dont_scanout) {
-                /* Display the frame in our cute little window */
-                slowfb_update((uint8_t *) ctx->framebuffer.cpu, ctx->pipe_framebuffer.width, ctx->pipe_framebuffer.height);
-        }
-
-#endif
-#endif
 }
 
 #define DEFINE_CASE(c) case PIPE_PRIM_##c: return MALI_GL_##c;
@@ -2176,10 +2163,29 @@ panfrost_resource_create_front(struct pipe_screen *screen,
         if (template->depth0) sz *= template->depth0;
 
         if ((template->bind & PIPE_BIND_RENDER_TARGET) || (template->bind & PIPE_BIND_DEPTH_STENCIL)) {
-                if (template->bind & PIPE_BIND_DISPLAY_TARGET) {
-                        /* TODO: Allocate display target surface */
-                        so->cpu[0] = pscreen->any_context->framebuffer.cpu;
-                        so->gpu[0] = pscreen->any_context->framebuffer.gpu;
+                if (template->bind & PIPE_BIND_DISPLAY_TARGET ||
+                    template->bind & PIPE_BIND_SCANOUT) {
+                        struct pipe_resource scanout_templat = *template;
+                        struct renderonly_scanout *scanout;
+                        struct winsys_handle handle;
+
+                        /* TODO: align width0 and height0? */
+
+                        scanout = renderonly_scanout_for_resource(&scanout_templat,
+                                                                  pscreen->ro, &handle);
+                        if (!scanout)
+                                return NULL;
+
+                        assert(handle.type == WINSYS_HANDLE_TYPE_FD);
+                        /* TODO: handle modifiers? */
+                        so = pan_resource(screen->resource_from_handle(screen, template,
+                                                                         &handle,
+                                                                         PIPE_HANDLE_USAGE_FRAMEBUFFER_WRITE));
+                        close(handle.handle);
+                        if (!so)
+                                return NULL;
+
+                        so->scanout = scanout;
                 } else {
                         /* TODO: Mipmapped RTs */
                         //assert(template->last_level == 0);
@@ -2279,7 +2285,7 @@ panfrost_transfer_map(struct pipe_context *pctx,
                 assert(level == 0);
 
                 /* Set the CPU mapping to that of the framebuffer in memory, untiled */
-                rsrc->cpu[level] = ctx->framebuffer.cpu;
+                rsrc->cpu[level] = ((struct panfrost_resource *) ctx->pipe_framebuffer.cbufs[0]->texture)->cpu[0];
 
                 /* Force a flush -- kill the pipeline */
                 panfrost_flush(pctx, NULL, PIPE_FLUSH_END_OF_FRAME);
@@ -2329,21 +2335,13 @@ panfrost_set_framebuffer_state(struct pipe_context *pctx,
                 if (!cb)
                         continue;
 
-                bool is_scanout = panfrost_is_scanout(ctx);
-
-                if (is_scanout) {
-                        /* Lie to use our own */
-                        ((struct panfrost_resource *) ctx->pipe_framebuffer.cbufs[i]->texture)->gpu[0] = ctx->framebuffer.gpu;
-                        ctx->pipe_framebuffer.width = 2048;
-                        ctx->pipe_framebuffer.height = 1280;
-                }
-
                 ctx->vt_framebuffer = panfrost_emit_fbd(ctx);
                 panfrost_attach_vt_framebuffer(ctx);
                 panfrost_new_frag_framebuffer(ctx);
                 panfrost_set_scissor(ctx);
 
                 struct panfrost_resource *tex = ((struct panfrost_resource *) ctx->pipe_framebuffer.cbufs[i]->texture);
+                bool is_scanout = panfrost_is_scanout(ctx);
 
                 if (!is_scanout && !tex->has_afbc) {
                         /* The blob is aggressive about enabling AFBC. As such,
@@ -2746,56 +2744,6 @@ panfrost_allocate_slab(struct panfrost_context *ctx,
  * */
 
 static void
-panfrost_setup_framebuffer(struct panfrost_context *ctx, int width, int height)
-{
-        struct pipe_context *gallium = (struct pipe_context *) ctx;
-        struct panfrost_screen *screen = panfrost_screen(gallium->screen);
-
-        /* drisw rounds the stride */
-        int rw = 16.0 * (int) ceil((float) width / 16.0);
-
-        size_t framebuffer_sz = rw * height * 4;
-        posix_memalign((void **) &ctx->framebuffer.cpu, CACHE_LINE_SIZE, framebuffer_sz);
-        struct slowfb_info info = slowfb_init((uint8_t *) (ctx->framebuffer.cpu), rw, height);
-
-        /* May not be the same as our original alloc if we're using XShm, etc */
-        ctx->framebuffer.cpu = info.framebuffer;
-
-        struct base_mem_import_user_buffer framebuffer_handle = {
-                .ptr = (uint64_t) (uintptr_t) ctx->framebuffer.cpu,
-                .length = framebuffer_sz
-        };
-
-        union kbase_ioctl_mem_import framebuffer_import = {
-                .in = {
-                        .phandle = (uint64_t) (uintptr_t) &framebuffer_handle,
-                        .type = BASE_MEM_IMPORT_TYPE_USER_BUFFER,
-                        .flags = BASE_MEM_PROT_CPU_RD |
-                                 BASE_MEM_PROT_CPU_WR |
-                                 BASE_MEM_PROT_GPU_RD |
-                                 BASE_MEM_PROT_GPU_WR |
-                                 BASE_MEM_IMPORT_SHARED,
-                }
-        };
-
-        pandev_ioctl(screen->fd, KBASE_IOCTL_MEM_IMPORT, &framebuffer_import);
-
-        /* It feels like this mmap is backwards :p */
-        uint64_t gpu_addr = (uint64_t) mmap(NULL,
-                                            framebuffer_import.out.va_pages * 4096,
-                                            3, 1, screen->fd,
-                                            framebuffer_import.out.gpu_va);
-
-        ctx->framebuffer.gpu = gpu_addr;
-        ctx->framebuffer.size = info.stride * height;
-        ctx->scanout_stride = info.stride;
-
-        ctx->pipe_framebuffer.nr_cbufs = 1;
-        ctx->pipe_framebuffer.width = width;
-        ctx->pipe_framebuffer.height = height;
-}
-
-static void
 panfrost_flush_resource(struct pipe_context *pctx, struct pipe_resource *prsc)
 {
         fprintf(stderr, "TODO %s\n", __func__);
@@ -2814,10 +2762,6 @@ panfrost_setup_hardware(struct panfrost_context *ctx)
         struct panfrost_screen *screen = panfrost_screen(gallium->screen);
 
         pandev_open(screen->fd);
-
-#ifdef USE_SLOWFB
-        panfrost_setup_framebuffer(ctx, 2048, 1280);
-#endif
 
         for (int i = 0; i < ARRAY_SIZE(ctx->cmdstream_rings); ++i)
                 panfrost_allocate_slab(ctx, &ctx->cmdstream_rings[i],

@@ -30,7 +30,6 @@
 #include <stdbool.h>
 #include <panfrost-job.h>
 #include <linux/ioctl.h>
-#include "pan_slowfb.h"
 
 int pandev_open(int fd);
 
