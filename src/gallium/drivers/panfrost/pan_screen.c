@@ -730,7 +730,7 @@ panfrost_resource_get_handle(struct pipe_screen *pscreen,
         struct renderonly_scanout *scanout = rsrc->scanout;
 
         handle->stride = rsrc->stride;
-        handle->modifier = DRM_FORMAT_MOD_LINEAR;
+        handle->modifier = DRM_FORMAT_MOD_INVALID;
 
         if (handle->type == WINSYS_HANDLE_TYPE_SHARED) {
                 printf("Missed shared handle\n");
