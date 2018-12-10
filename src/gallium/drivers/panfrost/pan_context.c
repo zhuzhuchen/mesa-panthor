@@ -1473,7 +1473,7 @@ panfrost_submit_frame(struct panfrost_context *ctx, bool flush_immediate)
                 atoms[i].compat_core_req = atoms[i].core_req;
 
         struct kbase_ioctl_job_submit submit = {
-                .addr = (mali_ptr)atoms + (has_draws ? 0 : 1),
+                .addr = (mali_ptr)(atoms + (has_draws ? 0 : 1)),
                 .nr_atoms = has_draws ? 2 : 1,
                 .stride = sizeof(struct base_jd_atom_v2),
         };
