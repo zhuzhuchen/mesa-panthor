@@ -23,6 +23,7 @@
  */
 
 #include <sys/poll.h>
+#include <errno.h>
 #include <panfrost-mali-base.h>
 #include <mali-kbase-ioctl.h>
 
@@ -1405,13 +1406,22 @@ force_flush_fragment(struct panfrost_context *ctx)
 {
         struct pipe_context *gallium = (struct pipe_context *) ctx;
         struct panfrost_screen *screen = panfrost_screen(gallium->screen);
+        struct base_jd_event_v2 event;
+        int ret;
 
         if (!last_fragment_flushed) {
-                uint8_t ev[/* 1 */ 4 + 4 + 8 + 8];
-
                 do {
-                        read(screen->fd, ev, sizeof(ev));
-                } while (ev[4] != last_fragment_id);
+                        ret = read(screen->fd, &event, sizeof(event));
+                        if (ret != sizeof(event)) {
+                            fprintf(stderr, "error when reading from mali device: %s\n", strerror(errno));
+                            break;
+                        }
+
+                        if (event.event_code == BASE_JD_EVENT_JOB_INVALID) {
+                            fprintf(stderr, "Job invalid\n");
+                            break;
+                        }
+                } while (event.atom_number != last_fragment_id);
 
                 last_fragment_flushed = true;
         }
