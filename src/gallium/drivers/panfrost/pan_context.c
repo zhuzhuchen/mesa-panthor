@@ -2906,10 +2906,8 @@ panfrost_create_context(struct pipe_screen *screen, void *priv, unsigned flags)
         panfrost_emit_tiler_payload(ctx);
         panfrost_invalidate_frame(ctx);
         panfrost_viewport(ctx, 0.0, 1.0, 0, 0, ctx->pipe_framebuffer.width, ctx->pipe_framebuffer.height);
-        panfrost_new_frag_framebuffer(ctx);
         panfrost_default_shader_backend(ctx);
         panfrost_generate_space_filler_indices();
-
 
         return gallium;
 }
