@@ -1247,10 +1247,10 @@ panfrost_emit_for_draw(struct panfrost_context *ctx)
 
         float viewport_vec4[] = {
                 vp->scale[0],
-                abs(vp->scale[1]),
+                fabsf(vp->scale[1]),
 
                 vp->translate[0],
-                /* -1.0 * vp->translate[1] */ abs(1.0 * vp->scale[1]) /* XXX */
+                /* -1.0 * vp->translate[1] */ fabs(1.0 * vp->scale[1]) /* XXX */
         };
 
         for (int i = 0; i < PIPE_SHADER_TYPES; ++i) {
