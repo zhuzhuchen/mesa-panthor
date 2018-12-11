@@ -2749,10 +2749,6 @@ panfrost_allocate_slab(struct panfrost_context *ctx,
         mem->stack_bottom = 0;
 }
 
-/* Setups a framebuffer, either by itself (with the independent slow-fb
- * interface) or from an existing pointer (for shared memory, from the winsys)
- * */
-
 static void
 panfrost_flush_resource(struct pipe_context *pctx, struct pipe_resource *prsc)
 {
