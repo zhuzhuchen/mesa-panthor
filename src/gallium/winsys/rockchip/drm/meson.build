@@ -27,7 +27,6 @@ librockchipwinsys = static_library(
   ],
   c_args : [c_vis_args],
   dependencies: dep_libdrm,
-  link_with : libpanfrostwinsys,
 )
 
 driver_rockchip = declare_dependency(
