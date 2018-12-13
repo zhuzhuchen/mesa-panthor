@@ -1460,14 +1460,14 @@ panfrost_submit_frame(struct panfrost_context *ctx, bool flush_immediate)
                 {
                         .jc = ctx->set_value_job,
                         .atom_number = vt_atom,
-                        .core_req = BASE_JD_REQ_CS | BASE_JD_REQ_T | BASE_JD_REQ_CF | BASE_JD_REQ_COHERENT_GROUP | BASEP_JD_REQ_EVENT_NEVER | BASE_JD_REQ_SKIP_CACHE_END,
+                        .core_req = BASE_JD_REQ_CS | BASE_JD_REQ_T | BASE_JD_REQ_CF | BASE_JD_REQ_COHERENT_GROUP | BASEP_JD_REQ_EVENT_NEVER,
                 },
                 {
                         .jc = panfrost_fragment_job(ctx),
                         .nr_extres = 1,
                         .extres_list = (u64)framebuffer,
                         .atom_number = allocate_atom(),
-                        .core_req = BASE_JD_REQ_FS | BASE_JD_REQ_SKIP_CACHE_START,
+                        .core_req = BASE_JD_REQ_FS,
                 },
         };
 
