@@ -301,6 +301,13 @@ intel_batchbuffer_save_state(struct brw_context *brw)
    brw->batch.saved.exec_count = brw->batch.exec_count;
 }
 
+bool
+intel_batchbuffer_saved_state_is_empty(struct brw_context *brw)
+{
+   struct intel_batchbuffer *batch = &brw->batch;
+   return (batch->saved.map_next == batch->batch.map);
+}
+
 void
 intel_batchbuffer_reset_to_saved(struct brw_context *brw)
 {
@@ -1211,7 +1218,7 @@ brw_load_register_imm64(struct brw_context *brw, uint32_t reg, uint64_t imm)
  * Copies a 32-bit register.
  */
 void
-brw_load_register_reg(struct brw_context *brw, uint32_t src, uint32_t dest)
+brw_load_register_reg(struct brw_context *brw, uint32_t dest, uint32_t src)
 {
    assert(brw->screen->devinfo.gen >= 8 || brw->screen->devinfo.is_haswell);
 
@@ -1226,7 +1233,7 @@ brw_load_register_reg(struct brw_context *brw, uint32_t src, uint32_t dest)
  * Copies a 64-bit register.
  */
 void
-brw_load_register_reg64(struct brw_context *brw, uint32_t src, uint32_t dest)
+brw_load_register_reg64(struct brw_context *brw, uint32_t dest, uint32_t src)
 {
    assert(brw->screen->devinfo.gen >= 8 || brw->screen->devinfo.is_haswell);
 

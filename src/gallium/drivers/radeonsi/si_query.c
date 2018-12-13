@@ -793,17 +793,10 @@ static void si_query_hw_do_emit_start(struct si_context *sctx,
 			emit_sample_streamout(cs, va + 32 * stream, stream);
 		break;
 	case PIPE_QUERY_TIME_ELAPSED:
-		/* Write the timestamp from the CP not waiting for
-		 * outstanding draws (top-of-pipe).
-		 */
-		radeon_emit(cs, PKT3(PKT3_COPY_DATA, 4, 0));
-		radeon_emit(cs, COPY_DATA_COUNT_SEL |
-				COPY_DATA_SRC_SEL(COPY_DATA_TIMESTAMP) |
-				COPY_DATA_DST_SEL(COPY_DATA_DST_MEM));
-		radeon_emit(cs, 0);
-		radeon_emit(cs, 0);
-		radeon_emit(cs, va);
-		radeon_emit(cs, va >> 32);
+		si_cp_release_mem(sctx, V_028A90_BOTTOM_OF_PIPE_TS, 0,
+				  EOP_DST_SEL_MEM, EOP_INT_SEL_NONE,
+				  EOP_DATA_SEL_TIMESTAMP, NULL, va,
+				  0, query->b.type);
 		break;
 	case PIPE_QUERY_PIPELINE_STATISTICS:
 		radeon_emit(cs, PKT3(PKT3_EVENT_WRITE, 2, 0));
@@ -890,9 +883,8 @@ static void si_query_hw_do_emit_stop(struct si_context *sctx,
 		va += 8;
 		/* fall through */
 	case PIPE_QUERY_TIMESTAMP:
-		si_cp_release_mem(sctx, V_028A90_BOTTOM_OF_PIPE_TS,
-				  0, EOP_DST_SEL_MEM,
-				  EOP_INT_SEL_SEND_DATA_AFTER_WR_CONFIRM,
+		si_cp_release_mem(sctx, V_028A90_BOTTOM_OF_PIPE_TS, 0,
+				  EOP_DST_SEL_MEM, EOP_INT_SEL_NONE,
 				  EOP_DATA_SEL_TIMESTAMP, NULL, va,
 				  0, query->b.type);
 		fence_va = va + 8;
@@ -917,8 +909,7 @@ static void si_query_hw_do_emit_stop(struct si_context *sctx,
 
 	if (fence_va) {
 		si_cp_release_mem(sctx, V_028A90_BOTTOM_OF_PIPE_TS, 0,
-				  EOP_DST_SEL_MEM,
-				  EOP_INT_SEL_SEND_DATA_AFTER_WR_CONFIRM,
+				  EOP_DST_SEL_MEM, EOP_INT_SEL_NONE,
 				  EOP_DATA_SEL_VALUE_32BIT,
 				  query->buffer.buf, fence_va, 0x80000000,
 				  query->b.type);

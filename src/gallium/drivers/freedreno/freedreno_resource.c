@@ -99,7 +99,9 @@ realloc_bo(struct fd_resource *rsc, uint32_t size)
 {
 	struct fd_screen *screen = fd_screen(rsc->base.screen);
 	uint32_t flags = DRM_FREEDRENO_GEM_CACHE_WCOMBINE |
-			DRM_FREEDRENO_GEM_TYPE_KMEM; /* TODO */
+			DRM_FREEDRENO_GEM_TYPE_KMEM |
+			COND(rsc->base.bind & PIPE_BIND_SCANOUT, DRM_FREEDRENO_GEM_SCANOUT);
+			/* TODO other flags? */
 
 	/* if we start using things other than write-combine,
 	 * be sure to check for PIPE_RESOURCE_FLAG_MAP_COHERENT
@@ -851,6 +853,15 @@ fd_resource_create(struct pipe_screen *pscreen,
 				DRM_FREEDRENO_GEM_TYPE_KMEM; /* TODO */
 		unsigned lrz_pitch  = align(DIV_ROUND_UP(tmpl->width0, 8), 64);
 		unsigned lrz_height = DIV_ROUND_UP(tmpl->height0, 8);
+
+		/* LRZ buffer is super-sampled: */
+		switch (prsc->nr_samples) {
+		case 4:
+			lrz_pitch *= 2;
+		case 2:
+			lrz_height *= 2;
+		}
+
 		unsigned size = lrz_pitch * lrz_height * 2;
 
 		size += 0x1000; /* for GRAS_LRZ_FAST_CLEAR_BUFFER */
@@ -1192,6 +1203,50 @@ fd_resource_screen_init(struct pipe_screen *pscreen)
 		screen->setup_slices = fd_setup_slices;
 }
 
+static void
+fd_get_sample_position(struct pipe_context *context,
+                         unsigned sample_count, unsigned sample_index,
+                         float *pos_out)
+{
+	/* The following is copied from nouveau/nv50 except for position
+	 * values, which are taken from blob driver */
+	static const uint8_t pos1[1][2] = { { 0x8, 0x8 } };
+	static const uint8_t pos2[2][2] = {
+		{ 0xc, 0xc }, { 0x4, 0x4 } };
+	static const uint8_t pos4[4][2] = {
+		{ 0x6, 0x2 }, { 0xe, 0x6 },
+		{ 0x2, 0xa }, { 0xa, 0xe } };
+	/* TODO needs to be verified on supported hw */
+	static const uint8_t pos8[8][2] = {
+		{ 0x9, 0x5 }, { 0x7, 0xb },
+		{ 0xd, 0x9 }, { 0x5, 0x3 },
+		{ 0x3, 0xd }, { 0x1, 0x7 },
+		{ 0xb, 0xf }, { 0xf, 0x1 } };
+
+	const uint8_t (*ptr)[2];
+
+	switch (sample_count) {
+	case 1:
+		ptr = pos1;
+		break;
+	case 2:
+		ptr = pos2;
+		break;
+	case 4:
+		ptr = pos4;
+		break;
+	case 8:
+		ptr = pos8;
+		break;
+	default:
+		assert(0);
+		return;
+	}
+
+	pos_out[0] = ptr[sample_index][0] / 16.0f;
+	pos_out[1] = ptr[sample_index][1] / 16.0f;
+}
+
 void
 fd_resource_context_init(struct pipe_context *pctx)
 {
@@ -1206,4 +1261,5 @@ fd_resource_context_init(struct pipe_context *pctx)
 	pctx->blit = fd_blit;
 	pctx->flush_resource = fd_flush_resource;
 	pctx->invalidate_resource = fd_invalidate_resource;
+	pctx->get_sample_position = fd_get_sample_position;
 }

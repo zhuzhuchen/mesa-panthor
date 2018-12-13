@@ -740,6 +740,7 @@ void st_init_extensions(struct pipe_screen *screen,
       { o(EXT_draw_buffers2),                PIPE_CAP_INDEP_BLEND_ENABLE               },
       { o(EXT_memory_object),                PIPE_CAP_MEMOBJ                           },
       { o(EXT_memory_object_fd),             PIPE_CAP_MEMOBJ                           },
+      { o(EXT_multisampled_render_to_texture), PIPE_CAP_SURFACE_SAMPLE_COUNT           },
       { o(EXT_semaphore),                    PIPE_CAP_FENCE_SIGNAL                     },
       { o(EXT_semaphore_fd),                 PIPE_CAP_FENCE_SIGNAL                     },
       { o(EXT_texture_array),                PIPE_CAP_MAX_TEXTURE_ARRAY_LAYERS         },
@@ -767,14 +768,11 @@ void st_init_extensions(struct pipe_screen *screen,
       { o(OES_standard_derivatives),         PIPE_CAP_SM3                              },
       { o(OES_texture_float_linear),         PIPE_CAP_TEXTURE_FLOAT_LINEAR             },
       { o(OES_texture_half_float_linear),    PIPE_CAP_TEXTURE_HALF_FLOAT_LINEAR        },
+      { o(OES_texture_view),                 PIPE_CAP_SAMPLER_VIEW_TARGET              },
    };
 
    /* Required: render target and sampler support */
    static const struct st_extension_format_mapping rendertarget_mapping[] = {
-      { { o(ARB_texture_float) },
-        { PIPE_FORMAT_R32G32B32A32_FLOAT,
-          PIPE_FORMAT_R16G16B16A16_FLOAT } },
-
       { { o(OES_texture_float) },
         { PIPE_FORMAT_R32G32B32A32_FLOAT } },
 
@@ -802,6 +800,14 @@ void st_init_extensions(struct pipe_screen *screen,
       { { o(ARB_texture_rg) },
         { PIPE_FORMAT_R8_UNORM,
           PIPE_FORMAT_R8G8_UNORM } },
+
+      { { o(EXT_render_snorm) },
+        { PIPE_FORMAT_R8_SNORM,
+          PIPE_FORMAT_R8G8_SNORM,
+          PIPE_FORMAT_R8G8B8A8_SNORM,
+          PIPE_FORMAT_R16_SNORM,
+          PIPE_FORMAT_R16G16_SNORM,
+          PIPE_FORMAT_R16G16B16A16_SNORM } },
    };
 
    /* Required: depth stencil and sampler support */
@@ -1460,6 +1466,10 @@ void st_init_extensions(struct pipe_screen *screen,
          }
       }
    }
+
+   extensions->ARB_texture_float =
+      extensions->OES_texture_half_float &&
+      extensions->OES_texture_float;
 
    if (extensions->EXT_texture_filter_anisotropic &&
        screen->get_paramf(screen, PIPE_CAPF_MAX_TEXTURE_ANISOTROPY) >= 16.0)

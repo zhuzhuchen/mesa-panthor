@@ -122,13 +122,12 @@ radv_use_tc_compat_htile_for_image(struct radv_device *device,
 
 static bool
 radv_use_dcc_for_image(struct radv_device *device,
+		       const struct radv_image *image,
 		       const struct radv_image_create_info *create_info,
 		       const VkImageCreateInfo *pCreateInfo)
 {
 	bool dcc_compatible_formats;
 	bool blendable;
-	bool shareable = vk_find_struct_const(pCreateInfo->pNext,
-	                                      EXTERNAL_MEMORY_IMAGE_CREATE_INFO_KHR) != NULL;
 
 	/* DCC (Delta Color Compression) is only available for GFX8+. */
 	if (device->physical_device->rad_info.chip_class < VI)
@@ -139,7 +138,7 @@ radv_use_dcc_for_image(struct radv_device *device,
 
 	/* FIXME: DCC is broken for shareable images starting with GFX9 */
 	if (device->physical_device->rad_info.chip_class >= GFX9 &&
-	    shareable)
+	    image->shareable)
 		return false;
 
 	/* TODO: Enable DCC for storage images. */
@@ -198,6 +197,7 @@ radv_use_dcc_for_image(struct radv_device *device,
 
 static int
 radv_init_surface(struct radv_device *device,
+		  const struct radv_image *image,
 		  struct radeon_surf *surface,
 		  const struct radv_image_create_info *create_info)
 {
@@ -251,7 +251,7 @@ radv_init_surface(struct radv_device *device,
 
 	surface->flags |= RADEON_SURF_OPTIMIZE_FOR_SPACE;
 
-	if (!radv_use_dcc_for_image(device, create_info, pCreateInfo))
+	if (!radv_use_dcc_for_image(device, image, create_info, pCreateInfo))
 		surface->flags |= RADEON_SURF_DISABLE_DCC;
 
 	if (create_info->scanout)
@@ -691,7 +691,7 @@ radv_query_opaque_metadata(struct radv_device *device,
 	si_make_texture_descriptor(device, image, false,
 				   (VkImageViewType)image->type, image->vk_format,
 				   &fixedmapping, 0, image->info.levels - 1, 0,
-				   image->info.array_size,
+				   image->info.array_size - 1,
 				   image->info.width, image->info.height,
 				   image->info.depth,
 				   desc, NULL);
@@ -857,8 +857,9 @@ radv_image_alloc_dcc(struct radv_image *image)
 	image->dcc_offset = align64(image->size, image->surface.dcc_alignment);
 	/* + 16 for storing the clear values + dcc pred */
 	image->clear_value_offset = image->dcc_offset + image->surface.dcc_size;
-	image->dcc_pred_offset = image->clear_value_offset + 8;
-	image->size = image->dcc_offset + image->surface.dcc_size + 16;
+	image->fce_pred_offset = image->clear_value_offset + 8;
+	image->dcc_pred_offset = image->clear_value_offset + 16;
+	image->size = image->dcc_offset + image->surface.dcc_size + 24;
 	image->alignment = MAX2(image->alignment, image->surface.dcc_alignment);
 }
 
@@ -870,6 +871,14 @@ radv_image_alloc_htile(struct radv_image *image)
 	/* + 8 for storing the clear values */
 	image->clear_value_offset = image->htile_offset + image->surface.htile_size;
 	image->size = image->clear_value_offset + 8;
+	if (radv_image_is_tc_compat_htile(image)) {
+		/* Metadata for the TC-compatible HTILE hardware bug which
+		 * have to be fixed by updating ZRANGE_PRECISION when doing
+		 * fast depth clears to 0.0f.
+		 */
+		image->tc_compat_zrange_offset = image->clear_value_offset + 8;
+		image->size = image->clear_value_offset + 16;
+	}
 	image->alignment = align64(image->alignment, image->surface.htile_alignment);
 }
 
@@ -923,8 +932,8 @@ radv_image_can_enable_fmask(struct radv_image *image)
 static inline bool
 radv_image_can_enable_htile(struct radv_image *image)
 {
-	return image->info.levels == 1 &&
-	       vk_format_is_depth(image->vk_format) &&
+	return radv_image_has_htile(image) &&
+	       image->info.levels == 1 &&
 	       image->info.width * image->info.height >= 8 * 8;
 }
 
@@ -981,7 +990,7 @@ radv_image_create(VkDevice _device,
 		image->info.surf_index = &device->image_mrt_offset_counter;
 	}
 
-	radv_init_surface(device, &image->surface, create_info);
+	radv_init_surface(device, image, &image->surface, create_info);
 
 	device->ws->surface_init(device->ws, &image->info, &image->surface);
 
@@ -1014,8 +1023,8 @@ radv_image_create(VkDevice _device,
 			/* Otherwise, try to enable HTILE for depth surfaces. */
 			if (radv_image_can_enable_htile(image) &&
 			    !(device->instance->debug_flags & RADV_DEBUG_NO_HIZ)) {
-				radv_image_alloc_htile(image);
 				image->tc_compatible_htile = image->surface.flags & RADEON_SURF_TC_COMPATIBLE_HTILE;
+				radv_image_alloc_htile(image);
 			} else {
 				image->surface.htile_size = 0;
 			}
@@ -1175,8 +1184,6 @@ radv_image_view_init(struct radv_image_view *iview,
 		 if (device->physical_device->rad_info.chip_class >= GFX9 &&
 		     vk_format_is_compressed(image->vk_format) &&
 		     !vk_format_is_compressed(iview->vk_format)) {
-			 unsigned rounded_img_w = util_next_power_of_two(iview->extent.width);
-			 unsigned rounded_img_h = util_next_power_of_two(iview->extent.height);
 			 unsigned lvl_width  = radv_minify(image->info.width , range->baseMipLevel);
 			 unsigned lvl_height = radv_minify(image->info.height, range->baseMipLevel);
 
@@ -1186,8 +1193,8 @@ radv_image_view_init(struct radv_image_view *iview,
 			 lvl_width <<= range->baseMipLevel;
 			 lvl_height <<= range->baseMipLevel;
 
-			 iview->extent.width = CLAMP(lvl_width, iview->extent.width, rounded_img_w);
-			 iview->extent.height = CLAMP(lvl_height, iview->extent.height, rounded_img_h);
+			 iview->extent.width = CLAMP(lvl_width, iview->extent.width, iview->image->surface.u.gfx9.surf_pitch);
+			 iview->extent.height = CLAMP(lvl_height, iview->extent.height, iview->image->surface.u.gfx9.surf_height);
 		 }
 	}
 

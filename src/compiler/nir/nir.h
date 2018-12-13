@@ -34,6 +34,7 @@
 #include "util/list.h"
 #include "util/ralloc.h"
 #include "util/set.h"
+#include "util/bitscan.h"
 #include "util/bitset.h"
 #include "util/macros.h"
 #include "compiler/nir_types.h"
@@ -1248,6 +1249,18 @@ typedef enum {
     */
    NIR_INTRINSIC_ACCESS = 16,
 
+   /**
+    * Alignment for offsets and addresses
+    *
+    * These two parameters, specify an alignment in terms of a multiplier and
+    * an offset.  The offset or address parameter X of the intrinsic is
+    * guaranteed to satisfy the following:
+    *
+    *                (X - align_offset) % align_mul == 0
+    */
+   NIR_INTRINSIC_ALIGN_MUL = 17,
+   NIR_INTRINSIC_ALIGN_OFFSET = 18,
+
    NIR_INTRINSIC_NUM_INDEX_FLAGS,
 
 } nir_intrinsic_index_flag;
@@ -1342,6 +1355,34 @@ INTRINSIC_IDX_ACCESSORS(image_dim, IMAGE_DIM, enum glsl_sampler_dim)
 INTRINSIC_IDX_ACCESSORS(image_array, IMAGE_ARRAY, bool)
 INTRINSIC_IDX_ACCESSORS(access, ACCESS, enum gl_access_qualifier)
 INTRINSIC_IDX_ACCESSORS(format, FORMAT, unsigned)
+INTRINSIC_IDX_ACCESSORS(align_mul, ALIGN_MUL, unsigned)
+INTRINSIC_IDX_ACCESSORS(align_offset, ALIGN_OFFSET, unsigned)
+
+static inline void
+nir_intrinsic_set_align(nir_intrinsic_instr *intrin,
+                        unsigned align_mul, unsigned align_offset)
+{
+   assert(util_is_power_of_two_nonzero(align_mul));
+   assert(align_offset < align_mul);
+   nir_intrinsic_set_align_mul(intrin, align_mul);
+   nir_intrinsic_set_align_offset(intrin, align_offset);
+}
+
+/** Returns a simple alignment for a load/store intrinsic offset
+ *
+ * Instead of the full mul+offset alignment scheme provided by the ALIGN_MUL
+ * and ALIGN_OFFSET parameters, this helper takes both into account and
+ * provides a single simple alignment parameter.  The offset X is guaranteed
+ * to satisfy X % align == 0.
+ */
+static inline unsigned
+nir_intrinsic_align(nir_intrinsic_instr *intrin)
+{
+   const unsigned align_mul = nir_intrinsic_align_mul(intrin);
+   const unsigned align_offset = nir_intrinsic_align_offset(intrin);
+   assert(align_offset < align_mul);
+   return align_offset ? 1 << (ffs(align_offset) - 1) : align_mul;
+}
 
 /**
  * \group texture information
@@ -1357,6 +1398,7 @@ typedef enum {
    nir_tex_src_offset,
    nir_tex_src_bias,
    nir_tex_src_lod,
+   nir_tex_src_min_lod,
    nir_tex_src_ms_index, /* MSAA sample index */
    nir_tex_src_ms_mcs, /* MSAA compression value */
    nir_tex_src_ddx,
@@ -1527,8 +1569,8 @@ nir_alu_instr_is_comparison(const nir_alu_instr *instr)
    case nir_op_uge:
    case nir_op_ieq:
    case nir_op_ine:
-   case nir_op_i2b:
-   case nir_op_f2b:
+   case nir_op_i2b32:
+   case nir_op_f2b32:
    case nir_op_inot:
    case nir_op_fnot:
       return true;
@@ -1845,9 +1887,11 @@ typedef struct {
    /* Number of instructions in the loop */
    unsigned num_instructions;
 
-   /* How many times the loop is run (if known) */
-   unsigned trip_count;
-   bool is_trip_count_known;
+   /* Maximum number of times the loop is run (if known) */
+   unsigned max_trip_count;
+
+   /* Do we know the exact number of times the loop will be run */
+   bool exact_trip_count_known;
 
    /* Unroll the loop regardless of its size */
    bool force_unroll;
@@ -2089,6 +2133,9 @@ typedef struct nir_shader_compiler_options {
    /** lowers ffract to fsub+ffloor: */
    bool lower_ffract;
 
+   /** lowers fceil to fneg+ffloor+fneg: */
+   bool lower_fceil;
+
    bool lower_ldexp;
 
    bool lower_pack_half_2x16;
@@ -2137,6 +2184,7 @@ typedef struct nir_shader_compiler_options {
    bool lower_helper_invocation;
 
    bool lower_cs_local_index_from_id;
+   bool lower_cs_local_id_from_index;
 
    bool lower_device_index_to_zero;
 
@@ -2965,6 +3013,24 @@ typedef struct nir_lower_tex_options {
     * Implies lower_txd_cube_map and lower_txd_shadow.
     */
    bool lower_txd;
+
+   /**
+    * If true, lower nir_texop_txb that try to use shadow compare and min_lod
+    * at the same time to a nir_texop_lod, some math, and nir_texop_tex.
+    */
+   bool lower_txb_shadow_clamp;
+
+   /**
+    * If true, lower nir_texop_txd on shadow samplers when it uses min_lod
+    * with nir_texop_txl.  This includes cube maps.
+    */
+   bool lower_txd_shadow_clamp;
+
+   /**
+    * If true, lower nir_texop_txd on when it uses both offset and min_lod
+    * with nir_texop_txl.  This includes cube maps.
+    */
+   bool lower_txd_offset_clamp;
 } nir_lower_tex_options;
 
 bool nir_lower_tex(nir_shader *shader,
@@ -2972,7 +3038,7 @@ bool nir_lower_tex(nir_shader *shader,
 
 bool nir_lower_idiv(nir_shader *shader);
 
-bool nir_lower_clip_vs(nir_shader *shader, unsigned ucp_enables);
+bool nir_lower_clip_vs(nir_shader *shader, unsigned ucp_enables, bool use_vars);
 bool nir_lower_clip_fs(nir_shader *shader, unsigned ucp_enables);
 bool nir_lower_clip_cull_distance_arrays(nir_shader *nir);
 

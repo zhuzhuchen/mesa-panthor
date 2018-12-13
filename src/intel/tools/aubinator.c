@@ -142,6 +142,7 @@ handle_execlist_write(void *user_data, enum drm_i915_gem_engine_class engine, ui
    uint32_t ring_buffer_head = context[5];
    uint32_t ring_buffer_tail = context[7];
    uint32_t ring_buffer_start = context[9];
+   uint32_t ring_buffer_length = (context[11] & 0x1ff000) + 4096;
 
    mem.pml4 = (uint64_t)context[49] << 32 | context[51];
    batch_ctx.user_data = &mem;
@@ -149,7 +150,7 @@ handle_execlist_write(void *user_data, enum drm_i915_gem_engine_class engine, ui
    struct gen_batch_decode_bo ring_bo = aub_mem_get_ggtt_bo(&mem,
                                                             ring_buffer_start);
    assert(ring_bo.size > 0);
-   void *commands = (uint8_t *)ring_bo.map + (ring_buffer_start - ring_bo.addr);
+   void *commands = (uint8_t *)ring_bo.map + (ring_buffer_start - ring_bo.addr) + ring_buffer_head;
 
    if (context_descriptor & 0x100 /* ppgtt */) {
       batch_ctx.get_bo = aub_mem_get_ppgtt_bo;
@@ -158,8 +159,9 @@ handle_execlist_write(void *user_data, enum drm_i915_gem_engine_class engine, ui
    }
 
    batch_ctx.engine = engine;
-   gen_print_batch(&batch_ctx, commands, ring_buffer_tail - ring_buffer_head,
-                   0);
+   gen_print_batch(&batch_ctx, commands,
+                   MIN2(ring_buffer_tail - ring_buffer_head, ring_buffer_length),
+                   ring_bo.addr + ring_buffer_head);
    aub_mem_clear_bo_maps(&mem);
 }
 

@@ -745,7 +745,8 @@ uint64_t *v3d_compile_vs(const struct v3d_compiler *compiler,
                 NIR_PASS_V(c->s, nir_lower_clamp_color_outputs);
 
         if (key->base.ucp_enables) {
-                NIR_PASS_V(c->s, nir_lower_clip_vs, key->base.ucp_enables);
+                NIR_PASS_V(c->s, nir_lower_clip_vs, key->base.ucp_enables,
+                           false);
                 NIR_PASS_V(c->s, nir_lower_io_to_scalar,
                            nir_var_shader_out);
         }
@@ -787,6 +788,14 @@ uint64_t *v3d_compile_vs(const struct v3d_compiler *compiler,
          */
         prog_data->vpm_input_size = align(prog_data->vpm_input_size, 8) / 8;
         prog_data->vpm_output_size = align(c->num_vpm_writes, 8) / 8;
+
+        /* Set us up for shared input/output segments.  This is apparently
+         * necessary for our VCM setup to avoid varying corruption.
+         */
+        prog_data->separate_segments = false;
+        prog_data->vpm_output_size = MAX2(prog_data->vpm_output_size,
+                                          prog_data->vpm_input_size);
+        prog_data->vpm_input_size = 0;
 
         /* Compute VCM cache size.  We set up our program to take up less than
          * half of the VPM, so that any set of bin and render programs won't
@@ -1004,6 +1013,12 @@ vir_can_set_flags(struct v3d_compile *c, struct qinst *inst)
         if (c->devinfo->ver >= 40 && (v3d_qpu_reads_vpm(&inst->qpu) ||
                                       v3d_qpu_uses_sfu(&inst->qpu))) {
                 return false;
+        }
+
+        if (inst->qpu.type != V3D_QPU_INSTR_TYPE_ALU ||
+            (inst->qpu.alu.add.op == V3D_QPU_A_NOP &&
+             inst->qpu.alu.mul.op == V3D_QPU_M_NOP)) {
+               return false;
         }
 
         return true;

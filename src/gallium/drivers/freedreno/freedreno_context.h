@@ -289,6 +289,7 @@ struct fd_context {
 	struct pipe_framebuffer_state framebuffer;
 	struct pipe_poly_stipple stipple;
 	struct pipe_viewport_state viewport;
+	struct pipe_scissor_state viewport_scissor;
 	struct fd_constbuf_stateobj constbuf[PIPE_SHADER_TYPES];
 	struct fd_shaderbuf_stateobj shaderbuf[PIPE_SHADER_TYPES];
 	struct fd_shaderimg_stateobj shaderimg[PIPE_SHADER_TYPES];
@@ -324,11 +325,11 @@ struct fd_context {
 	void (*launch_grid)(struct fd_context *ctx, const struct pipe_grid_info *info);
 
 	/* constant emit:  (note currently not used/needed for a2xx) */
-	void (*emit_const)(struct fd_ringbuffer *ring, enum shader_t type,
+	void (*emit_const)(struct fd_ringbuffer *ring, gl_shader_stage type,
 			uint32_t regid, uint32_t offset, uint32_t sizedwords,
 			const uint32_t *dwords, struct pipe_resource *prsc);
 	/* emit bo addresses as constant: */
-	void (*emit_const_bo)(struct fd_ringbuffer *ring, enum shader_t type, boolean write,
+	void (*emit_const_bo)(struct fd_ringbuffer *ring, gl_shader_stage type, boolean write,
 			uint32_t regid, uint32_t num, struct pipe_resource **prscs, uint32_t *offsets);
 
 	/* indirect-branch emit: */

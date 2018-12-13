@@ -1224,17 +1224,18 @@ vtn_handle_type(struct vtn_builder *b, SpvOp opcode,
          val->type->type = glsl_uint_type();
       }
 
-      if (storage_class == SpvStorageClassWorkgroup &&
-          b->options->lower_workgroup_access_to_offsets) {
-         uint32_t size, align;
-         val->type->deref = vtn_type_layout_std430(b, val->type->deref,
-                                                   &size, &align);
-         val->type->length = size;
-         val->type->align = align;
+      if (storage_class == SpvStorageClassWorkgroup) {
          /* These can actually be stored to nir_variables and used as SSA
           * values so they need a real glsl_type.
           */
          val->type->type = glsl_uint_type();
+         if (b->options->lower_workgroup_access_to_offsets) {
+            uint32_t size, align;
+            val->type->deref = vtn_type_layout_std430(b, val->type->deref,
+                                                      &size, &align);
+            val->type->length = size;
+            val->type->align = align;
+         }
       }
       break;
    }
@@ -2173,6 +2174,13 @@ vtn_handle_texture(struct vtn_builder *b, SpvOp opcode,
          texop = nir_texop_txf_ms;
          (*p++) = vtn_tex_src(b, w[idx++], nir_tex_src_ms_index);
       }
+
+      if (operands & SpvImageOperandsMinLodMask) {
+         vtn_assert(texop == nir_texop_tex ||
+                    texop == nir_texop_txb ||
+                    texop == nir_texop_txd);
+         (*p++) = vtn_tex_src(b, w[idx++], nir_tex_src_min_lod);
+      }
    }
    /* We should have now consumed exactly all of the arguments */
    vtn_assert(idx == count);
@@ -2762,6 +2770,7 @@ vtn_handle_atomics(struct vtn_builder *b, SpvOp opcode,
       switch (opcode) {
       case SpvOpAtomicLoad:
          atomic->num_components = glsl_get_vector_elements(ptr->type->type);
+         nir_intrinsic_set_align(atomic, 4, 0);
          if (ptr->mode == vtn_variable_mode_ssbo)
             atomic->src[src++] = nir_src_for_ssa(index);
          atomic->src[src++] = nir_src_for_ssa(offset);
@@ -2770,6 +2779,7 @@ vtn_handle_atomics(struct vtn_builder *b, SpvOp opcode,
       case SpvOpAtomicStore:
          atomic->num_components = glsl_get_vector_elements(ptr->type->type);
          nir_intrinsic_set_write_mask(atomic, (1 << atomic->num_components) - 1);
+         nir_intrinsic_set_align(atomic, 4, 0);
          atomic->src[src++] = nir_src_for_ssa(vtn_ssa_value(b, w[4])->def);
          if (ptr->mode == vtn_variable_mode_ssbo)
             atomic->src[src++] = nir_src_for_ssa(index);
@@ -3413,13 +3423,15 @@ vtn_handle_preamble_instruction(struct vtn_builder *b, SpvOp opcode,
       case SpvCapabilityVector16:
       case SpvCapabilityFloat16Buffer:
       case SpvCapabilityFloat16:
-      case SpvCapabilityInt64Atomics:
       case SpvCapabilityStorageImageMultisample:
       case SpvCapabilityInt8:
       case SpvCapabilitySparseResidency:
-      case SpvCapabilityMinLod:
          vtn_warn("Unsupported SPIR-V capability: %s",
                   spirv_capability_to_string(cap));
+         break;
+
+      case SpvCapabilityMinLod:
+         spv_check_supported(min_lod, cap);
          break;
 
       case SpvCapabilityAtomicStorage:
@@ -3442,6 +3454,10 @@ vtn_handle_preamble_instruction(struct vtn_builder *b, SpvOp opcode,
 
       case SpvCapabilityGeometryStreams:
          spv_check_supported(geometry_streams, cap);
+         break;
+
+      case SpvCapabilityInt64Atomics:
+         spv_check_supported(int64_atomics, cap);
          break;
 
       case SpvCapabilityAddresses:

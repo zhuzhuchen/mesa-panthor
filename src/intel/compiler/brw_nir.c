@@ -656,6 +656,9 @@ brw_preprocess_nir(const struct brw_compiler *compiler, nir_shader *nir)
       .lower_txf_offset = true,
       .lower_rect_offset = true,
       .lower_txd_cube_map = true,
+      .lower_txb_shadow_clamp = true,
+      .lower_txd_shadow_clamp = true,
+      .lower_txd_offset_clamp = true,
    };
 
    OPT(nir_lower_tex, &tex_options);
@@ -713,6 +716,8 @@ brw_preprocess_nir(const struct brw_compiler *compiler, nir_shader *nir)
    nir_variable_mode indirect_mask =
       brw_nir_no_indirect_mask(compiler, nir->info.stage);
    OPT(nir_lower_indirect_derefs, indirect_mask);
+
+   OPT(brw_nir_lower_mem_access_bit_sizes);
 
    /* Get rid of split copies */
    nir = brw_nir_optimize(nir, compiler, is_scalar, false);

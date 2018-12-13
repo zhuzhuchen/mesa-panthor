@@ -247,8 +247,10 @@ if with_tests
       include_directories : [inc_common],
       dependencies : [dep_thread, idep_gtest, idep_nir],
       link_with : libmesa_util,
-    )
+    ), 
+    suite : ['compiler', 'nir'],
   )
+
   test(
     'nir_vars',
     executable(
@@ -258,6 +260,15 @@ if with_tests
       include_directories : [inc_common],
       dependencies : [dep_thread, idep_gtest, idep_nir],
       link_with : libmesa_util,
-    )
+    ),
+    suite : ['compiler', 'nir'],
+  )
+  test(
+    'nir_algebraic_parser',
+    prog_python,
+    args : [
+      join_paths(meson.current_source_dir(), 'tests/algebraic_parser_test.py')
+    ],
+    suite : ['compiler', 'nir'],
   )
 endif
