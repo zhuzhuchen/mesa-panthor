@@ -1451,7 +1451,7 @@ panfrost_submit_frame(struct panfrost_context *ctx, bool flush_immediate)
         /* XXX: flush_immediate was causing lock-ups wrt readpixels in dEQP. Investigate. */
 
         base_external_resource framebuffer[] = {
-                {.ext_resource = ((struct panfrost_resource *) ctx->pipe_framebuffer.cbufs[0]->texture)->gpu[0] | (BASE_EXT_RES_ACCESS_SHARED & LOCAL_PAGE_LSB)},
+                {.ext_resource = ((struct panfrost_resource *) ctx->pipe_framebuffer.cbufs[0]->texture)->gpu[0] | (BASE_EXT_RES_ACCESS_EXCLUSIVE & LOCAL_PAGE_LSB)},
         };
 
         int vt_atom = allocate_atom();
