@@ -2680,6 +2680,58 @@ panfrost_blit(struct pipe_context *pipe,
         return;
 }
 
+struct panfrost_query {
+        unsigned type;
+        unsigned index;
+};
+
+static struct pipe_query *
+panfrost_create_query(struct pipe_context *pipe, 
+		      unsigned type,
+		      unsigned index)
+{
+        /* STUB */
+        struct panfrost_query *q = CALLOC_STRUCT(panfrost_query);
+        printf("Creating query %d, %d\n", type, index);
+
+        q->type = type;
+        q->index = index;
+
+        return (struct pipe_query *) q;
+}
+
+static void
+panfrost_destroy_query(struct pipe_context *pipe, struct pipe_query *q)
+{
+        FREE(q);
+}
+
+static boolean
+panfrost_begin_query(struct pipe_context *pipe, struct pipe_query *q)
+{
+        printf("Skipping query\n");
+        /* STUB */
+        return true;
+}
+
+static bool
+panfrost_end_query(struct pipe_context *pipe, struct pipe_query *q)
+{
+        /* STUB */
+        return true;
+}
+
+static boolean
+panfrost_get_query_result(struct pipe_context *pipe, 
+                          struct pipe_query *q,
+                          boolean wait,
+                          union pipe_query_result *vresult)
+{
+        /* STUB */
+        printf("Skipped query get\n");
+        return true;
+}
+
 static void
 panfrost_allocate_slab(struct panfrost_context *ctx,
                        struct panfrost_memory *mem,
@@ -2878,6 +2930,13 @@ panfrost_create_context(struct pipe_screen *screen, void *priv, unsigned flags)
         gallium->set_scissor_states = panfrost_set_scissor_states;
         gallium->set_polygon_stipple = panfrost_set_polygon_stipple;
         gallium->set_active_query_state = panfrost_set_active_query_state;
+
+        gallium->create_query = panfrost_create_query;
+        gallium->destroy_query = panfrost_destroy_query;
+        gallium->begin_query = panfrost_begin_query;
+        gallium->end_query = panfrost_end_query;
+        gallium->get_query_result = panfrost_get_query_result;
+
 
         gallium->blit = panfrost_blit;
 
