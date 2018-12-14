@@ -3353,11 +3353,28 @@ midgard_compile_shader_nir(nir_shader *nir, midgard_program *program, bool is_bl
 
         free(source_order_bundles);
 
-        /* Due to lookahead, we need to report in the command stream the first tag executed */
+        /* Due to lookahead, we need to report in the command stream the first
+         * tag executed. An initial block might be empty, so iterate until we
+         * find one that 'works' */
 
         midgard_block *initial_block = list_first_entry(&ctx->blocks, midgard_block, link);
-        midgard_bundle *initial_bundle = util_dynarray_element(&initial_block->bundles, midgard_bundle, 0);
-        program->first_tag = initial_bundle->tag;
+
+        program->first_tag = 0;
+
+        do {
+                midgard_bundle *initial_bundle = util_dynarray_element(&initial_block->bundles, midgard_bundle, 0);
+
+                if (initial_bundle) {
+                        program->first_tag = initial_bundle->tag;
+                        break;
+                }
+
+                /* Initial block is empty, try the next block */
+                initial_block = list_first_entry(&(initial_block->link), midgard_block, link);
+        } while(initial_block != NULL);
+
+        /* Make sure we actually set the tag */
+        assert(program->first_tag);
 
         /* Deal with off-by-one related to the fencepost problem */
         program->work_register_count = ctx->work_registers + 1;
