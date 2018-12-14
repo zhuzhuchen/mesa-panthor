@@ -2709,7 +2709,8 @@ panfrost_destroy_query(struct pipe_context *pipe, struct pipe_query *q)
 static boolean
 panfrost_begin_query(struct pipe_context *pipe, struct pipe_query *q)
 {
-        printf("Skipping query\n");
+        struct panfrost_query *query = (struct panfrost_query *) q;
+        printf("Skipping query %d\n", query->type);
         /* STUB */
         return true;
 }
@@ -2728,7 +2729,8 @@ panfrost_get_query_result(struct pipe_context *pipe,
                           union pipe_query_result *vresult)
 {
         /* STUB */
-        printf("Skipped query get\n");
+        struct panfrost_query *query = (struct panfrost_query *) q;
+        printf("Skipped query get %d\n", query->type);
         return true;
 }
 
