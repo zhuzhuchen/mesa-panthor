@@ -1447,6 +1447,20 @@ emit_tex(compiler_context *ctx, nir_tex_instr *instr)
 }
 
 static void
+emit_jump(compiler_context *ctx, nir_jump_instr *instr)
+{
+        switch (instr->type) {
+                case nir_jump_break:
+                        printf("break..\n");
+                        break;
+
+                default:
+                        printf("Unknown jump type %d\n", instr->type);
+                        break;
+        }
+}
+
+static void
 emit_instr(compiler_context *ctx, struct nir_instr *instr)
 {
 #ifdef NIR_DEBUG_FINE
@@ -1469,6 +1483,10 @@ emit_instr(compiler_context *ctx, struct nir_instr *instr)
 
         case nir_instr_type_tex:
                 emit_tex(ctx, nir_instr_as_tex(instr));
+                break;
+
+        case nir_instr_type_jump:
+                emit_jump(ctx, nir_instr_as_jump(instr));
                 break;
 
         case nir_instr_type_ssa_undef:
