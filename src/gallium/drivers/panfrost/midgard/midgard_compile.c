@@ -68,6 +68,13 @@ typedef struct {
 /* Forward declare so midgard_branch can reference */
 struct midgard_block;
 
+/* Target types. Defaults to TARGET_BLOCK (the type corresponding directly to
+ * the hardware), hence why that must be zero */
+
+#define TARGET_BLOCK 0
+#define TARGET_BREAK 1
+#define TARGET_CONTINUE 2
+
 typedef struct midgard_branch {
         /* If conditional, the condition is specified in r31.w */
         bool conditional;
@@ -75,9 +82,15 @@ typedef struct midgard_branch {
         /* For conditionals, if this is true, we branch on FALSE. If false, we  branch on TRUE. */
         bool invert_conditional;
 
-        /* We can either branch to the start or the end of the block */
-        int target_start;
-        int target_after;
+        /* Branch targets: the start of a block, the start of a loop (continue), the end of a loop (break). Value is one of TARGET_ */
+        unsigned target_type;
+
+        /* The actual target */
+        union {
+                int target_block;
+                int target_break;
+                int target_continue;
+        };
 } midgard_branch;
 
 /* Generic in-memory data type repesenting a single logical instruction, rather
@@ -343,6 +356,9 @@ typedef struct compiler_context {
 
         /* List of midgard_instructions emitted for the current block */
         midgard_block *current_block;
+
+        /* The index corresponding to the current loop, e.g. for breaks/contineus */
+        int current_loop;
 
         /* Constants which have been loaded, for later inlining */
         struct hash_table_u64 *ssa_constants;
@@ -1450,9 +1466,16 @@ static void
 emit_jump(compiler_context *ctx, nir_jump_instr *instr)
 {
         switch (instr->type) {
-                case nir_jump_break:
+                case nir_jump_break: {
+                        /* Emit a branch out of the loop */
+                        struct midgard_instruction br = v_branch(false, false);
+                        br.branch.target_type = TARGET_BREAK;
+                        br.branch.target_break = ctx->current_loop;
+                        emit_mir_instruction(ctx, br);
+
                         printf("break..\n");
                         break;
+                }
 
                 default:
                         printf("Unknown jump type %d\n", instr->type);
@@ -3076,17 +3099,22 @@ emit_if(struct compiler_context *ctx, nir_if *nif)
         if (ctx->instruction_count == count_in) {
                 /* The else block is empty, so don't emit an exit jump */
                 mir_remove_instruction(then_exit);
-                then_branch->branch.target_start = else_idx + 1;
+                then_branch->branch.target_block = else_idx + 1;
         } else {
-                then_branch->branch.target_start = else_idx;
-                then_exit->branch.target_start = else_idx + 1;
+                then_branch->branch.target_block = else_idx;
+                then_exit->branch.target_block = else_idx + 1;
         }
 }
 
 static void
 emit_loop(struct compiler_context *ctx, nir_loop *nloop)
 {
-        /* Get index from before the body */
+        /* Allocate a loop number for this. TODO: Nested loops. Instead of a
+         * single current_loop variable, maybe we need a stack */
+
+        ctx->current_loop++;
+
+        /* Get index from before the body so we can loop back later */
         int start_idx = ctx->block_count;
 
         /* Emit the body itself */
@@ -3094,7 +3122,7 @@ emit_loop(struct compiler_context *ctx, nir_loop *nloop)
 
         /* Branch back to loop back */
         struct midgard_instruction br = v_branch(false, false);
-        br.branch.target_start = start_idx;
+        br.branch.target_block = start_idx;
         emit_mir_instruction(ctx, br);
 }
 
@@ -3283,7 +3311,7 @@ midgard_compile_shader_nir(nir_shader *nir, midgard_program *program, bool is_bl
                                 uint16_t compact;
 
                                 /* Determine the block we're jumping to */
-                                int target_number = ins->branch.target_start;
+                                int target_number = ins->branch.target_block;
 
                                 midgard_block *target = mir_get_block(ctx, target_number);
                                 assert(target);
