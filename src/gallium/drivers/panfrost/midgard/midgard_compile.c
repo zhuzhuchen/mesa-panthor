@@ -3068,7 +3068,16 @@ emit_if(struct compiler_context *ctx, nir_if *nif)
 static void
 emit_loop(struct compiler_context *ctx, nir_loop *nloop)
 {
+        /* Get index from before the body */
+        int start_idx = ctx->block_count;
+
+        /* Emit the body itself */
         emit_cf_list(ctx, &nloop->body);
+
+        /* Branch back to loop back */
+        struct midgard_instruction br = v_branch(false, false);
+        br.branch.target_start = start_idx;
+        emit_mir_instruction(ctx, br);
 }
 
 static midgard_block *
@@ -3268,15 +3277,26 @@ midgard_compile_shader_nir(nir_shader *nir, midgard_program *program, bool is_bl
                                 int dest_tag = first->tag;
 
                                 /* Count up the number of quadwords we're jumping over. That is, the number of quadwords in each of the blocks between (br_block_idx, target_number) */
-                                assert(target_number > br_block_idx); /* TODO: Jumps backwards */
-
                                 int quadword_offset = 0;
 
-                                for (int idx = br_block_idx + 1; idx < target_number; ++idx) {
-                                        midgard_block *blk = mir_get_block(ctx, idx);
-                                        assert(blk);
+                                if (target_number > br_block_idx) {
+                                        /* Jump forward */
 
-                                        quadword_offset += blk->quadword_count;
+                                        for (int idx = br_block_idx + 1; idx < target_number; ++idx) {
+                                                midgard_block *blk = mir_get_block(ctx, idx);
+                                                assert(blk);
+
+                                                quadword_offset += blk->quadword_count;
+                                        }
+                                } else {
+                                        /* Jump backwards */
+
+                                        for (int idx = br_block_idx; idx >= target_number; --idx) {
+                                                midgard_block *blk = mir_get_block(ctx, idx);
+                                                assert(blk);
+
+                                                quadword_offset -= blk->quadword_count;
+                                        }
                                 }
 
                                 if (ins->branch.conditional) {
