@@ -392,7 +392,7 @@ panfrost_clear(
         bool clear_stencil = buffers & PIPE_CLEAR_STENCIL;
 
         /* Remember that we've done something */
-        ctx->dirty |= PAN_DIRTY_DUMMY;
+        ctx->frame_cleared = true;
 
         /* Alpha clear only meaningful without alpha channel */
         bool has_alpha = ctx->pipe_framebuffer.nr_cbufs && util_format_has_alpha(ctx->pipe_framebuffer.cbufs[0]->format);
@@ -1505,7 +1505,15 @@ panfrost_flush(
         struct panfrost_context *ctx = panfrost_context(pipe);
 
         /* If there is nothing drawn, skip the frame */
-        if (!ctx->draw_count && !(ctx->dirty & PAN_DIRTY_DUMMY)) return;
+        if (!ctx->draw_count && !ctx->frame_cleared) return;
+
+        if (!ctx->frame_cleared) {
+                /* While there are draws, there was no clear. This is a partial update, which needs to be handled via the wallpaper method */
+                printf("Partial update beep beep\n");
+        }
+
+        /* Frame clear handled, reset */
+        ctx->frame_cleared = false;
 
         /* Whether to stall the pipeline for immediately correct results */
         bool flush_immediate = flags & PIPE_FLUSH_END_OF_FRAME;
@@ -2373,8 +2381,10 @@ panfrost_set_framebuffer_state(struct pipe_context *pctx,
         if (ctx->last_clear.color)
                 panfrost_clear(&ctx->base, ctx->last_clear.buffers, ctx->last_clear.color, ctx->last_clear.depth, ctx->last_clear.stencil);
 
+#if 0
         /* Don't consider the buffer dirty */
-        ctx->dirty &= ~PAN_DIRTY_DUMMY;
+        ctx->dirty &= ~PAN_DIRTY_CLEAR;
+#endif
 }
 
 static void *
