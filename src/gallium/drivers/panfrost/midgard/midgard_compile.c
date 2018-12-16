@@ -456,14 +456,23 @@ mir_next_op(struct midgard_instruction *ins)
         return list_first_entry(&(ins->link), midgard_instruction, link);
 }
 
+static midgard_block *
+mir_next_block(struct midgard_block *blk)
+{
+        return list_first_entry(&(blk->link), midgard_block, link);
+}
+
 
 #define mir_foreach_block(ctx, v) list_for_each_entry(struct midgard_block, v, &ctx->blocks, link) 
+#define mir_foreach_block_from(ctx, from, v) list_for_each_entry_from(struct midgard_block, v, from, &ctx->blocks, link)
+
 #define mir_foreach_instr(ctx, v) list_for_each_entry(struct midgard_instruction, v, &ctx->current_block->instructions, link) 
 #define mir_foreach_instr_safe(ctx, v) list_for_each_entry_safe(struct midgard_instruction, v, &ctx->current_block->instructions, link) 
-#define mir_foreach_instr_in_block(ctx, block, v) list_for_each_entry(struct midgard_instruction, v, &block->instructions, link) 
-#define mir_foreach_instr_in_block_safe(ctx, block, v) list_for_each_entry_safe(struct midgard_instruction, v, &block->instructions, link) 
-#define mir_foreach_instr_in_block_safe_rev(ctx, block, v) list_for_each_entry_safe_rev(struct midgard_instruction, v, &block->instructions, link) 
+#define mir_foreach_instr_in_block(block, v) list_for_each_entry(struct midgard_instruction, v, &block->instructions, link) 
+#define mir_foreach_instr_in_block_safe(block, v) list_for_each_entry_safe(struct midgard_instruction, v, &block->instructions, link) 
+#define mir_foreach_instr_in_block_safe_rev(block, v) list_for_each_entry_safe_rev(struct midgard_instruction, v, &block->instructions, link) 
 #define mir_foreach_instr_in_block_from(block, v, from) list_for_each_entry_from(struct midgard_instruction, v, from, &block->instructions, link) 
+
 
 static midgard_instruction *
 mir_last_in_block(struct midgard_block *block)
@@ -559,7 +568,7 @@ print_mir_block(midgard_block *block)
 {
         printf("{\n");
 
-        mir_foreach_instr_in_block(ctx, block, ins) {
+        mir_foreach_instr_in_block(block, ins) {
                 print_mir_instruction(ins);
         }
 
@@ -1569,15 +1578,33 @@ midgard_ra_select_callback(struct ra_graph *g, BITSET_WORD *regs, void *data)
 }
 
 static bool
-is_live_after(midgard_block *block, midgard_instruction *start, int src)
+midgard_is_live_in_instr(midgard_instruction *ins, int src)
+{
+        if (ins->ssa_args.src0 == src) return true;
+        if (ins->ssa_args.src1 == src) return true;
+
+        return false;
+}
+
+static bool
+is_live_after(compiler_context *ctx, midgard_block *block, midgard_instruction *start, int src)
 {
         /* Check the rest of the block for liveness */
         mir_foreach_instr_in_block_from(block, ins, mir_next_op(start)) {
-                if (ins->ssa_args.src0 == src) return true;
-                if (ins->ssa_args.src1 == src) return true;
+                if (midgard_is_live_in_instr(ins, src))
+                        return true;
         }
 
-        /* TODO: Check the succeeding blocks */
+        /* Check the rest of the blocks for liveness */
+        mir_foreach_block_from(ctx, mir_next_block(block), b) {
+                mir_foreach_instr_in_block(b, ins) {
+                        if (midgard_is_live_in_instr(ins, src))
+                                return true;
+                }
+        }
+
+        /* TODO: How does control flow interact in complex shaders? */
+
         return false;
 }
 
@@ -1607,7 +1634,7 @@ allocate_registers(compiler_context *ctx)
 
         /* Transform the MIR into squeezed index form */
         mir_foreach_block(ctx, block) {
-                mir_foreach_instr_in_block(ctx, block, ins) {
+                mir_foreach_instr_in_block(block, ins) {
                         if (ins->compact_branch) continue;
 
                         ins->ssa_args.src0 = find_or_allocate_temp(ctx, ins->ssa_args.src0);
@@ -1626,7 +1653,7 @@ allocate_registers(compiler_context *ctx)
          * special to go */
 
         mir_foreach_block(ctx, block) {
-                mir_foreach_instr_in_block(ctx, block, ins) {
+                mir_foreach_instr_in_block(block, ins) {
                         if (ins->compact_branch) continue;
 
                         if (ins->ssa_args.dest < 0) continue;
@@ -1663,7 +1690,7 @@ allocate_registers(compiler_context *ctx)
         int d = 0;
 
         mir_foreach_block(ctx, block) {
-                mir_foreach_instr_in_block(ctx, block, ins) {
+                mir_foreach_instr_in_block(block, ins) {
                         if (ins->compact_branch) continue;
 
                         if (ins->ssa_args.dest < SSA_FIXED_MINIMUM) {
@@ -1689,7 +1716,7 @@ allocate_registers(compiler_context *ctx)
 
                                 if (s >= SSA_FIXED_MINIMUM) continue;
 
-                                if (!is_live_after(block, ins, s)) {
+                                if (!is_live_after(ctx, block, ins, s)) {
                                         live_end[s] = d;
                                 }
                         }
@@ -1728,7 +1755,7 @@ allocate_registers(compiler_context *ctx)
         free(live_end);
 
         mir_foreach_block(ctx, block) {
-                mir_foreach_instr_in_block(ctx, block, ins) {
+                mir_foreach_instr_in_block(block, ins) {
                         if (ins->compact_branch) continue;
 
                         ssa_args args = ins->ssa_args;
@@ -2316,7 +2343,7 @@ schedule_block(compiler_context *ctx, midgard_block *block)
 
         block->quadword_count = 0;
 
-        mir_foreach_instr_in_block(ctx, block, ins) {
+        mir_foreach_instr_in_block(block, ins) {
                 int skip;
                 midgard_bundle bundle = schedule_bundle(ctx, block, ins, &skip);
                 util_dynarray_append(&block->bundles, midgard_bundle, bundle);
@@ -2679,7 +2706,7 @@ map_ssa_to_alias(compiler_context *ctx, int *ref)
 static void
 midgard_eliminate_orphan_moves(compiler_context *ctx, midgard_block *block)
 {
-        mir_foreach_instr_in_block_safe(ctx, block, ins) {
+        mir_foreach_instr_in_block_safe(block, ins) {
                 if (ins->type != TAG_ALU_4) continue;
 
                 if (ins->alu.op != midgard_alu_op_fmov) continue;
@@ -2688,7 +2715,7 @@ midgard_eliminate_orphan_moves(compiler_context *ctx, midgard_block *block)
 
                 if (midgard_is_pinned(ctx, ins->ssa_args.dest)) continue;
 
-                if (is_live_after(block, ins, ins->ssa_args.dest)) continue;
+                if (is_live_after(ctx, block, ins, ins->ssa_args.dest)) continue;
 
                 mir_remove_instruction(ins);
         }
@@ -2699,7 +2726,7 @@ midgard_eliminate_orphan_moves(compiler_context *ctx, midgard_block *block)
 static void
 midgard_pair_load_store(compiler_context *ctx, midgard_block *block)
 {
-        mir_foreach_instr_in_block_safe(ctx, block, ins) {
+        mir_foreach_instr_in_block_safe(block, ins) {
                 if (ins->type != TAG_LOAD_STORE_4) continue;
 
                 /* We've found a load/store op. Check if next is also load/store. */
@@ -2740,7 +2767,7 @@ static void
 midgard_emit_store(compiler_context *ctx, midgard_block *block) {
         /* Iterate in reverse to get the final write, rather than the first */
 
-        mir_foreach_instr_in_block_safe_rev(ctx, block, ins) {
+        mir_foreach_instr_in_block_safe_rev(block, ins) {
                 /* Check if what we just wrote needs a store */
                 int idx = ins->ssa_args.dest;
                 uintptr_t varying = ((uintptr_t) _mesa_hash_table_u64_search(ctx->ssa_varyings, idx + 1));
@@ -3137,7 +3164,7 @@ emit_loop(struct compiler_context *ctx, nir_loop *nloop)
 
         list_for_each_entry_from(struct midgard_block, block, start_block, &ctx->blocks, link) {
                 print_mir_block(block);
-                mir_foreach_instr_in_block(ctx, block, ins) {
+                mir_foreach_instr_in_block(block, ins) {
                         if (ins->type != TAG_ALU_4) continue;
                         if (!ins->compact_branch) continue;
                         if (ins->prepacked_branch) continue;
