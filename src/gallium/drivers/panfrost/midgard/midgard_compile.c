@@ -68,10 +68,10 @@ typedef struct {
 /* Forward declare so midgard_branch can reference */
 struct midgard_block;
 
-/* Target types. Defaults to TARGET_BLOCK (the type corresponding directly to
+/* Target types. Defaults to TARGET_GOTO (the type corresponding directly to
  * the hardware), hence why that must be zero */
 
-#define TARGET_BLOCK 0
+#define TARGET_GOTO 0
 #define TARGET_BREAK 1
 #define TARGET_CONTINUE 2
 
@@ -3109,10 +3109,13 @@ emit_if(struct compiler_context *ctx, nir_if *nif)
 static void
 emit_loop(struct compiler_context *ctx, nir_loop *nloop)
 {
+        /* Remember where we are */
+        midgard_block *start_block = ctx->current_block;
+
         /* Allocate a loop number for this. TODO: Nested loops. Instead of a
          * single current_loop variable, maybe we need a stack */
 
-        ctx->current_loop++;
+        int loop_idx = ++ctx->current_loop;
 
         /* Get index from before the body so we can loop back later */
         int start_idx = ctx->block_count;
@@ -3121,9 +3124,37 @@ emit_loop(struct compiler_context *ctx, nir_loop *nloop)
         emit_cf_list(ctx, &nloop->body);
 
         /* Branch back to loop back */
-        struct midgard_instruction br = v_branch(false, false);
-        br.branch.target_block = start_idx;
-        emit_mir_instruction(ctx, br);
+        struct midgard_instruction br_back = v_branch(false, false);
+        br_back.branch.target_block = start_idx;
+        emit_mir_instruction(ctx, br_back);
+
+        /* Find the index of the block about to follow us (note: we don't add
+         * one; blocks are 0-indexed so we get a fencepost problem) */
+        int break_block_idx = ctx->block_count;
+
+        /* Fix up the break statements we emitted to point to the right place,
+         * now that we can allocate a block number for them */
+
+        list_for_each_entry_from(struct midgard_block, block, start_block, &ctx->blocks, link) {
+                print_mir_block(block);
+                mir_foreach_instr_in_block(ctx, block, ins) {
+                        if (ins->type != TAG_ALU_4) continue;
+                        if (!ins->compact_branch) continue;
+                        if (ins->prepacked_branch) continue;
+
+                        /* We found a branch -- check the type to see if we need to do anything */
+                        if (ins->branch.target_type != TARGET_BREAK) continue;
+
+                        /* It's a break! Check if it's our break */
+                        if (ins->branch.target_break != loop_idx) continue;
+
+                        /* Okay, cool, we're breaking out of this loop.
+                         * Rewrite from a break to a goto */
+
+                        ins->branch.target_type = TARGET_GOTO;
+                        ins->branch.target_block = break_block_idx;
+                }
+        }
 }
 
 static midgard_block *
