@@ -2796,28 +2796,35 @@ panfrost_draw_wallpaper(struct pipe_context *pipe)
         };
 
         float implied_varying[] = {
-                0.0, 0.0, 0.0, 1.0,
-                0.0, 1.0, 0.0, 1.0,
-                1.0, 0.0, 0.0, 1.0,
-                1.0, 1.0, 0.0, 1.0
+                1.0, 1.0, 1.0, 1.0,
+                0.0, 0.0, 0.0, 0.0,
+                0.0, 0.0, 0.0, 0.0,
+                0.0, 0.0, 0.0, 0.0
         };
 
         ctx->payload_tiler.postfix.position_varying = panfrost_upload(&ctx->cmdstream, implied_position_varying, sizeof(implied_position_varying), true);
 
-        struct mali_attr varyings[] = {
+        struct mali_attr varyings[1] = {
                 {
-                        .elements = ctx->payload_tiler.postfix.position_varying | 1,
-                        .stride = sizeof(float) * 4,
-                        .size = sizeof(float) * 4 * 4
-                },
-                {
-                        .elements = panfrost_upload_sequential(&ctx->cmdstream, implied_varying, sizeof(implied_varying)) | 1,
+                        .elements = panfrost_upload(&ctx->cmdstream, implied_varying, sizeof(implied_varying), true) | 1,
                         .stride = sizeof(float) * 4,
                         .size = sizeof(float) * 4 * 4
                 }
         };
-        ctx->payload_tiler.postfix.varyings = panfrost_upload(&ctx->cmdstream, varyings, sizeof(varyings), false);
 
+        ctx->payload_tiler.postfix.varyings = panfrost_upload(&ctx->cmdstream, varyings, sizeof(varyings), true);
+
+        struct mali_attr_meta varying_meta[1] = {
+                {
+                        .type = MALI_ATYPE_FLOAT,
+                        .nr_components = MALI_POSITIVE(4),
+                        .not_normalised = 1,
+                        .unknown1 = /*0x2c22 - nr_comp=2*/ 0x2a22,
+                        .unknown2 = 0x1
+                }
+        };
+
+        ctx->payload_tiler.postfix.varying_meta = panfrost_upload(&ctx->cmdstream, varying_meta, sizeof(varying_meta), true);
 
         /* Emit the tiler job */
         ctx->tiler_jobs[ctx->tiler_job_count++] = panfrost_vertex_tiler_job(ctx, true, true);
