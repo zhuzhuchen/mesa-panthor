@@ -1494,6 +1494,9 @@ panfrost_submit_frame(struct panfrost_context *ctx, bool flush_immediate)
 #endif
 }
 
+static void
+panfrost_draw_wallpaper(struct pipe_context *pipe);
+
 bool dont_scanout = false;
 
 static void
@@ -1508,8 +1511,11 @@ panfrost_flush(
         if (!ctx->draw_count && !ctx->frame_cleared) return;
 
         if (!ctx->frame_cleared) {
-                /* While there are draws, there was no clear. This is a partial update, which needs to be handled via the wallpaper method */
-                printf("Partial update beep beep\n");
+                /* While there are draws, there was no clear. This is a partial
+                 * update, which needs to be handled via the "wallpaper"
+                 * method. */
+
+                panfrost_draw_wallpaper(pipe);
         }
 
         /* Frame clear handled, reset */
@@ -2742,6 +2748,23 @@ panfrost_get_query_result(struct pipe_context *pipe,
         struct panfrost_query *query = (struct panfrost_query *) q;
         printf("Skipped query get %d\n", query->type);
         return true;
+}
+
+/* Essentially, we insert a fullscreen textured quad, reading from the
+ * previous frame's framebuffer */
+
+static void
+panfrost_draw_wallpaper(struct pipe_context *pipe)
+{
+        struct panfrost_context *ctx = panfrost_context(pipe);
+
+        const struct pipe_draw_info draw_info = {
+                .mode = PIPE_PRIM_TRIANGLE_FAN,
+                .count = 4
+        };
+
+        panfrost_draw_vbo(pipe, &draw_info);
+        printf("Wallpaper boop\n");
 }
 
 static void
