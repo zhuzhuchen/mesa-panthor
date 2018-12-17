@@ -530,9 +530,13 @@ panfrost_viewport(struct panfrost_context *ctx,
 
         struct mali_viewport ret = {
                 .floats = {
+#if 0
                         -inff, -inff,
-                                inff, inff,
-                        },
+                        inff, inff,
+#endif
+                        0.0, 0.0,
+                        2048.0, 1600.0,
+                },
 
                 .depth_range_n = depth_range_n,
                 .depth_range_f = depth_range_f,
@@ -1035,9 +1039,11 @@ panfrost_emit_vertex_data(struct panfrost_context *ctx)
 /* Go through dirty flags and actualise them in the cmdstream. */
 
 static void
-panfrost_emit_for_draw(struct panfrost_context *ctx)
+panfrost_emit_for_draw(struct panfrost_context *ctx, bool with_vertex_data)
 {
-        panfrost_emit_vertex_data(ctx);
+        if (with_vertex_data) {
+                panfrost_emit_vertex_data(ctx);
+        }
 
         if (ctx->dirty & PAN_DIRTY_RASTERIZER) {
                 ctx->payload_tiler.line_width = ctx->rasterizer->base.line_width;
@@ -1332,7 +1338,7 @@ panfrost_queue_draw(struct panfrost_context *ctx)
         }
 
         /* Handle dirty flags now */
-        panfrost_emit_for_draw(ctx);
+        panfrost_emit_for_draw(ctx, true);
 
         ctx->vertex_jobs[ctx->vertex_job_count++] = panfrost_vertex_tiler_job(ctx, false, false);
         ctx->tiler_jobs[ctx->tiler_job_count++] = panfrost_vertex_tiler_job(ctx, true, false);
@@ -2785,14 +2791,27 @@ panfrost_draw_wallpaper(struct pipe_context *pipe)
         ctx->payload_tiler.prefix.unknown_draw &= ~MALI_DRAW_INDEXED_UINT32;
         ctx->payload_tiler.prefix.indices = (uintptr_t) NULL;
 
+        panfrost_emit_for_draw(ctx, false);
+
         /* Elision occurs by essential precomputing the results of the
          * implied vertex shader. Insert these results for fullscreen */
 
         float implied_position_varying[] = {
                 -1.0, -1.0,        0.0, 1.0,
+#if 0
                 -1.0, 65535.0,     0.0, 1.0,
                 65536.0, 1.0,      0.0, 1.0,
                 65536.0, 65536.0,  0.0, 1.0
+#endif
+
+                /* As we can see, the first two channels are screenspace
+                 * coordinates, whereas the latter two are fixed 0.0/1.0 after
+                 * perspective division. See the vertex shader epilogue for
+                 * more context */
+
+                -1.0, 1200.0,     0.0, 1.0,
+                1200.0, 1.0,      0.0, 1.0,
+                1200.0, 1200.0,  0.0, 1.0
         };
 
         float implied_varying[] = {
