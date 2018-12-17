@@ -2772,7 +2772,6 @@ panfrost_draw_wallpaper(struct pipe_context *pipe)
 
         /* Setup payload for elided quad */
 
-#if 0
         ctx->payload_tiler.draw_start = 0;
         ctx->payload_tiler.prefix.draw_mode = MALI_GL_TRIANGLE_STRIP;
         ctx->vertex_count = 4;
@@ -2787,7 +2786,6 @@ panfrost_draw_wallpaper(struct pipe_context *pipe)
         /* Emit the tiler job */
         ctx->tiler_jobs[ctx->tiler_job_count++] = panfrost_vertex_tiler_job(ctx, true, true);
         ctx->draw_count++;
-#endif
 
         printf("Wallpaper boop\n");
 }
