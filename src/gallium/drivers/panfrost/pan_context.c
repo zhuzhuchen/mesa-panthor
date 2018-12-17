@@ -35,6 +35,7 @@
 #include "util/u_transfer.h"
 #include "util/u_transfer_helper.h"
 #include "util/u_memory.h"
+#include "util/half_float.h"
 #include "indices/u_primconvert.h"
 #include "tgsi/tgsi_parse.h"
 
@@ -2770,7 +2771,8 @@ panfrost_draw_wallpaper(struct pipe_context *pipe)
 {
         struct panfrost_context *ctx = panfrost_context(pipe);
 
-        /* Setup payload for elided quad */
+        /* Setup payload for elided quad. TODO: Refactor draw_vbo so this can
+         * be a little more DRY */
 
         ctx->payload_tiler.draw_start = 0;
         ctx->payload_tiler.prefix.draw_mode = MALI_GL_TRIANGLE_STRIP;
@@ -2782,6 +2784,40 @@ panfrost_draw_wallpaper(struct pipe_context *pipe)
         ctx->payload_tiler.prefix.index_count = MALI_POSITIVE(4);
         ctx->payload_tiler.prefix.unknown_draw &= ~MALI_DRAW_INDEXED_UINT32;
         ctx->payload_tiler.prefix.indices = (uintptr_t) NULL;
+
+        /* Elision occurs by essential precomputing the results of the
+         * implied vertex shader. Insert these results for fullscreen */
+
+        float implied_position_varying[] = {
+                -1.0, -1.0,        0.0, 1.0,
+                -1.0, 65535.0,     0.0, 1.0,
+                65536.0, 1.0,      0.0, 1.0,
+                65536.0, 65536.0,  0.0, 1.0
+        };
+
+        float implied_varying[] = {
+                0.0, 0.0, 0.0, 1.0,
+                0.0, 1.0, 0.0, 1.0,
+                1.0, 0.0, 0.0, 1.0,
+                1.0, 1.0, 0.0, 1.0
+        };
+
+        ctx->payload_tiler.postfix.position_varying = panfrost_upload(&ctx->cmdstream, implied_position_varying, sizeof(implied_position_varying), true);
+
+        struct mali_attr varyings[] = {
+                {
+                        .elements = ctx->payload_tiler.postfix.position_varying | 1,
+                        .stride = sizeof(float) * 4,
+                        .size = sizeof(float) * 4 * 4
+                },
+                {
+                        .elements = panfrost_upload_sequential(&ctx->cmdstream, implied_varying, sizeof(implied_varying)) | 1,
+                        .stride = sizeof(float) * 4,
+                        .size = sizeof(float) * 4 * 4
+                }
+        };
+        ctx->payload_tiler.postfix.varyings = panfrost_upload(&ctx->cmdstream, varyings, sizeof(varyings), false);
+
 
         /* Emit the tiler job */
         ctx->tiler_jobs[ctx->tiler_job_count++] = panfrost_vertex_tiler_job(ctx, true, true);
