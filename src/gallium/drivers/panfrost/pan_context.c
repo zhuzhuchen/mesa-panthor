@@ -2794,7 +2794,10 @@ panfrost_draw_wallpaper(struct pipe_context *pipe)
         panfrost_emit_for_draw(ctx, false);
 
         /* Elision occurs by essential precomputing the results of the
-         * implied vertex shader. Insert these results for fullscreen */
+         * implied vertex shader. Insert these results for fullscreen. The
+         * first two channels are ~screenspace coordinates, whereas the latter
+         * two are fixed 0.0/1.0 after perspective division. See the vertex
+         * shader epilogue for more context */
 
         float implied_position_varying[] = {
                 -1.0, -1.0,        0.0, 1.0,
@@ -2804,30 +2807,28 @@ panfrost_draw_wallpaper(struct pipe_context *pipe)
                 65536.0, 65536.0,  0.0, 1.0
 #endif
 
-                /* As we can see, the first two channels are screenspace
-                 * coordinates, whereas the latter two are fixed 0.0/1.0 after
-                 * perspective division. See the vertex shader epilogue for
-                 * more context */
-
                 -1.0, 1200.0,     0.0, 1.0,
                 1200.0, 1.0,      0.0, 1.0,
                 1200.0, 1200.0,  0.0, 1.0
         };
 
-        float implied_varying[] = {
-                1.0, 1.0, 1.0, 1.0,
-                0.0, 0.0, 0.0, 0.0,
-                0.0, 0.0, 0.0, 0.0,
-                0.0, 0.0, 0.0, 0.0
-        };
-
         ctx->payload_tiler.postfix.position_varying = panfrost_upload(&ctx->cmdstream, implied_position_varying, sizeof(implied_position_varying), true);
+
+        /* Similarly, setup the texture coordinate varying, hardcoded to match
+         * the corners of the screen */
+
+        float texture_coordinates[] = {
+                0.0, 0.0, 0.0, 0.0,
+                0.0, 1.0, 0.0, 0.0,
+                1.0, 0.0, 0.0, 0.0,
+                1.0, 1.0, 0.0, 0.0
+        };
 
         struct mali_attr varyings[1] = {
                 {
-                        .elements = panfrost_upload(&ctx->cmdstream, implied_varying, sizeof(implied_varying), true) | 1,
+                        .elements = panfrost_upload(&ctx->cmdstream, texture_coordinates, sizeof(texture_coordinates), true) | 1,
                         .stride = sizeof(float) * 4,
-                        .size = sizeof(float) * 4 * 4
+                        .size = sizeof(texture_coordinates)
                 }
         };
 
