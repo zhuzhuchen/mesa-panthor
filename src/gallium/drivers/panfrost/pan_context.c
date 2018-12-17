@@ -43,6 +43,9 @@
 #include "pan_blending.h"
 #include "pan_blend_shaders.h"
 
+#include "midgard/midgard_compile.h"
+#include "compiler/nir/nir_builder.h"
+
 static void
 panfrost_flush(
         struct pipe_context *pipe,
@@ -2769,6 +2772,45 @@ panfrost_get_query_result(struct pipe_context *pipe,
         return true;
 }
 
+/* Creates the special-purpose fragment shader for wallpapering. A
+ * pseudo-vertex shader sets us up for a fullscreen quad render, with a texture
+ * coordinate varying */
+
+static void
+panfrost_build_wallpaper_program()
+{
+        nir_shader *shader = nir_shader_create(NULL, MESA_SHADER_FRAGMENT, &midgard_nir_options, NULL);
+        nir_function *fn = nir_function_create(shader, "main");
+        nir_function_impl *impl = nir_function_impl_create(fn);
+
+        /* Create the variables variables */
+
+        nir_variable *c_texcoord = nir_variable_create(shader, nir_var_shader_in, glsl_vector_type(GLSL_TYPE_FLOAT, 4), "gl_TexCoord");
+        nir_variable *c_out = nir_variable_create(shader, nir_var_shader_out, glsl_vector_type(GLSL_TYPE_FLOAT, 4), "gl_FragColor");
+
+        c_texcoord->data.location = VARYING_SLOT_VAR0;
+        c_out->data.location = FRAG_RESULT_COLOR;
+
+        /* Setup nir_builder */
+
+        nir_builder _b;
+        nir_builder *b = &_b;
+        nir_builder_init(b, impl);
+        b->cursor = nir_before_block(nir_start_block(impl));
+
+        /* Setup inputs */
+
+        nir_ssa_def *s_src = nir_load_var(b, c_texcoord);
+
+        /* Build a shader */
+        nir_store_var(b, c_out, s_src, 0xFF);
+
+        nir_print_shader(shader, stdout);
+
+        /* Compile the built shader */
+        //panfrost_shader_compile(ctx)
+}
+
 /* Essentially, we insert a fullscreen textured quad, reading from the
  * previous frame's framebuffer */
 
@@ -2790,6 +2832,11 @@ panfrost_draw_wallpaper(struct pipe_context *pipe)
         ctx->payload_tiler.prefix.index_count = MALI_POSITIVE(4);
         ctx->payload_tiler.prefix.unknown_draw &= ~MALI_DRAW_INDEXED_UINT32;
         ctx->payload_tiler.prefix.indices = (uintptr_t) NULL;
+
+        /* Setup the wallpapering program. We need to build the program via
+         * NIR. */
+
+        panfrost_build_wallpaper_program();
 
         panfrost_emit_for_draw(ctx, false);
 
