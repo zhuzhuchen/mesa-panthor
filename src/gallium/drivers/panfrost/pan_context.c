@@ -842,7 +842,7 @@ panfrost_default_shader_backend(struct panfrost_context *ctx)
  * vertex jobs. */
 
 static mali_ptr
-panfrost_vertex_tiler_job(struct panfrost_context *ctx, bool is_tiler)
+panfrost_vertex_tiler_job(struct panfrost_context *ctx, bool is_tiler, bool is_elided_tiler)
 {
         /* Each draw call corresponds to two jobs, and we want to offset to leave room for the set-value job */
         int draw_job_index = 1 + (2 * ctx->draw_count);
@@ -866,9 +866,11 @@ panfrost_vertex_tiler_job(struct panfrost_context *ctx, bool is_tiler)
         /* Only tiler jobs have dependencies which are known at this point */
 
         if (is_tiler) {
-                /* Tiler jobs depend on vertex jobs */
+                if (!is_elided_tiler) {
+                        /* Tiler jobs depend on vertex jobs */
 
-                job.job_dependency_index_1 = draw_job_index;
+                        job.job_dependency_index_1 = draw_job_index;
+                }
 
                 /* Tiler jobs also depend on the previous tiler job */
 
@@ -1331,8 +1333,8 @@ panfrost_queue_draw(struct panfrost_context *ctx)
         /* Handle dirty flags now */
         panfrost_emit_for_draw(ctx);
 
-        ctx->vertex_jobs[ctx->draw_count] = panfrost_vertex_tiler_job(ctx, false);
-        ctx->tiler_jobs[ctx->draw_count] = panfrost_vertex_tiler_job(ctx, true);
+        ctx->vertex_jobs[ctx->vertex_job_count++] = panfrost_vertex_tiler_job(ctx, false, false);
+        ctx->tiler_jobs[ctx->tiler_job_count++] = panfrost_vertex_tiler_job(ctx, true, false);
         ctx->draw_count++;
 }
 
@@ -1367,10 +1369,15 @@ panfrost_link_jobs(struct panfrost_context *ctx)
         }
 
         /* V -> V/T ; T -> T/null */
-        for (int i = 0; i < ctx->draw_count; ++i) {
-                bool isLast = (i + 1) == ctx->draw_count;
+        for (int i = 0; i < ctx->vertex_job_count; ++i) {
+                bool isLast = (i + 1) == ctx->vertex_job_count;
 
                 panfrost_link_job_pair(ctx->cmdstream, ctx->vertex_jobs[i], isLast ? ctx->tiler_jobs[0]: ctx->vertex_jobs[i + 1]);
+        }
+
+        /* T -> T/null */
+        for (int i = 0; i < ctx->tiler_job_count; ++i) {
+                bool isLast = (i + 1) == ctx->tiler_job_count;
                 panfrost_link_job_pair(ctx->cmdstream, ctx->tiler_jobs[i], isLast ? 0 : ctx->tiler_jobs[i + 1]);
         }
 }
@@ -1428,6 +1435,8 @@ panfrost_submit_frame(struct panfrost_context *ctx, bool flush_immediate)
         panfrost_link_jobs(ctx);
 
         ctx->draw_count = 0;
+        ctx->vertex_job_count = 0;
+        ctx->tiler_job_count = 0;
 
 #ifndef DRY_RUN
         /* XXX: flush_immediate was causing lock-ups wrt readpixels in dEQP. Investigate. */
@@ -1513,7 +1522,10 @@ panfrost_flush(
         if (!ctx->frame_cleared) {
                 /* While there are draws, there was no clear. This is a partial
                  * update, which needs to be handled via the "wallpaper"
-                 * method. */
+                 * method. We also need to fake a clear, just to get the
+                 * FRAGMENT job correct. */
+
+                panfrost_clear(&ctx->base, ctx->last_clear.buffers, ctx->last_clear.color, ctx->last_clear.depth, ctx->last_clear.stencil);
 
                 panfrost_draw_wallpaper(pipe);
         }
@@ -2758,12 +2770,25 @@ panfrost_draw_wallpaper(struct pipe_context *pipe)
 {
         struct panfrost_context *ctx = panfrost_context(pipe);
 
-        const struct pipe_draw_info draw_info = {
-                .mode = PIPE_PRIM_TRIANGLE_FAN,
-                .count = 4
-        };
+        /* Setup payload for elided quad */
 
-        panfrost_draw_vbo(pipe, &draw_info);
+#if 0
+        ctx->payload_tiler.draw_start = 0;
+        ctx->payload_tiler.prefix.draw_mode = MALI_GL_TRIANGLE_STRIP;
+        ctx->vertex_count = 4;
+        ctx->payload_tiler.prefix.invocation_count = MALI_POSITIVE(4);
+        ctx->payload_tiler.prefix.unknown_draw &= ~(0x3000 | 0x18000);
+        ctx->payload_tiler.prefix.unknown_draw |= 0x18000;
+        ctx->payload_tiler.prefix.negative_start = 0;
+        ctx->payload_tiler.prefix.index_count = MALI_POSITIVE(4);
+        ctx->payload_tiler.prefix.unknown_draw &= ~MALI_DRAW_INDEXED_UINT32;
+        ctx->payload_tiler.prefix.indices = (uintptr_t) NULL;
+
+        /* Emit the tiler job */
+        ctx->tiler_jobs[ctx->tiler_job_count++] = panfrost_vertex_tiler_job(ctx, true, true);
+        ctx->draw_count++;
+#endif
+
         printf("Wallpaper boop\n");
 }
 

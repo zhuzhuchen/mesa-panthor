@@ -144,6 +144,9 @@ struct panfrost_context {
         mali_ptr vertex_jobs[MAX_DRAW_CALLS];
         mali_ptr tiler_jobs[MAX_DRAW_CALLS];
 
+        unsigned vertex_job_count;
+        unsigned tiler_job_count;
+
         /* Per-draw Dirty flags are setup like any other driver */
         int dirty;
 
