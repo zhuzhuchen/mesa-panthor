@@ -152,6 +152,40 @@ panfrost_draw_wallpaper(struct pipe_context *pipe)
 
         panfrost_enable_wallpaper_program(pipe);
 
+        /* Setup the texture/sampler pair */
+
+        struct pipe_sampler_view tmpl = {
+                .target = PIPE_TEXTURE_2D,
+                .swizzle_r = PIPE_SWIZZLE_X,
+                .swizzle_g = PIPE_SWIZZLE_Y,
+                .swizzle_b = PIPE_SWIZZLE_Z,
+                .swizzle_a = PIPE_SWIZZLE_W
+        };
+
+        struct pipe_resource rsrc_templ = {
+                .target = PIPE_TEXTURE_2D,
+                .format = PIPE_FORMAT_B8G8R8A8_UNORM,
+                .width0 = 2,
+                .height0 = 2,
+                .depth0 = 1,
+                .array_size = 1,
+                .bind = PIPE_BIND_RENDER_TARGET
+        };
+
+        struct pipe_sampler_state state = {
+                .min_mip_filter = PIPE_TEX_MIPFILTER_NONE,
+                .min_img_filter = PIPE_TEX_MIPFILTER_LINEAR,
+                .mag_img_filter = PIPE_TEX_MIPFILTER_LINEAR,
+                .wrap_s = PIPE_TEX_WRAP_CLAMP_TO_EDGE,
+                .wrap_t = PIPE_TEX_WRAP_CLAMP_TO_EDGE,
+                .wrap_r = PIPE_TEX_WRAP_CLAMP_TO_EDGE,
+                .normalized_coords = 1
+        };
+
+        struct pipe_resource *rsrc = pipe->screen->resource_create_front(pipe->screen, &rsrc_templ, NULL);
+        struct pipe_sampler_state *sampler_state = pipe->create_sampler_state(pipe, &state);
+        struct pipe_sampler_view *sampler_view = pipe->create_sampler_view(pipe, rsrc, &tmpl);
+
         panfrost_emit_for_draw(ctx, false);
 
         /* Elision occurs by essential precomputing the results of the
