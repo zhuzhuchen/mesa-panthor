@@ -1997,8 +1997,11 @@ panfrost_set_vertex_buffers(
                 ctx->vertex_buffer_count = num_buffers;
                 memcpy(ctx->vertex_buffers, buffers, sz);
         } else {
-                /* XXX leak */
-                ctx->vertex_buffers = NULL;
+                if (ctx->vertex_buffers) {
+                        free(ctx->vertex_buffers);
+                        ctx->vertex_buffers = NULL;
+                }
+
                 ctx->vertex_buffer_count = 0;
         }
 }
