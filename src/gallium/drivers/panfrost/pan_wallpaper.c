@@ -58,8 +58,24 @@ panfrost_build_wallpaper_program()
 
         nir_ssa_def *s_src = nir_load_var(b, c_texcoord);
 
-        /* Build a shader */
-        nir_store_var(b, c_out, nir_fmul(b, s_src, nir_imm_vec4(b, 1.0, 0.0, 0.0, 0.0)),  0xFF);
+        /* Build the passthrough texture shader */
+
+        nir_tex_instr *tx = nir_tex_instr_create(shader, 1);
+        tx->op = nir_texop_tex;
+        tx->texture_index = tx->sampler_index = 0;
+        tx->sampler_dim = GLSL_SAMPLER_DIM_2D;
+        tx->dest_type = nir_type_float;
+
+        nir_src src = nir_src_for_ssa(s_src);
+        nir_src_copy(&tx->src[0].src, &src, tx);
+        tx->src[0].src_type = nir_tex_src_coord;
+
+        nir_ssa_dest_init(&tx->instr, &tx->dest, nir_tex_instr_dest_size(tx), 32, NULL);
+        nir_builder_instr_insert(b, &tx->instr);
+
+        nir_ssa_def *texel = &tx->dest.ssa;
+
+        nir_store_var(b, c_out, texel, 0xFF);
 
         nir_print_shader(shader, stdout);
 
