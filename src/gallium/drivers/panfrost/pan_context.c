@@ -42,9 +42,7 @@
 #include "pan_screen.h"
 #include "pan_blending.h"
 #include "pan_blend_shaders.h"
-
-#include "midgard/midgard_compile.h"
-#include "compiler/nir/nir_builder.h"
+#include "pan_wallpaper.h"
 
 static void
 panfrost_flush(
@@ -61,7 +59,6 @@ panfrost_allocate_slab(struct panfrost_context *ctx,
                        int extra_flags,
                        int commit_count,
                        int extent);
-
 
 static bool USE_TRANSACTION_ELIMINATION = false;
 
@@ -849,7 +846,7 @@ panfrost_default_shader_backend(struct panfrost_context *ctx)
  * Mali parlance, "fragment" refers to framebuffer writeout). Clear it for
  * vertex jobs. */
 
-static mali_ptr
+mali_ptr
 panfrost_vertex_tiler_job(struct panfrost_context *ctx, bool is_tiler, bool is_elided_tiler)
 {
         /* Each draw call corresponds to two jobs, and we want to offset to leave room for the set-value job */
@@ -1041,7 +1038,7 @@ panfrost_emit_vertex_data(struct panfrost_context *ctx)
 
 /* Go through dirty flags and actualise them in the cmdstream. */
 
-static void
+void
 panfrost_emit_for_draw(struct panfrost_context *ctx, bool with_vertex_data)
 {
         if (with_vertex_data) {
@@ -1512,9 +1509,6 @@ panfrost_submit_frame(struct panfrost_context *ctx, bool flush_immediate)
 
 #endif
 }
-
-static void
-panfrost_draw_wallpaper(struct pipe_context *pipe);
 
 bool dont_scanout = false;
 
@@ -2770,180 +2764,6 @@ panfrost_get_query_result(struct pipe_context *pipe,
         struct panfrost_query *query = (struct panfrost_query *) q;
         printf("Skipped query get %d\n", query->type);
         return true;
-}
-
-
-/* Creates the special-purpose fragment shader for wallpapering. A
- * pseudo-vertex shader sets us up for a fullscreen quad render, with a texture
- * coordinate varying */
-
-static nir_shader *
-panfrost_build_wallpaper_program()
-{
-        nir_shader *shader = nir_shader_create(NULL, MESA_SHADER_FRAGMENT, &midgard_nir_options, NULL);
-        nir_function *fn = nir_function_create(shader, "main");
-        nir_function_impl *impl = nir_function_impl_create(fn);
-
-        /* Create the variables variables */
-
-        nir_variable *c_texcoord = nir_variable_create(shader, nir_var_shader_in, glsl_vector_type(GLSL_TYPE_FLOAT, 4), "gl_TexCoord");
-        nir_variable *c_out = nir_variable_create(shader, nir_var_shader_out, glsl_vector_type(GLSL_TYPE_FLOAT, 4), "gl_FragColor");
-
-        c_texcoord->data.location = VARYING_SLOT_VAR0;
-        c_out->data.location = FRAG_RESULT_COLOR;
-
-        /* Setup nir_builder */
-
-        nir_builder _b;
-        nir_builder *b = &_b;
-        nir_builder_init(b, impl);
-        b->cursor = nir_before_block(nir_start_block(impl));
-
-        /* Setup inputs */
-
-        nir_ssa_def *s_src = nir_load_var(b, c_texcoord);
-
-        /* Build a shader */
-        nir_store_var(b, c_out, nir_fmul(b, s_src, nir_imm_vec4(b, 1.0, 0.0, 0.0, 0.0)),  0xFF);
-
-        nir_print_shader(shader, stdout);
-
-        return shader;
-}
-
-/* Creates the CSO corresponding to the wallpaper program */
-
-static struct panfrost_shader_state *
-panfrost_create_wallpaper_program(struct pipe_context *pctx) 
-{
-        nir_shader *built_nir_shader = panfrost_build_wallpaper_program();
-
-        struct pipe_shader_state so = {
-                .type = PIPE_SHADER_IR_NIR,
-                .ir = {
-                        .nir = built_nir_shader
-                }
-        };
-
-        return panfrost_create_shader_state(pctx, &so);
-}
-
-static struct panfrost_shader_state *wallpaper_program = NULL;
-static struct panfrost_shader_state *wallpaper_saved_program = NULL;
-
-static void
-panfrost_enable_wallpaper_program(struct pipe_context *pctx)
-{
-        struct panfrost_context *ctx = panfrost_context(pctx);
-
-        if (!wallpaper_program) {
-                wallpaper_program = panfrost_create_wallpaper_program(pctx);
-        }
-
-        /* Push the shader state */
-        wallpaper_saved_program = ctx->fs;
-
-        /* Bind the program */
-        panfrost_bind_fs_state(pctx, wallpaper_program);
-}
-
-static void
-panfrost_disable_wallpaper_program(struct pipe_context *pctx)
-{
-        /* Pop off the shader state */
-        panfrost_bind_fs_state(pctx, wallpaper_saved_program);
-}
-
-/* Essentially, we insert a fullscreen textured quad, reading from the
- * previous frame's framebuffer */
-
-static void
-panfrost_draw_wallpaper(struct pipe_context *pipe)
-{
-        struct panfrost_context *ctx = panfrost_context(pipe);
-
-        /* Setup payload for elided quad. TODO: Refactor draw_vbo so this can
-         * be a little more DRY */
-
-        ctx->payload_tiler.draw_start = 0;
-        ctx->payload_tiler.prefix.draw_mode = MALI_GL_TRIANGLE_STRIP;
-        ctx->vertex_count = 4;
-        ctx->payload_tiler.prefix.invocation_count = MALI_POSITIVE(4);
-        ctx->payload_tiler.prefix.unknown_draw &= ~(0x3000 | 0x18000);
-        ctx->payload_tiler.prefix.unknown_draw |= 0x18000;
-        ctx->payload_tiler.prefix.negative_start = 0;
-        ctx->payload_tiler.prefix.index_count = MALI_POSITIVE(4);
-        ctx->payload_tiler.prefix.unknown_draw &= ~MALI_DRAW_INDEXED_UINT32;
-        ctx->payload_tiler.prefix.indices = (uintptr_t) NULL;
-
-        /* Setup the wallpapering program. We need to build the program via
-         * NIR. */
-
-        panfrost_enable_wallpaper_program(pipe);
-
-        panfrost_emit_for_draw(ctx, false);
-
-        /* Elision occurs by essential precomputing the results of the
-         * implied vertex shader. Insert these results for fullscreen. The
-         * first two channels are ~screenspace coordinates, whereas the latter
-         * two are fixed 0.0/1.0 after perspective division. See the vertex
-         * shader epilogue for more context */
-
-        float implied_position_varying[] = {
-                -1.0, -1.0,        0.0, 1.0,
-#if 0
-                -1.0, 65535.0,     0.0, 1.0,
-                65536.0, 1.0,      0.0, 1.0,
-                65536.0, 65536.0,  0.0, 1.0
-#endif
-
-                -1.0, 1200.0,     0.0, 1.0,
-                1200.0, 1.0,      0.0, 1.0,
-                1200.0, 1200.0,  0.0, 1.0
-        };
-
-        ctx->payload_tiler.postfix.position_varying = panfrost_upload(&ctx->cmdstream, implied_position_varying, sizeof(implied_position_varying), true);
-
-        /* Similarly, setup the texture coordinate varying, hardcoded to match
-         * the corners of the screen */
-
-        float texture_coordinates[] = {
-                0.0, 0.0, 0.0, 0.0,
-                0.0, 1.0, 0.0, 0.0,
-                1.0, 0.0, 0.0, 0.0,
-                1.0, 1.0, 0.0, 0.0
-        };
-
-        struct mali_attr varyings[1] = {
-                {
-                        .elements = panfrost_upload(&ctx->cmdstream, texture_coordinates, sizeof(texture_coordinates), true) | 1,
-                        .stride = sizeof(float) * 4,
-                        .size = sizeof(texture_coordinates)
-                }
-        };
-
-        ctx->payload_tiler.postfix.varyings = panfrost_upload(&ctx->cmdstream, varyings, sizeof(varyings), true);
-
-        struct mali_attr_meta varying_meta[1] = {
-                {
-                        .type = MALI_ATYPE_FLOAT,
-                        .nr_components = MALI_POSITIVE(4),
-                        .not_normalised = 1,
-                        .unknown1 = /*0x2c22 - nr_comp=2*/ 0x2a22,
-                        .unknown2 = 0x1
-                }
-        };
-
-        ctx->payload_tiler.postfix.varying_meta = panfrost_upload(&ctx->cmdstream, varying_meta, sizeof(varying_meta), true);
-
-        /* Emit the tiler job */
-        ctx->tiler_jobs[ctx->tiler_job_count++] = panfrost_vertex_tiler_job(ctx, true, true);
-        ctx->draw_count++;
-
-        printf("Wallpaper boop\n");
-        
-        /* Cleanup */
-        panfrost_disable_wallpaper_program(pipe);
 }
 
 static void

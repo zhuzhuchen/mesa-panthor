@@ -334,4 +334,10 @@ panfrost_resource_create_front(struct pipe_screen *screen,
                                const struct pipe_resource *template,
                                const void *map_front_private);
 
+void
+panfrost_emit_for_draw(struct panfrost_context *ctx, bool with_vertex_data);
+
+mali_ptr
+panfrost_vertex_tiler_job(struct panfrost_context *ctx, bool is_tiler, bool is_elided_tiler);
+
 #endif

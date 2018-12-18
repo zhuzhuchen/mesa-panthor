@@ -37,6 +37,7 @@ files_panfrost = files(
   'pan_swizzle.c',
   'pan_blending.c',
   'pan_blend_shaders.c',
+  'pan_wallpaper.c',
 )
 
 midgard_nir_algebraic_c = custom_target(
