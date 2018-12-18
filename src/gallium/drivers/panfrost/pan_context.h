@@ -306,12 +306,6 @@ struct panfrost_resource {
         /* Is something other than level 0 ever written? */
         bool is_mipmap;
 
-        /* Valid for textures; 1 otherwise */
-        int bytes_per_pixel;
-
-        /* bytes_per_pixel*width + padding */
-        int stride;
-
         struct sw_displaytarget *dt;
 
         /* Set for tiled, clear for linear. For linear, set if directly mapped and clear for memcpy */

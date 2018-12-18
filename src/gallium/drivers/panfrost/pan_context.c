@@ -132,9 +132,11 @@ panfrost_enable_afbc(struct panfrost_context *ctx, struct panfrost_resource *rsr
         /* AFBC metadata is 16 bytes per tile */
         int tile_w = (rsrc->base.width0 + (MALI_TILE_LENGTH - 1)) >> MALI_TILE_SHIFT;
         int tile_h = (rsrc->base.height0 + (MALI_TILE_LENGTH - 1)) >> MALI_TILE_SHIFT;
+        int bytes_per_pixel = util_format_get_blocksize(rsrc->base.format);
+        int stride = bytes_per_pixel * rsrc->base.width0; /* TODO: Alignment? */
 
-        rsrc->stride *= 2;
-        int main_size = rsrc->stride * rsrc->base.height0;
+        stride *= 2;  /* TODO: Should this be carried over? */
+        int main_size = stride * rsrc->base.height0;
         rsrc->afbc_metadata_size = tile_w * tile_h * 16;
 
         /* Allocate the AFBC slab itself, large enough to hold the above */
@@ -2050,6 +2052,8 @@ panfrost_create_sampler_view(
         const struct pipe_sampler_view *template)
 {
         struct panfrost_sampler_view *so = CALLOC_STRUCT(panfrost_sampler_view);
+        int bytes_per_pixel = util_format_get_blocksize(texture->format);
+        int stride = bytes_per_pixel * texture->width0; /* TODO: Alignment? */
 
         pipe_reference(NULL, &texture->reference);
 
@@ -2068,7 +2072,7 @@ panfrost_create_sampler_view(
         assert(template->target == PIPE_TEXTURE_2D);
 
         /* Make sure it's something with which we're familiar */
-        assert(prsrc->bytes_per_pixel >= 1 && prsrc->bytes_per_pixel <= 4);
+        assert(bytes_per_pixel >= 1 && bytes_per_pixel <= 4);
 
         /* TODO: Detect from format better */
         bool depth = prsrc->base.format == PIPE_FORMAT_Z32_UNORM;
@@ -2085,7 +2089,7 @@ panfrost_create_sampler_view(
                         .bottom = alpha_only ? 0x24 : ((depth ? 0x20 : 0x88)),
                         .unk1 = alpha_only ? 0x1 : (has_alpha ? 0x6 : 0xb),
                         .component_size = depth ? 0x5 : 0x3,
-                        .nr_channels = MALI_POSITIVE((depth ? 2 : prsrc->bytes_per_pixel)),
+                        .nr_channels = MALI_POSITIVE((depth ? 2 : bytes_per_pixel)),
                         .typeA = depth ? 2 : 5,
 
                         .usage1 = 0x0,
@@ -2154,19 +2158,15 @@ panfrost_resource_create_front(struct pipe_screen *screen,
 {
         struct panfrost_resource *so = CALLOC_STRUCT(panfrost_resource);
         struct panfrost_screen *pscreen = (struct panfrost_screen *) screen;
+        int bytes_per_pixel = util_format_get_blocksize(template->format);
+        int stride = bytes_per_pixel * template->width0; /* TODO: Alignment? */
 
         so->base = *template;
         so->base.screen = screen;
 
         pipe_reference_init(&so->base.reference, 1);
 
-        /* Fill out fields based on format itself */
-        so->bytes_per_pixel = util_format_get_blocksize(template->format);
-
-        /* TODO: Alignment? */
-        so->stride = so->bytes_per_pixel * template->width0;
-
-        size_t sz = so->stride;
+        size_t sz = stride;
 
         if (template->height0) sz *= template->height0;
 
@@ -2264,13 +2264,14 @@ panfrost_transfer_map(struct pipe_context *pctx,
 {
         struct panfrost_context *ctx = panfrost_context(pctx);
         struct panfrost_resource *rsrc = (struct panfrost_resource *) resource;
+        int bytes_per_pixel = util_format_get_blocksize(resource->format);
+        int stride = bytes_per_pixel * resource->width0; /* TODO: Alignment? */
 
         struct pipe_transfer *transfer = CALLOC_STRUCT(pipe_transfer);
-
         transfer->level = level;
         transfer->usage = usage;
         transfer->box = *box;
-        transfer->stride = rsrc->stride;
+        transfer->stride = stride;
         assert(!transfer->box.z);
 
         pipe_resource_reference(&transfer->resource, resource);
@@ -2307,7 +2308,7 @@ panfrost_transfer_map(struct pipe_context *pctx,
                 rsrc->cpu[level] = ctx->depth_stencil_buffer.cpu;
         }
 
-        return rsrc->cpu[level] + transfer->box.x * rsrc->bytes_per_pixel + transfer->box.y * transfer->stride;
+        return rsrc->cpu[level] + transfer->box.x * bytes_per_pixel + transfer->box.y * stride;
 }
 
 static void
@@ -2641,6 +2642,9 @@ panfrost_destroy(struct pipe_context *pipe)
 static void
 panfrost_tile_texture(struct panfrost_context *ctx, struct panfrost_resource *rsrc, int level)
 {
+        int bytes_per_pixel = util_format_get_blocksize(rsrc->base.format);
+        int stride = bytes_per_pixel * rsrc->base.width0; /* TODO: Alignment? */
+
         /* If we're direct mapped, we're done; don't do any swizzling / copies / etc */
         if (rsrc->mapped_direct)
                 return;
@@ -2651,7 +2655,7 @@ panfrost_tile_texture(struct panfrost_context *ctx, struct panfrost_resource *rs
         /* Estimate swizzled bitmap size. Slight overestimates are fine.
          * Underestimates will result in memory corruption or worse. */
 
-        int swizzled_sz = panfrost_swizzled_size(width, height, rsrc->bytes_per_pixel);
+        int swizzled_sz = panfrost_swizzled_size(width, height, bytes_per_pixel);
 
         /* Allocate the transfer given that known size but do not copy */
         uint8_t *swizzled = panfrost_allocate_transfer(&ctx->textures, swizzled_sz, &rsrc->gpu[level]);
@@ -2660,11 +2664,11 @@ panfrost_tile_texture(struct panfrost_context *ctx, struct panfrost_resource *rs
                 /* Run actual texture swizzle, writing directly to the mapped
                  * GPU chunk we allocated */
 
-                panfrost_texture_swizzle(width, height, rsrc->bytes_per_pixel, rsrc->stride, rsrc->cpu[level], swizzled);
+                panfrost_texture_swizzle(width, height, bytes_per_pixel, stride, rsrc->cpu[level], swizzled);
         } else {
                 /* If indirect linear, just do a dumb copy */
 
-                memcpy(swizzled, rsrc->cpu[level], rsrc->stride * height);
+                memcpy(swizzled, rsrc->cpu[level], stride * height);
         }
 }
 

@@ -728,8 +728,10 @@ panfrost_resource_get_handle(struct pipe_screen *pscreen,
         struct panfrost_screen *screen = pan_screen(pscreen);
         struct panfrost_resource *rsrc = (struct panfrost_resource *) pt;
         struct renderonly_scanout *scanout = rsrc->scanout;
+        int bytes_per_pixel = util_format_get_blocksize(rsrc->base.format);
+        int stride = bytes_per_pixel * rsrc->base.width0; /* TODO: Alignment? */
 
-        handle->stride = rsrc->stride;
+        handle->stride = stride;
         handle->modifier = DRM_FORMAT_MOD_INVALID;
 
         if (handle->type == WINSYS_HANDLE_TYPE_SHARED) {
