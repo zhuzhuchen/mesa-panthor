@@ -186,6 +186,10 @@ panfrost_draw_wallpaper(struct pipe_context *pipe)
         struct pipe_sampler_state *sampler_state = pipe->create_sampler_state(pipe, &state);
         struct pipe_sampler_view *sampler_view = pipe->create_sampler_view(pipe, rsrc, &tmpl);
 
+        /* Bind texture/sampler. TODO: push/pop */
+        pipe->bind_sampler_states(pipe, PIPE_SHADER_FRAGMENT, 0, 1, &sampler_state);
+        pipe->set_sampler_views(pipe, PIPE_SHADER_FRAGMENT, 0, 1, &sampler_view);
+
         panfrost_emit_for_draw(ctx, false);
 
         /* Elision occurs by essential precomputing the results of the
