@@ -340,4 +340,6 @@ panfrost_emit_for_draw(struct panfrost_context *ctx, bool with_vertex_data);
 mali_ptr
 panfrost_vertex_tiler_job(struct panfrost_context *ctx, bool is_tiler, bool is_elided_tiler);
 
+#define JOB_DESC(ptr) ((struct mali_job_descriptor_header *) (uintptr_t) (ptr - mem.gpu + (uintptr_t) mem.cpu))
+
 #endif

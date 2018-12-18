@@ -868,14 +868,12 @@ panfrost_vertex_tiler_job(struct panfrost_context *ctx, bool is_tiler, bool is_e
 
 #endif
 
-        /* Only tiler jobs have dependencies which are known at this point */
+        /* Only non-elided tiler jobs have dependencies which are known at this point */
 
-        if (is_tiler) {
-                if (!is_elided_tiler) {
-                        /* Tiler jobs depend on vertex jobs */
+        if (is_tiler && !is_elided_tiler) {
+                /* Tiler jobs depend on vertex jobs */
 
-                        job.job_dependency_index_1 = draw_job_index;
-                }
+                job.job_dependency_index_1 = draw_job_index;
 
                 /* Tiler jobs also depend on the previous tiler job */
 
@@ -1349,7 +1347,6 @@ panfrost_queue_draw(struct panfrost_context *ctx)
  * then the fragment job is plonked at the end. Set value job is first for
  * unknown reasons. */
 
-#define JOB_DESC(ptr) ((struct mali_job_descriptor_header *) (uintptr_t) (ptr - mem.gpu + (uintptr_t) mem.cpu))
 static void
 panfrost_link_job_pair(struct panfrost_memory mem, mali_ptr first, mali_ptr next)
 {

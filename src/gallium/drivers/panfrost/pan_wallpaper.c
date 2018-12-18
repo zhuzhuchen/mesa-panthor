@@ -76,7 +76,7 @@ panfrost_build_wallpaper_program()
 
         nir_ssa_def *texel = &tx->dest.ssa;
 
-        nir_store_var(b, c_out, texel, 0xFF);
+        nir_store_var(b, c_out, /*texel*/ s_src, 0xFF);
 
         nir_print_shader(shader, stdout);
 
@@ -237,8 +237,22 @@ panfrost_draw_wallpaper(struct pipe_context *pipe)
         ctx->payload_tiler.postfix.varying_meta = panfrost_upload(&ctx->cmdstream, varying_meta, sizeof(varying_meta), true);
 
         /* Emit the tiler job */
-        ctx->tiler_jobs[ctx->tiler_job_count++] = panfrost_vertex_tiler_job(ctx, true, true);
+        mali_ptr tiler_job = panfrost_vertex_tiler_job(ctx, true, true);
+        ctx->tiler_jobs[ctx->tiler_job_count++] = tiler_job;
         ctx->draw_count++;
+
+        /* Okay, so we have the tiler job emitted. Since we set elided_tiler
+         * mode, no dependencies will be set automatically. We don't actually
+         * want any dependencies, since we go first and we don't need a vertex
+         * first. That said, we do need the first tiler job to depend on us.
+         * Its second dep slot will be free (see the panfrost_vertex_tiler_job
+         * dependency setting algorithm), so fill us in with that
+         */
+
+        if (ctx->tiler_job_count > 1) {
+                struct panfrost_memory mem = ctx->cmdstream;
+                JOB_DESC(ctx->tiler_jobs[0])->job_dependency_index_2 = JOB_DESC(tiler_job)->job_index;
+        }
 
         printf("Wallpaper boop\n");
         
