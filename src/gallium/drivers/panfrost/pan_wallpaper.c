@@ -76,7 +76,7 @@ panfrost_build_wallpaper_program()
 
         nir_ssa_def *texel = &tx->dest.ssa;
 
-        nir_store_var(b, c_out, nir_fmul(b, texel, nir_imm_float(b, 0.5f)), 0xFF);
+        nir_store_var(b, c_out, texel, 0xFF);
 
         nir_print_shader(shader, stdout);
 
@@ -197,9 +197,9 @@ panfrost_draw_wallpaper(struct pipe_context *pipe)
                 65536.0, 65536.0,  0.0, 1.0
 #endif
 
-                -1.0, 1200.0,     0.0, 1.0,
-                1200.0, 1.0,      0.0, 1.0,
-                1200.0, 1200.0,  0.0, 1.0
+                -1.0, 1280.0,     0.0, 1.0,
+                2048.0, 1.0,      0.0, 1.0,
+                2048.0, 1280.0,  0.0, 1.0
         };
 
         ctx->payload_tiler.postfix.position_varying = panfrost_upload(&ctx->cmdstream, implied_position_varying, sizeof(implied_position_varying), true);
