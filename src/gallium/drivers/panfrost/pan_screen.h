@@ -39,6 +39,9 @@ struct panfrost_context;
 struct panfrost_screen {
         struct pipe_screen base;
         struct panfrost_context *any_context;
+        
+        /* TODO: Where? */
+        struct panfrost_resource *display_target;
 };
 
 static inline struct panfrost_screen *

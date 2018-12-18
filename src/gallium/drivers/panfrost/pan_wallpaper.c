@@ -24,6 +24,7 @@
 
 #include "pan_wallpaper.h"
 #include "pan_context.h"
+#include "pan_screen.h"
 //#include "include/panfrost-job.h"
 #include "midgard/midgard_compile.h"
 #include "compiler/nir/nir_builder.h"
@@ -75,7 +76,7 @@ panfrost_build_wallpaper_program()
 
         nir_ssa_def *texel = &tx->dest.ssa;
 
-        nir_store_var(b, c_out, texel, 0xFF);
+        nir_store_var(b, c_out, nir_fmul(b, texel, nir_imm_float(b, 0.5f)), 0xFF);
 
         nir_print_shader(shader, stdout);
 
@@ -162,16 +163,6 @@ panfrost_draw_wallpaper(struct pipe_context *pipe)
                 .swizzle_a = PIPE_SWIZZLE_W
         };
 
-        struct pipe_resource rsrc_templ = {
-                .target = PIPE_TEXTURE_2D,
-                .format = PIPE_FORMAT_B8G8R8A8_UNORM,
-                .width0 = 2,
-                .height0 = 2,
-                .depth0 = 1,
-                .array_size = 1,
-                .bind = PIPE_BIND_RENDER_TARGET
-        };
-
         struct pipe_sampler_state state = {
                 .min_mip_filter = PIPE_TEX_MIPFILTER_NONE,
                 .min_img_filter = PIPE_TEX_MIPFILTER_LINEAR,
@@ -182,7 +173,7 @@ panfrost_draw_wallpaper(struct pipe_context *pipe)
                 .normalized_coords = 1
         };
 
-        struct pipe_resource *rsrc = pipe->screen->resource_create_front(pipe->screen, &rsrc_templ, NULL);
+        struct pipe_resource *rsrc = panfrost_screen(pipe->screen)->display_target;
         struct pipe_sampler_state *sampler_state = pipe->create_sampler_state(pipe, &state);
         struct pipe_sampler_view *sampler_view = pipe->create_sampler_view(pipe, rsrc, &tmpl);
 

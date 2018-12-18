@@ -2200,6 +2200,7 @@ panfrost_resource_create_front(struct pipe_screen *screen,
                         /* TODO: Allocate display target surface */
                         so->cpu[0] = pscreen->any_context->framebuffer.cpu;
                         so->gpu[0] = pscreen->any_context->framebuffer.gpu;
+                        pscreen->display_target = so;
                 } else {
                         /* TODO: Mipmapped RTs */
                         //assert(template->last_level == 0);
