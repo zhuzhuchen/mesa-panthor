@@ -2772,11 +2772,12 @@ panfrost_get_query_result(struct pipe_context *pipe,
         return true;
 }
 
+
 /* Creates the special-purpose fragment shader for wallpapering. A
  * pseudo-vertex shader sets us up for a fullscreen quad render, with a texture
  * coordinate varying */
 
-static void
+static nir_shader *
 panfrost_build_wallpaper_program()
 {
         nir_shader *shader = nir_shader_create(NULL, MESA_SHADER_FRAGMENT, &midgard_nir_options, NULL);
@@ -2803,12 +2804,54 @@ panfrost_build_wallpaper_program()
         nir_ssa_def *s_src = nir_load_var(b, c_texcoord);
 
         /* Build a shader */
-        nir_store_var(b, c_out, s_src, 0xFF);
+        nir_store_var(b, c_out, nir_fmul(b, s_src, nir_imm_vec4(b, 1.0, 0.0, 0.0, 0.0)),  0xFF);
 
         nir_print_shader(shader, stdout);
 
-        /* Compile the built shader */
-        //panfrost_shader_compile(ctx)
+        return shader;
+}
+
+/* Creates the CSO corresponding to the wallpaper program */
+
+static struct panfrost_shader_state *
+panfrost_create_wallpaper_program(struct pipe_context *pctx) 
+{
+        nir_shader *built_nir_shader = panfrost_build_wallpaper_program();
+
+        struct pipe_shader_state so = {
+                .type = PIPE_SHADER_IR_NIR,
+                .ir = {
+                        .nir = built_nir_shader
+                }
+        };
+
+        return panfrost_create_shader_state(pctx, &so);
+}
+
+static struct panfrost_shader_state *wallpaper_program = NULL;
+static struct panfrost_shader_state *wallpaper_saved_program = NULL;
+
+static void
+panfrost_enable_wallpaper_program(struct pipe_context *pctx)
+{
+        struct panfrost_context *ctx = panfrost_context(pctx);
+
+        if (!wallpaper_program) {
+                wallpaper_program = panfrost_create_wallpaper_program(pctx);
+        }
+
+        /* Push the shader state */
+        wallpaper_saved_program = ctx->fs;
+
+        /* Bind the program */
+        panfrost_bind_fs_state(pctx, wallpaper_program);
+}
+
+static void
+panfrost_disable_wallpaper_program(struct pipe_context *pctx)
+{
+        /* Pop off the shader state */
+        panfrost_bind_fs_state(pctx, wallpaper_saved_program);
 }
 
 /* Essentially, we insert a fullscreen textured quad, reading from the
@@ -2836,7 +2879,7 @@ panfrost_draw_wallpaper(struct pipe_context *pipe)
         /* Setup the wallpapering program. We need to build the program via
          * NIR. */
 
-        panfrost_build_wallpaper_program();
+        panfrost_enable_wallpaper_program(pipe);
 
         panfrost_emit_for_draw(ctx, false);
 
@@ -2898,6 +2941,9 @@ panfrost_draw_wallpaper(struct pipe_context *pipe)
         ctx->draw_count++;
 
         printf("Wallpaper boop\n");
+        
+        /* Cleanup */
+        panfrost_disable_wallpaper_program(pipe);
 }
 
 static void
