@@ -507,7 +507,7 @@ panfrost_attach_vt_framebuffer(struct panfrost_context *ctx)
         struct bifrost_render_target rts_list[] = {
                 {
                         .chunknown = {
-                                .unk = 0x20005,
+                                .unk = 0x30005,
                                 .pointer = who_knows,
                         },
                         .framebuffer = ctx->misc_0.gpu,
@@ -812,7 +812,7 @@ panfrost_default_shader_backend(struct panfrost_context *ctx)
         struct mali_shader_meta shader = {
                 .alpha_coverage = ~MALI_ALPHA_COVERAGE(0.000000),
 
-                .unknown2_3 = MALI_DEPTH_FUNC(MALI_FUNC_ALWAYS) | 0x3000 /*| 0x10*/ /*| MALI_CAN_DISCARD*/,
+                .unknown2_3 = MALI_DEPTH_FUNC(MALI_FUNC_ALWAYS) | 0x3000 | 0x10,
 #ifdef T8XX
                 .unknown2_4 = MALI_NO_MSAA | 0x4e0,
 #else
@@ -1091,7 +1091,7 @@ panfrost_emit_for_draw(struct panfrost_context *ctx, bool with_vertex_data)
 
                 /* Set late due to depending on render state */
                 /* The one at the end seems to mean "1 UBO" */
-                ctx->fragment_shader_core.midgard1.unknown1 = MALI_NO_ALPHA_TO_COVERAGE | 0x200 /*| 0x2201*/;
+                ctx->fragment_shader_core.midgard1.unknown1 = MALI_NO_ALPHA_TO_COVERAGE | 0x2201;
 
                 /* Assign texture/sample count right before upload */
                 ctx->fragment_shader_core.texture_count = ctx->sampler_view_count[PIPE_SHADER_FRAGMENT];
@@ -1115,10 +1115,34 @@ panfrost_emit_for_draw(struct panfrost_context *ctx, bool with_vertex_data)
                         ctx->fragment_shader_core.midgard1.unknown1 = 0x4200;
                 }
 
+                /* If we're wallpapering, some weird stuff changes */
+                int saved_unk1 = 0, saved_unk23 = 0, saved_unk24 = 0;
+
+                if (ctx->in_wallpaper) {
+                        saved_unk1 = ctx->fragment_shader_core.midgard1.unknown1;
+                        saved_unk23 = ctx->fragment_shader_core.unknown2_3;
+                        saved_unk24 = ctx->fragment_shader_core.unknown2_4;
+
+                        ctx->fragment_shader_core.unknown2_3 = MALI_DEPTH_FUNC(MALI_FUNC_ALWAYS) | 0x3000;
+                        ctx->fragment_shader_core.unknown2_4 = 0x4e0;
+                        ctx->fragment_shader_core.midgard1.unknown1 = MALI_NO_ALPHA_TO_COVERAGE | 0x200;
+                }
+
                 if (ctx->blend->has_blend_shader)
                         ctx->fragment_shader_core.blend_shader = ctx->blend->blend_shader;
 
                 ctx->payload_tiler.postfix._shader_upper = panfrost_upload(&ctx->cmdstream_persistent, &ctx->fragment_shader_core, sizeof(struct mali_shader_meta), true) >> 4;
+
+                if (ctx->in_wallpaper) {
+                        /* Restore uncleanly-changed values */
+                        ctx->fragment_shader_core.midgard1.unknown1 = saved_unk1;
+                        ctx->fragment_shader_core.unknown2_3 = saved_unk23;
+                        ctx->fragment_shader_core.unknown2_4 = saved_unk24;
+
+                        /* The next draw -must- actualize the popped */
+                        ctx->dirty |= PAN_DIRTY_FS;
+                }
+
 
 #ifdef T8XX
                 /* Additional blend descriptor tacked on for newer systems */
@@ -1154,7 +1178,7 @@ panfrost_emit_for_draw(struct panfrost_context *ctx, bool with_vertex_data)
 
                 struct mali_blend_meta blend_meta[] = {
                         {
-                                .unk1 = 0x200 | blend_count | 0x800,
+                                .unk1 = 0x200 | blend_count | (ctx->in_wallpaper ? 0x800 : 0x0),
                                 .blend_equation_1 = ctx->blend->equation,
                                 .blend_equation_2 = replace_mode
                         },

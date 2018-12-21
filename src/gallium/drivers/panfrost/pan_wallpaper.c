@@ -134,6 +134,8 @@ panfrost_draw_wallpaper(struct pipe_context *pipe)
 {
         struct panfrost_context *ctx = panfrost_context(pipe);
 
+        ctx->in_wallpaper = true;
+
         /* Setup payload for elided quad. TODO: Refactor draw_vbo so this can
          * be a little more DRY */
 
@@ -264,4 +266,5 @@ panfrost_draw_wallpaper(struct pipe_context *pipe)
         /* Cleanup */
         panfrost_disable_wallpaper_program(pipe);
         ctx->payload_tiler.postfix.varying_meta = saved_varying_meta;
+        ctx->in_wallpaper = false;
 }
