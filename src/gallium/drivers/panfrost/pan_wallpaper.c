@@ -190,16 +190,20 @@ panfrost_draw_wallpaper(struct pipe_context *pipe)
          * shader epilogue for more context */
 
         float implied_position_varying[] = {
-                -1.0, -1.0,        0.0, 1.0,
 #if 0
+                /* The following is correct for scissored clears whose scissor deals with cutoff appropriately */
+
+                -1.0, -1.0,        0.0, 1.0,
                 -1.0, 65535.0,     0.0, 1.0,
                 65536.0, 1.0,      0.0, 1.0,
                 65536.0, 65536.0,  0.0, 1.0
 #endif
 
-                -1.0, 1280.0,     0.0, 1.0,
-                2048.0, 1.0,      0.0, 1.0,
-                2048.0, 1280.0,  0.0, 1.0
+                /* The following output is correct for a fullscreen quad with screen size 2048x1600 */
+                0.0, 0.0, 0.0, 1.0,
+                0.0, 1600.0, 0.0, 1.0,
+                2048.0, 0.0, 0.0, 1.0,
+                2048.0, 1280.0, 0.0, 1.0,
         };
 
         ctx->payload_tiler.postfix.position_varying = panfrost_upload(&ctx->cmdstream, implied_position_varying, sizeof(implied_position_varying), true);
