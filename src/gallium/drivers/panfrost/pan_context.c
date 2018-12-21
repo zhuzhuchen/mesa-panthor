@@ -275,7 +275,9 @@ panfrost_emit_fbd(struct panfrost_context *ctx)
                 .width2 = MALI_POSITIVE(ctx->pipe_framebuffer.width),
                 .height2 = MALI_POSITIVE(ctx->pipe_framebuffer.height),
 
-                .unk1 = 0x1080,
+                .unk0 = 0x1e4,
+                .unk1 = 0x1092,
+                .unk3 = 0x100,
 
                 /* TODO: MRT */
                 .rt_count_1 = MALI_POSITIVE(1),
@@ -505,7 +507,7 @@ panfrost_attach_vt_framebuffer(struct panfrost_context *ctx)
         struct bifrost_render_target rts_list[] = {
                 {
                         .chunknown = {
-                                .unk = 0x30005,
+                                .unk = 0x20005,
                                 .pointer = who_knows,
                         },
                         .framebuffer = ctx->misc_0.gpu,
@@ -810,7 +812,7 @@ panfrost_default_shader_backend(struct panfrost_context *ctx)
         struct mali_shader_meta shader = {
                 .alpha_coverage = ~MALI_ALPHA_COVERAGE(0.000000),
 
-                .unknown2_3 = MALI_DEPTH_FUNC(MALI_FUNC_ALWAYS) | 0x3010 /*| MALI_CAN_DISCARD*/,
+                .unknown2_3 = MALI_DEPTH_FUNC(MALI_FUNC_ALWAYS) | 0x3000 /*| 0x10*/ /*| MALI_CAN_DISCARD*/,
 #ifdef T8XX
                 .unknown2_4 = MALI_NO_MSAA | 0x4e0,
 #else
@@ -1089,7 +1091,7 @@ panfrost_emit_for_draw(struct panfrost_context *ctx, bool with_vertex_data)
 
                 /* Set late due to depending on render state */
                 /* The one at the end seems to mean "1 UBO" */
-                ctx->fragment_shader_core.midgard1.unknown1 = MALI_NO_ALPHA_TO_COVERAGE | 0x200 | 0x2201;
+                ctx->fragment_shader_core.midgard1.unknown1 = MALI_NO_ALPHA_TO_COVERAGE | 0x200 /*| 0x2201*/;
 
                 /* Assign texture/sample count right before upload */
                 ctx->fragment_shader_core.texture_count = ctx->sampler_view_count[PIPE_SHADER_FRAGMENT];
@@ -1152,7 +1154,7 @@ panfrost_emit_for_draw(struct panfrost_context *ctx, bool with_vertex_data)
 
                 struct mali_blend_meta blend_meta[] = {
                         {
-                                .unk1 = 0x200 | blend_count,
+                                .unk1 = 0x200 | blend_count | 0x800,
                                 .blend_equation_1 = ctx->blend->equation,
                                 .blend_equation_2 = replace_mode
                         },
