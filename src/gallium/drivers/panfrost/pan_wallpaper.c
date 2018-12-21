@@ -234,6 +234,7 @@ panfrost_draw_wallpaper(struct pipe_context *pipe)
                 }
         };
 
+        mali_ptr saved_varying_meta = ctx->payload_tiler.postfix.varying_meta;
         ctx->payload_tiler.postfix.varying_meta = panfrost_upload(&ctx->cmdstream, varying_meta, sizeof(varying_meta), true);
 
         /* Emit the tiler job */
@@ -258,4 +259,5 @@ panfrost_draw_wallpaper(struct pipe_context *pipe)
         
         /* Cleanup */
         panfrost_disable_wallpaper_program(pipe);
+        ctx->payload_tiler.postfix.varying_meta = saved_varying_meta;
 }
