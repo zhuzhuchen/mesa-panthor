@@ -208,6 +208,7 @@ panfrost_draw_wallpaper(struct pipe_context *pipe)
                 2048.0, 1280.0, 0.0, 1.0,
         };
 
+        /* No need to push, normal draws refresh it from a varying */
         ctx->payload_tiler.postfix.position_varying = panfrost_upload(&ctx->cmdstream, implied_position_varying, sizeof(implied_position_varying), true);
 
         /* Similarly, setup the texture coordinate varying, hardcoded to match
@@ -228,6 +229,7 @@ panfrost_draw_wallpaper(struct pipe_context *pipe)
                 }
         };
 
+        /* No need to push varyings, since every draw refreshes it anyway */
         ctx->payload_tiler.postfix.varyings = panfrost_upload(&ctx->cmdstream, varyings, sizeof(varyings), true);
 
         struct mali_attr_meta varying_meta[1] = {
