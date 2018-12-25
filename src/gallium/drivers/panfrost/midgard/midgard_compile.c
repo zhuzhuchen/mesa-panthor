@@ -784,7 +784,10 @@ squeeze_writemask(unsigned mask)
 static unsigned
 effective_writemask(midgard_vector_alu *alu)
 {
-        unsigned channel_count = alu_opcode_props[alu->op] & OP_CHANNEL_MASK;
+        /* Channel count is off-by-one to fit in two-bits (0 channel makes no
+         * sense) */
+
+        unsigned channel_count = GET_CHANNEL_COUNT(alu_opcode_props[alu->op]);
 
         /* If there is a fixed channel count, construct the appropriate mask */
 
