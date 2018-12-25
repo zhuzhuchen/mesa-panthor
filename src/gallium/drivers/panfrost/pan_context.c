@@ -1834,7 +1834,8 @@ panfrost_create_vertex_elements_state(
 
                 so->hw[i].type = type;
                 so->nr_components[i] = desc->nr_channels;
-                so->hw[i].nr_components = MALI_POSITIVE(4); /* XXX: Why is this needed? */
+                printf("Channels %d\n", desc->nr_channels);
+                so->hw[i].nr_components = MALI_POSITIVE(/*desc->nr_channels*/2);
                 so->hw[i].not_normalised = !chan.normalized;
 
                 /* Bit used for both signed/unsigned and full/half designation */
@@ -1843,7 +1844,8 @@ panfrost_create_vertex_elements_state(
                         (chan.type == UTIL_FORMAT_TYPE_FLOAT && chan.size != 32) ? 1 :
                         0;
 
-                so->hw[i].unknown1 = 0x2a22;
+                //so->hw[i].unknown1 = desc->nr_channels == 4 ? 0x2a22 : (desc->nr_channels == 2 ? 0x2c22 : 0x2a22);
+                so->hw[i].unknown1 = 0x2c22;
                 so->hw[i].unknown2 = 0x1;
 
                 /* The field itself should probably be shifted over */

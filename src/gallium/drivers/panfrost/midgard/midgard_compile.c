@@ -1277,6 +1277,7 @@ emit_intrinsic(compiler_context *ctx, nir_intrinsic_instr *instr)
                 } else if (ctx->stage == MESA_SHADER_VERTEX) {
                         midgard_instruction ins = m_load_attr_32(reg, offset);
                         ins.load_store.unknown = 0x1E1E; /* XXX: What is this? */
+                        ins.load_store.mask = (1 << instr->num_components) - 1;
                         emit_mir_instruction(ctx, ins);
                 } else {
                         printf("Unknown load\n");
@@ -2869,7 +2870,7 @@ write_transformed_position(nir_builder *b, nir_src input_point_src, int uniform_
         nir_ssa_def *screen_space = nir_vec4(b,
                                              nir_channel(b, viewport_xy, 0),
                                              nir_channel(b, viewport_xy, 1),
-                                             /*screen_depth*/nir_imm_float(b, 0.5),
+                                             screen_depth,
                                              nir_imm_float(b, 0.0));
 
         /* Finally, write out the transformed values to the varying */
