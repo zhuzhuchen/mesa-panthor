@@ -2359,7 +2359,7 @@ panfrost_set_framebuffer_state(struct pipe_context *pctx,
         ctx->pipe_framebuffer.samples = fb->samples;
         ctx->pipe_framebuffer.layers = fb->layers;
         ctx->pipe_framebuffer.width = MIN2(fb->width, 2048);
-        ctx->pipe_framebuffer.height = MIN2(fb->height, 1280);
+        ctx->pipe_framebuffer.height = MIN2(fb->height, 1600);
 
         for (int i = 0; i < PIPE_MAX_COLOR_BUFS; i++) {
                 struct pipe_surface *cb = i < fb->nr_cbufs ? fb->cbufs[i] : NULL;
@@ -2889,7 +2889,7 @@ panfrost_setup_hardware(struct panfrost_context *ctx)
         ctx->fd = pandev_open();
 
 #ifdef USE_SLOWFB
-        panfrost_setup_framebuffer(ctx, 2048, 1280);
+        panfrost_setup_framebuffer(ctx, 2048, 1600);
 #endif
 
         for (int i = 0; i < sizeof(ctx->cmdstream_rings) / sizeof(ctx->cmdstream_rings[0]); ++i)
