@@ -2638,9 +2638,13 @@ panfrost_set_viewport_states(struct pipe_context *pipe,
 
         ctx->pipe_viewport = *viewports;
 
-        /* TODO: What if not centered? */
-        float w = abs(viewports->scale[0]) * 2.0;
-        float h = abs(viewports->scale[1]) * 2.0;
+        /* TODO: What if not centered?
+         *
+         * TODO: The min's are needed to avoid faulting. But is this correct?
+         */
+
+        float w = MIN2(abs(viewports->scale[0]) * 2.0, ctx->pipe_framebuffer.width);
+        float h = MIN2(abs(viewports->scale[1]) * 2.0, ctx->pipe_framebuffer.height);
 
         ctx->viewport.floats[2] = w;
         ctx->viewport.floats[3] = h;
