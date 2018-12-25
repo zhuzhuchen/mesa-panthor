@@ -28,6 +28,7 @@
 #ifndef __ANDROID__
 
 #include <X11/Xlib.h>
+#include <X11/Xatom.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -47,6 +48,14 @@ struct slowfb_info slowfb_init(uint8_t *framebuffer, int width, int height)
         int black = BlackPixel(d, DefaultScreen(d));
         w = XCreateSimpleWindow(d, DefaultRootWindow(d), 0, 0, 200, 100, 0, black, black);
         XSelectInput(d, w, StructureNotifyMask);
+
+#if 0
+        /* Set us up as a toolbar thingamajig so we can verify fullscreen operation under i3 */
+        Atom window_type = XInternAtom(d, "_NET_WM_WINDOW_TYPE", 0);
+        long value = XInternAtom(d, "_NET_WM_WINDOW_TYPE_TOOLBAR", 0);
+        XChangeProperty(d, w, window_type, XA_ATOM, 32, PropModeReplace, (unsigned char *) &value, 1);
+#endif
+
         XMapWindow(d, w);
         gc = XCreateGC(d, w, 0, NULL);
 
