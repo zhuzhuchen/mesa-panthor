@@ -1854,7 +1854,7 @@ panfrost_create_vertex_elements_state(
                         0x1a22, /* vec4 */
                 };
 
-                so->hw[i].unknown1 = unknown1_for_components[desc->nr_channels];
+                so->hw[i].unknown1 = unknown1_for_components[desc->nr_channels - 1];
 
                 so->hw[i].unknown2 = 0x1;
 
