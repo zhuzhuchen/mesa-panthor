@@ -2094,9 +2094,24 @@ panfrost_create_sampler_view(
         assert(prsrc->bytes_per_pixel >= 1 && prsrc->bytes_per_pixel <= 4);
 
         /* TODO: Detect from format better */
+        const struct util_format_description *desc = util_format_description(prsrc->base.format);
         bool depth = prsrc->base.format == PIPE_FORMAT_Z32_UNORM;
         bool has_alpha = true;
         bool alpha_only = prsrc->base.format == PIPE_FORMAT_A8_UNORM;
+
+        /* Compose the format swizzle with the descriptor swizzle to find the
+         * actual swizzle to send to the hardware */
+
+        unsigned char composed_swizzle[4];
+
+        unsigned char desc_swizzle[4] = {
+                template->swizzle_r,
+                template->swizzle_g,
+                template->swizzle_b,
+                template->swizzle_a
+        };
+
+        util_format_compose_swizzles(desc->swizzle, desc_swizzle, composed_swizzle);
 
         struct mali_texture_descriptor texture_descriptor = {
                 .width = MALI_POSITIVE(texture->width0),
@@ -2121,10 +2136,10 @@ panfrost_create_sampler_view(
                         .usage2 = prsrc->has_afbc ? 0x1c : (prsrc->tiled ? 0x11 : 0x12),
                 },
 
-                .swizzle_r = panfrost_translate_texture_swizzle(template->swizzle_r),
-                .swizzle_g = panfrost_translate_texture_swizzle(template->swizzle_g),
-                .swizzle_b = panfrost_translate_texture_swizzle(template->swizzle_b),
-                .swizzle_a = panfrost_translate_texture_swizzle(template->swizzle_a),
+                .swizzle_r = panfrost_translate_texture_swizzle(composed_swizzle[0]),
+                .swizzle_g = panfrost_translate_texture_swizzle(composed_swizzle[1]),
+                .swizzle_b = panfrost_translate_texture_swizzle(composed_swizzle[2]),
+                .swizzle_a = panfrost_translate_texture_swizzle(composed_swizzle[3]),
         };
 
         /* TODO: Other base levels require adjusting dimensions / level numbers / etc */
