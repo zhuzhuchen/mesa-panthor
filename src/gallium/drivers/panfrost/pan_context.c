@@ -401,7 +401,7 @@ panfrost_clear(
 
         uint32_t packed_color =
                 (normalised_float_to_u8(clear_alpha) << 24) |
-                (normalised_float_to_u8(color->f[2]) << 16) |
+                (normalised_float_to_u8(/*color->f[2]*/1.0) << 16) |
                 (normalised_float_to_u8(color->f[1]) <<  8) |
                 (normalised_float_to_u8(color->f[0]) <<  0);
 
@@ -1134,6 +1134,10 @@ panfrost_emit_for_draw(struct panfrost_context *ctx, bool with_vertex_data)
                         /* Otherwise, the bottom bit simply specifies if
                          * blending (anything other than REPLACE) is enabled */
 
+                        ctx->blend->equation.rgb_mode = 0x122;
+                        ctx->blend->equation.alpha_mode = 0x122;
+                        ctx->blend->equation.color_mask = 0xf;
+
                         /* XXX: Less ugly way to do this? */
                         bool no_blending =
                                 (ctx->blend->equation.rgb_mode == 0x122) &&
@@ -1259,6 +1263,11 @@ panfrost_emit_for_draw(struct panfrost_context *ctx, bool with_vertex_data)
                 vp->translate[0],
                 /* -1.0 * vp->translate[1] */ fabs(1.0 * vp->scale[1]) /* XXX */
         };
+
+        viewport_vec4[0] = 1024.0f;
+        viewport_vec4[1] = 1024.0f;
+        viewport_vec4[2] = 1024.0f;
+        viewport_vec4[3] = 1024.0f;
 
         for (int i = 0; i < PIPE_SHADER_TYPES; ++i) {
                 struct panfrost_constant_buffer *buf = &ctx->constant_buffer[i];
@@ -2860,7 +2869,7 @@ panfrost_setup_hardware(struct panfrost_context *ctx)
         panfrost_allocate_slab(ctx, &ctx->cmdstream_persistent, 8 * 64 * 8 * 2, true, true, 0, 0, 0);
         panfrost_allocate_slab(ctx, &ctx->textures, 4 * 64 * 64 * 4, true, true, 0, 0, 0);
         panfrost_allocate_slab(ctx, &ctx->scratchpad, 64, true, true, 0, 0, 0);
-        panfrost_allocate_slab(ctx, &ctx->varying_mem, 16384, false, true, 0, 0, 0);
+        panfrost_allocate_slab(ctx, &ctx->varying_mem, 16384, true, true, 0, 0, 0);
         panfrost_allocate_slab(ctx, &ctx->shaders, 4096, true, false, MALI_MEM_PROT_GPU_EX, 0, 0);
         panfrost_allocate_slab(ctx, &ctx->tiler_heap, 32768, false, false, 0, 0, 0);
         panfrost_allocate_slab(ctx, &ctx->misc_0, 128, false, false, 0, 0, 0);
