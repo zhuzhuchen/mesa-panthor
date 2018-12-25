@@ -1842,14 +1842,9 @@ panfrost_create_vertex_elements_state(
                         (chan.type == UTIL_FORMAT_TYPE_FLOAT && chan.size != 32) ? 1 :
                         0;
 
-                printf("Channels %d\n", desc->nr_channels);
-                if (desc->nr_channels == 2) {
-                        so->hw[i].nr_components = MALI_POSITIVE(2);
-                        so->hw[i].unknown1 = 0x2c22;
-                } else {
-                        so->hw[i].nr_components = MALI_POSITIVE(4);
-                        so->hw[i].unknown1 = 0x2a22;
-                }
+                /* TODO: Attributes besides vec2 and vec4 */
+                so->hw[i].nr_components = MALI_POSITIVE(desc->nr_channels == 2 ? 2 : 4);
+                so->hw[i].unknown1 = desc->nr_channels == 2 ? 0x2c22 : 0x2a22;
 
                 so->hw[i].unknown2 = 0x1;
 
