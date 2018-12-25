@@ -534,8 +534,11 @@ panfrost_viewport(struct panfrost_context *ctx,
                         -inff, -inff,
                         inff, inff,
 #endif
+
+#if 1
                         0.0, 0.0,
                         2048.0, 1600.0,
+#endif
                 },
 
                 .depth_range_n = depth_range_n,
@@ -2380,8 +2383,14 @@ panfrost_set_framebuffer_state(struct pipe_context *pctx,
                 if (is_scanout) {
                         /* Lie to use our own */
                         ((struct panfrost_resource *) ctx->pipe_framebuffer.cbufs[i]->texture)->gpu[0] = ctx->framebuffer.gpu;
+
+#if 0
+                        /* dEQP needs the following hack for... some reason...
+                         * It seems to break everything else... */
+
                         ctx->pipe_framebuffer.width = 2048;
                         ctx->pipe_framebuffer.height = 1280;
+#endif
                 }
 
                 ctx->vt_framebuffer = panfrost_emit_fbd(ctx);
@@ -2629,14 +2638,16 @@ panfrost_set_viewport_states(struct pipe_context *pipe,
 
         ctx->pipe_viewport = *viewports;
 
-#if 0
         /* TODO: What if not centered? */
         float w = abs(viewports->scale[0]) * 2.0;
         float h = abs(viewports->scale[1]) * 2.0;
 
+        ctx->viewport.floats[2] = w;
+        ctx->viewport.floats[3] = h;
         ctx->viewport.viewport1[0] = MALI_POSITIVE((int) w);
         ctx->viewport.viewport1[1] = MALI_POSITIVE((int) h);
-#endif
+
+        ctx->dirty |= PAN_DIRTY_VIEWPORT;
 }
 
 static void
