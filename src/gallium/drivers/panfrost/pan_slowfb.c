@@ -84,10 +84,10 @@ void
 slowfb_update(uint8_t *framebuffer, int width, int height)
 {
 #ifdef USE_SHM
-        XShmPutImage(d, w, gc, image, 0, 0, 0, 0, 2048, 1280, False);
+        XShmPutImage(d, w, gc, image, 0, 0, 0, 0, width, height, False);
         XFlush(d);
 #else
-        XPutImage(d, w, gc, image, 0, 0, 0, 0, 2048, 1280);
+        XPutImage(d, w, gc, image, 0, 0, 0, 0, width, height);
 #endif
 }
 
