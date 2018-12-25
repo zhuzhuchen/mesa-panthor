@@ -1277,6 +1277,7 @@ emit_intrinsic(compiler_context *ctx, nir_intrinsic_instr *instr)
                 } else if (ctx->stage == MESA_SHADER_VERTEX) {
                         midgard_instruction ins = m_load_attr_32(reg, offset);
                         ins.load_store.unknown = 0x1E1E; /* XXX: What is this? */
+                        ins.load_store.mask = (1 << instr->num_components) - 1;
                         emit_mir_instruction(ctx, ins);
                 } else {
                         printf("Unknown load\n");

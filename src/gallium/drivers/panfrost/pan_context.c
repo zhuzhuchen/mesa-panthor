@@ -1833,8 +1833,6 @@ panfrost_create_vertex_elements_state(
                 }
 
                 so->hw[i].type = type;
-                so->nr_components[i] = desc->nr_channels;
-                so->hw[i].nr_components = MALI_POSITIVE(4); /* XXX: Why is this needed? */
                 so->hw[i].not_normalised = !chan.normalized;
 
                 /* Bit used for both signed/unsigned and full/half designation */
@@ -1843,7 +1841,21 @@ panfrost_create_vertex_elements_state(
                         (chan.type == UTIL_FORMAT_TYPE_FLOAT && chan.size != 32) ? 1 :
                         0;
 
-                so->hw[i].unknown1 = 0x2a22;
+                so->hw[i].nr_components = MALI_POSITIVE(desc->nr_channels);
+                so->nr_components[i] = desc->nr_channels;
+
+                /* The meaning of these magic values is unclear at the moment,
+                 * but likely has to do with how attributes are padded */
+
+                unsigned unknown1_for_components[4] = {
+                        0x2c82, /* float */
+                        0x2c22, /* vec2 */
+                        0x2a22, /* vec3 */
+                        0x1a22, /* vec4 */
+                };
+
+                so->hw[i].unknown1 = unknown1_for_components[desc->nr_channels - 1];
+
                 so->hw[i].unknown2 = 0x1;
 
                 /* The field itself should probably be shifted over */
