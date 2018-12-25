@@ -1119,7 +1119,6 @@ emit_intrinsic(compiler_context *ctx, nir_intrinsic_instr *instr)
                         if (offset >= SPECIAL_UNIFORM_BASE) {
                                 /* XXX: Resolve which uniform */
                                 uniform_offset = 0;
-                                printf("Got special, so zero\n");
                         } else {
                                 /* Offset away from the special
                                  * uniform block */
@@ -1134,7 +1133,6 @@ emit_intrinsic(compiler_context *ctx, nir_intrinsic_instr *instr)
 
                                 uniform_offset = (uintptr_t) (entry) - 1;
                                 uniform_offset += ctx->special_uniforms;
-                                printf("Unspecial so %d\n", uniform_offset);
                         }
 
                         if (uniform_offset < ctx->uniform_cutoff) {
