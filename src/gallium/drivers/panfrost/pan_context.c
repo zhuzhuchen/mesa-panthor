@@ -2711,6 +2711,7 @@ panfrost_tile_texture(struct panfrost_context *ctx, struct panfrost_resource *rs
         }
 
         rsrc->entry[level] = p_entry;
+        rsrc->gpu[level] = backing->gpu + p_entry->offset;
 
         if (rsrc->tiled) {
                 /* Run actual texture swizzle, writing directly to the mapped
