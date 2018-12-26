@@ -44,8 +44,8 @@
 #include "pan_blend_shaders.h"
 #include "pan_wallpaper.h"
 
-/* Persistent command-streams */
-#define HEAP_PERISTENT 0
+/* Texture memory */
+#define HEAP_TEXTURE 0
 
 static void
 panfrost_flush(
@@ -2697,7 +2697,7 @@ panfrost_tile_texture(struct panfrost_context *ctx, struct panfrost_resource *rs
         int swizzled_sz = panfrost_swizzled_size(width, height, rsrc->bytes_per_pixel);
 
         /* Allocate the transfer given that known size but do not copy */
-        struct pb_slab_entry *entry = pb_slab_alloc(&ctx->slabs, swizzled_sz, 0);
+        struct pb_slab_entry *entry = pb_slab_alloc(&ctx->slabs, swizzled_sz, HEAP_TEXTURE);
         struct panfrost_memory_entry *p_entry = (struct panfrost_memory_entry *) entry;
         struct panfrost_memory *backing = (struct panfrost_memory *) entry->slab;
         uint8_t *swizzled = backing->cpu + p_entry->offset;
@@ -2920,22 +2920,11 @@ static const struct u_transfer_vtbl transfer_vtbl = {
         //.get_stencil              = panfrost_resource_get_stencil,
 };
 
-#if 0
-struct mali_ptr
-panfrost_upload_slabbed(struct panfrost_context *ctx, int heap, const void *data, size_t sz, bool no_pad)
-{
-        struct pb_slab_entry *entry = pb_slab_alloc(&ctx->slabs, sz, heap);
-}
-#endif
-
 static struct pb_slab *
 panfrost_slab_alloc(void *priv, unsigned heap, unsigned entry_size, unsigned group_index)
 {
         struct panfrost_context *ctx = (struct panfrost_context *) priv;
         struct panfrost_memory *mem = CALLOC_STRUCT(panfrost_memory);
-
-        /* STUB */
-        printf("stub: Tried to allocate to %d of %d for %d\n", heap, entry_size, group_index);
 
         size_t slab_size = (1 << 25); /* One greater than the max entry size */
 
@@ -2973,7 +2962,7 @@ static void
 panfrost_slab_free(void *priv, struct pb_slab *slab)
 {
         /* STUB */
-        struct panfrost_memory *mem = (struct panfrost_memory *) slab;
+        //struct panfrost_memory *mem = (struct panfrost_memory *) slab;
         printf("stub: Tried to free slab\n");
 }
 
@@ -3092,7 +3081,7 @@ panfrost_create_context(struct pipe_screen *screen, void *priv, unsigned flags)
                         12, /* 2^12 = 4096 = PAGE_SIZE -- allocate on pages */
                         18 + 6, /* 2^18 = 256 KB, same as AMDGPU */
 
-                        1, /* We only have one heap for now (persistent commandstreams) */
+                        1, /* We only have one heap for now (texture memory) */
 
                         ctx,
 
