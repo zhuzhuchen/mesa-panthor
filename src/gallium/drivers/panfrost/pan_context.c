@@ -1186,19 +1186,17 @@ panfrost_emit_for_draw(struct panfrost_context *ctx, bool with_vertex_data)
                 /* Upload samplers back to back, no padding */
 
                 for (int t = 0; t <= PIPE_SHADER_FRAGMENT; ++t) {
-                        mali_ptr samplers_base = 0;
+                        struct panfrost_transfer transfer = panfrost_allocate_transient(ctx, sizeof(struct mali_sampler_descriptor) * ctx->sampler_count[t]);
+                        struct mali_sampler_descriptor *desc = (struct mali_sampler_descriptor *) transfer.cpu;
 
                         for (int i = 0; i < ctx->sampler_count[t]; ++i) {
-                                if (i)
-                                        panfrost_upload_sequential(&ctx->cmdstream, &ctx->samplers[t][i]->hw, sizeof(struct mali_sampler_descriptor));
-                                else
-                                        samplers_base = panfrost_upload(&ctx->cmdstream, &ctx->samplers[t][i]->hw, sizeof(struct mali_sampler_descriptor), true);
+                                desc[i] = ctx->samplers[t][i]->hw;
                         }
 
                         if (t == PIPE_SHADER_FRAGMENT)
-                                ctx->payload_tiler.postfix.sampler_descriptor = samplers_base;
+                                ctx->payload_tiler.postfix.sampler_descriptor = transfer.gpu;
                         else if (t == PIPE_SHADER_VERTEX)
-                                ctx->payload_vertex.postfix.sampler_descriptor = samplers_base;
+                                ctx->payload_vertex.postfix.sampler_descriptor = transfer.gpu;
                         else
                                 assert(0);
                 }
