@@ -3078,8 +3078,8 @@ panfrost_create_context(struct pipe_screen *screen, void *priv, unsigned flags)
         pb_slabs_init(&ctx->slabs,
 
                         /* slabs from 2^min to 2^max */
-                        12, /* 2^12 = 4096 = PAGE_SIZE -- allocate on pages */
-                        18 + 6, /* 2^18 = 256 KB, same as AMDGPU */
+                        10, /* 2^10 = 1024 */
+                        24, /* 2^24 = 16 MB, why would you need more? T_T */
 
                         1, /* We only have one heap for now (texture memory) */
 
