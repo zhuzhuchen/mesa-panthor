@@ -36,11 +36,10 @@
  * into whereever we left off. If there isn't space, we allocate a new entry
  * into the pool and copy there */
 
-mali_ptr
-panfrost_upload_transient(struct panfrost_context *ctx, const void *data, size_t sz)
+struct panfrost_transfer
+panfrost_allocate_transient(struct panfrost_context *ctx, size_t sz)
 {
         /* Pad the size */
-        size_t original_size = sz;
         sz = ALIGN(sz, ALIGNMENT);
 
         /* Check if there is room in the current entry */
@@ -71,17 +70,25 @@ panfrost_upload_transient(struct panfrost_context *ctx, const void *data, size_t
         /* We have an entry we can write to, so do the upload! */
         struct panfrost_memory_entry *p_entry = pool->entries[pool->entry_index];
         struct panfrost_memory *backing = (struct panfrost_memory *) p_entry->base.slab;
-        uint8_t *dest = backing->cpu + p_entry->offset + pool->entry_offset;
 
-        memcpy(dest, data, original_size);
-
-        /* Return the GPU pointer */
-        mali_ptr out = backing->gpu + p_entry->offset + pool->entry_offset;
+        struct panfrost_transfer ret = {
+                .cpu = backing->cpu + p_entry->offset + pool->entry_offset,
+                .gpu = backing->gpu + p_entry->offset + pool->entry_offset
+        };
 
         /* Advance the pointer */
         pool->entry_offset += sz;
 
-        return out;
+        return ret;
+
+}
+
+mali_ptr
+panfrost_upload_transient(struct panfrost_context *ctx, const void *data, size_t sz)
+{
+        struct panfrost_transfer transfer = panfrost_allocate_transient(ctx, sz);
+        memcpy(transfer.cpu, data, sz);
+        return transfer.gpu;
 }
 
 // TODO: An actual allocator, perhaps

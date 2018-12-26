@@ -493,30 +493,32 @@ static void
 panfrost_attach_vt_framebuffer(struct panfrost_context *ctx)
 {
 #ifdef MFBD
-        mali_ptr who_knows = panfrost_reserve(&ctx->cmdstream, 1024);
-#endif
-
-        mali_ptr framebuffer_1_p = panfrost_upload(&ctx->cmdstream, &ctx->vt_framebuffer, sizeof(ctx->vt_framebuffer), true) | PANFROST_DEFAULT_FBD;
-
-#ifdef MFBD
-        /* MFBD needs a sequential semi-render target upload */
-
-        /* What this is, is beyond me for now */
+        /* MFBD needs a sequential semi-render target upload, but this is, is beyond me for now */
         struct bifrost_render_target rts_list[] = {
                 {
                         .chunknown = {
                                 .unk = 0x30005,
-                                .pointer = who_knows,
                         },
                         .framebuffer = ctx->misc_0.gpu,
                         .zero2 = 0x3,
                 },
         };
 
-        panfrost_upload_sequential(&ctx->cmdstream, rts_list, sizeof(rts_list));
+        /* Allocate memory for the three components */
+        int size = 1024 + sizeof(ctx->vt_framebuffer) + sizeof(rts_list);
+        struct panfrost_transfer transfer = panfrost_allocate_transient(ctx, size);
+
+        /* Opaque 1024-block */
+        rts_list[0].chunknown.pointer = transfer.gpu;
+
+        mali_ptr framebuffer = (transfer.gpu + 1024) | PANFROST_DEFAULT_FBD;
+        memcpy(transfer.cpu + 1024, &ctx->vt_framebuffer, sizeof(ctx->vt_framebuffer));
+        memcpy(transfer.cpu + 1024 + sizeof(ctx->vt_framebuffer), rts_list, sizeof(rts_list));
+#else
+        mali_ptr framebuffer = panfrost_upload_transient(ctx, &ctx->vt_framebuffer, sizeof(ctx->vt_framebuffer)) | PANFROST_DEFAULT_FBD;
 #endif
-        ctx->payload_vertex.postfix.framebuffer = framebuffer_1_p;
-        ctx->payload_tiler.postfix.framebuffer = framebuffer_1_p;
+        ctx->payload_vertex.postfix.framebuffer = framebuffer;
+        ctx->payload_tiler.postfix.framebuffer = framebuffer;
 }
 
 static void
