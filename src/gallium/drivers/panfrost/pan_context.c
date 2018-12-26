@@ -1174,7 +1174,7 @@ panfrost_emit_for_draw(struct panfrost_context *ctx, bool with_vertex_data)
         ctx->dirty |= PAN_DIRTY_VIEWPORT; /* TODO: Viewport dirty track */
 
         if (ctx->dirty & PAN_DIRTY_VIEWPORT) {
-                ctx->payload_tiler.postfix.viewport = panfrost_upload(&ctx->cmdstream, &ctx->viewport, sizeof(struct mali_viewport), false);
+                ctx->payload_tiler.postfix.viewport = panfrost_upload_transient(ctx, &ctx->viewport, sizeof(struct mali_viewport));
         }
 
         if (ctx->dirty & PAN_DIRTY_SAMPLERS) {
@@ -1231,14 +1231,14 @@ panfrost_emit_for_draw(struct panfrost_context *ctx, bool with_vertex_data)
                                         ctx->sampler_views[t][i]->hw.nr_mipmap_levels = 0;
                                 }
 
-                                trampolines[i] = panfrost_upload(&ctx->cmdstream, &ctx->sampler_views[t][i]->hw, sizeof(struct mali_texture_descriptor), false);
+                                trampolines[i] = panfrost_upload_transient(ctx, &ctx->sampler_views[t][i]->hw, sizeof(struct mali_texture_descriptor));
 
                                 /* Restore */
                                 ctx->sampler_views[t][i]->hw.nr_mipmap_levels = s;
                                 ctx->sampler_views[t][i]->hw.unknown3A = 0;
                         }
 
-                        mali_ptr trampoline = panfrost_upload(&ctx->cmdstream, trampolines, sizeof(uint64_t) * ctx->sampler_view_count[t], false);
+                        mali_ptr trampoline = panfrost_upload_transient(ctx, trampolines, sizeof(uint64_t) * ctx->sampler_view_count[t]);
 
                         if (t == PIPE_SHADER_FRAGMENT)
                                 ctx->payload_tiler.postfix.texture_trampoline = trampoline;
@@ -1312,7 +1312,7 @@ panfrost_emit_for_draw(struct panfrost_context *ctx, bool with_vertex_data)
                                 },
                         };
 
-                        mali_ptr ubufs = panfrost_upload(&ctx->cmdstream, uniform_buffers, sizeof(uniform_buffers), false);
+                        mali_ptr ubufs = panfrost_upload_transient(ctx, uniform_buffers, sizeof(uniform_buffers));
                         postfix->uniforms = address;
                         postfix->uniform_buffers = ubufs;
 
@@ -1688,7 +1688,7 @@ panfrost_draw_vbo(
 
                 const uint8_t *ibuf8 = panfrost_get_index_buffer_raw(info);
 
-                ctx->payload_tiler.prefix.indices = panfrost_upload(&ctx->cmdstream, ibuf8 + (info->start * info->index_size), info->count * info->index_size, true);
+                ctx->payload_tiler.prefix.indices = panfrost_upload_transient(ctx, ibuf8 + (info->start * info->index_size), info->count * info->index_size);
         } else {
                 /* Index count == vertex count, if no indexing is applied, as
                  * if it is internally indexed in the expected order */
