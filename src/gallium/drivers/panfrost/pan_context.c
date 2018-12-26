@@ -2697,6 +2697,11 @@ panfrost_tile_texture(struct panfrost_context *ctx, struct panfrost_resource *rs
         int swizzled_sz = panfrost_swizzled_size(width, height, rsrc->bytes_per_pixel);
 
         /* Allocate the transfer given that known size but do not copy */
+        struct pb_slab_entry *entry = pb_slab_alloc(&ctx->slabs, swizzled_sz, 0);
+        struct panfrost_memory_entry *p_entry = (struct panfrost_memory_entry *) entry;
+        struct panfrost_memory *backing = (struct panfrost_memory *) entry->slab;
+        uint8_t *p_swizzled = backing->cpu + p_entry->offset;
+
         uint8_t *swizzled = panfrost_allocate_transfer(&ctx->textures, swizzled_sz, &rsrc->gpu[level]);
 
         if (rsrc->tiled) {
@@ -2924,7 +2929,7 @@ panfrost_slab_alloc(void *priv, unsigned heap, unsigned entry_size, unsigned gro
         /* STUB */
         printf("stub: Tried to allocate to %d of %d for %d\n", heap, entry_size, group_index);
 
-        size_t slab_size = (1 << 19); /* One greater than the max entry size */
+        size_t slab_size = (1 << 25); /* One greater than the max entry size */
 
         mem->slab.num_entries = slab_size / entry_size;
         mem->slab.num_free = mem->slab.num_entries;
@@ -2941,7 +2946,7 @@ panfrost_slab_alloc(void *priv, unsigned heap, unsigned entry_size, unsigned gro
                 LIST_ADDTAIL(&entry->base.head, &mem->slab.free);
         }
 
-        return (struct pb_slab *) mem;
+        return &mem->slab;
 }
 
 static bool
@@ -3073,7 +3078,7 @@ panfrost_create_context(struct pipe_screen *screen, void *priv, unsigned flags)
 
                         /* slabs from 2^min to 2^max */
                         12, /* 2^12 = 4096 = PAGE_SIZE -- allocate on pages */
-                        18, /* 2^18 = 256 KB, same as AMDGPU */
+                        18 + 6, /* 2^18 = 256 KB, same as AMDGPU */
 
                         1, /* We only have one heap for now (persistent commandstreams) */
 
