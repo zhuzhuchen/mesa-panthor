@@ -44,9 +44,6 @@
 #include "pan_blend_shaders.h"
 #include "pan_wallpaper.h"
 
-/* Texture memory */
-#define HEAP_TEXTURE 0
-
 static void
 panfrost_flush(
         struct pipe_context *pipe,
@@ -3081,7 +3078,7 @@ panfrost_create_context(struct pipe_screen *screen, void *priv, unsigned flags)
                         10, /* 2^10 = 1024 */
                         24, /* 2^24 = 16 MB, why would you need more? T_T */
 
-                        1, /* We only have one heap for now (texture memory) */
+                        2, /* Number of heaps */
 
                         ctx,
 

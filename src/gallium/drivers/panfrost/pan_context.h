@@ -75,6 +75,25 @@ struct panfrost_constant_buffer {
         void *buffer;
 };
 
+#define PANFROST_MAX_TRANSIENT_ENTRIES 64
+
+struct panfrost_transient_pool {
+        /* Memory blocks in the pool */
+        struct panfrost_memory_entry *entries[PANFROST_MAX_TRANSIENT_ENTRIES];
+
+        /* Number of entries we own */
+        unsigned entry_count;
+
+        /* Current entry that we are writing to, zero-indexed, strictly less than entry_count */
+        unsigned entry_index;
+
+        /* Number of bytes into the current entry we are */
+        off_t entry_offset;
+
+        /* Entry size (all entries must be homogenous) */
+        size_t entry_size;
+};
+
 struct panfrost_context {
         /* Gallium context */
         struct pipe_context base;
@@ -88,6 +107,9 @@ struct panfrost_context {
         int cmdstream_i;
 
         struct panfrost_memory cmdstream;
+
+        struct panfrost_transient_pool transient_pools[2];
+        /* Indexed by cmdstream_i */
 
         struct panfrost_memory cmdstream_persistent;
         struct panfrost_memory shaders;
