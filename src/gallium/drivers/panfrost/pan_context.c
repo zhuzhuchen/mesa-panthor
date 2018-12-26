@@ -2706,6 +2706,7 @@ panfrost_tile_texture(struct panfrost_context *ctx, struct panfrost_resource *rs
          * previous upload of the resource), free that one so we don't leak */
 
         if (rsrc->entry[level] != NULL) {
+                p_entry->freed = true;
                 pb_slab_free(&ctx->slabs, &p_entry->base);
         }
 
@@ -2964,9 +2965,8 @@ panfrost_slab_alloc(void *priv, unsigned heap, unsigned entry_size, unsigned gro
 static bool
 panfrost_slab_can_reclaim(void *priv, struct pb_slab_entry *entry)
 {
-        /* STUB */
-        printf("Can reclaim? Dunno!\n");
-        return false; 
+        struct panfrost_memory_entry *p_entry = (struct panfrost_memory_entry *) entry;
+        return p_entry->freed;
 }
 
 static void

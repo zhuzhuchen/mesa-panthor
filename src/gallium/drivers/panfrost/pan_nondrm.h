@@ -64,6 +64,9 @@ struct panfrost_memory_entry {
         /* Subclass */
         struct pb_slab_entry base;
 
+        /* Have we been freed? */
+        bool freed;
+
         /* Offset into the slab of the entry */
         off_t offset;
 };
