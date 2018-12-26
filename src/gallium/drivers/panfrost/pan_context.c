@@ -567,9 +567,12 @@ panfrost_invalidate_frame(struct panfrost_context *ctx)
         /* Reset varyings allocated */
         ctx->varying_height = 0;
 
-        /* The cmdstream is dirty every frame; the only bits worth preserving
+        /* The transient cmdstream is dirty every frame; the only bits worth preserving
          * (textures, shaders, etc) are in other buffers anyways */
         ctx->cmdstream.stack_bottom = 0;
+
+        ctx->transient_pools[ctx->cmdstream_i].entry_index = 0;
+        ctx->transient_pools[ctx->cmdstream_i].entry_offset = 0;
 
         /* Regenerate payloads */
         panfrost_attach_vt_framebuffer(ctx);
