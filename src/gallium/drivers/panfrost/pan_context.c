@@ -2894,8 +2894,17 @@ panfrost_setup_hardware(struct panfrost_context *ctx)
         panfrost_setup_framebuffer(ctx, 2048, 1280);
 #endif
 
-        for (int i = 0; i < sizeof(ctx->cmdstream_rings) / sizeof(ctx->cmdstream_rings[0]); ++i)
+        for (int i = 0; i < sizeof(ctx->cmdstream_rings) / sizeof(ctx->cmdstream_rings[0]); ++i) {
                 panfrost_allocate_slab(ctx, &ctx->cmdstream_rings[i], 8 * 64 * 8 * 16, true, true, 0, 0, 0);
+
+                /* Allocate the beginning of the transient pool */
+                int entry_size = 4096*64; /* 256kb */
+
+                ctx->transient_pools[i].entry_size = entry_size;
+                ctx->transient_pools[i].entry_count = 1;
+
+                ctx->transient_pools[i].entries[0] = (struct panfrost_memory_entry *) pb_slab_alloc(&ctx->slabs, entry_size, HEAP_TRANSIENT);
+        }
 
         panfrost_allocate_slab(ctx, &ctx->cmdstream_persistent, 8 * 64 * 8 * 2, true, true, 0, 0, 0);
         panfrost_allocate_slab(ctx, &ctx->scratchpad, 64, true, true, 0, 0, 0);
