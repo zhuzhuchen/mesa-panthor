@@ -40,6 +40,7 @@ mali_ptr
 panfrost_upload_transient(struct panfrost_context *ctx, const void *data, size_t sz)
 {
         /* Pad the size */
+        size_t original_size = sz;
         sz = ALIGN(sz, ALIGNMENT);
 
         /* Check if there is room in the current entry */
@@ -72,7 +73,7 @@ panfrost_upload_transient(struct panfrost_context *ctx, const void *data, size_t
         struct panfrost_memory *backing = (struct panfrost_memory *) p_entry->base.slab;
         uint8_t *dest = backing->cpu + p_entry->offset + pool->entry_offset;
 
-        memcpy(dest, data, sz);
+        memcpy(dest, data, original_size);
 
         /* Return the GPU pointer */
         mali_ptr out = backing->gpu + p_entry->offset + pool->entry_offset;
