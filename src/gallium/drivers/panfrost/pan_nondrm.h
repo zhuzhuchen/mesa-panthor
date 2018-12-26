@@ -32,6 +32,7 @@
 #include <panfrost-job.h>
 #include <linux/ioctl.h>
 #include "pan_slowfb.h"
+#include "pipebuffer/pb_slab.h"
 
 int pandev_open(void);
 
@@ -49,6 +50,10 @@ void
 panfrost_shader_compile(struct panfrost_context *ctx, struct mali_shader_meta *meta, const char *src, int type, struct panfrost_shader_state *state);
 
 struct panfrost_memory {
+        /* Subclassing slab object */
+        struct pb_slab slab;
+
+        /* Backing for the slab in memory */
         uint8_t *cpu;
         mali_ptr gpu;
         int stack_bottom;

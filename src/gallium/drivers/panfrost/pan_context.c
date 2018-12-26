@@ -2905,6 +2905,29 @@ static const struct u_transfer_vtbl transfer_vtbl = {
         //.get_stencil              = panfrost_resource_get_stencil,
 };
 
+static struct pb_slab *
+panfrost_slab_alloc(void *priv, unsigned heap, unsigned entry_size, unsigned group_index)
+{
+        struct panfrost_memory *mem = CALLOC_STRUCT(panfrost_memory);
+
+        /* STUB */
+
+        return (struct pb_slab *) mem;
+}
+
+static bool
+panfrost_slab_can_reclaim(void *priv, struct pb_slab_entry *slab)
+{
+        /* STUB */
+        return false; 
+}
+
+static void
+panfrost_slab_free(void *priv, struct pb_slab *entry)
+{
+        /* STUB */
+}
+
 /* New context creation, which also does hardware initialisation since I don't
  * know the better way to structure this :smirk: */
 
@@ -3013,6 +3036,20 @@ panfrost_create_context(struct pipe_screen *screen, void *priv, unsigned flags)
 
         ctx->blitter = util_blitter_create(gallium);
         assert(ctx->blitter);
+
+        pb_slabs_init(&ctx->slabs,
+
+                        /* slabs from 2^min to 2^max */
+                        12, /* 2^12 = 4096 = PAGE_SIZE -- allocate on pages */
+                        18, /* 2^18 = 256 KB, same as AMDGPU */
+
+                        1, /* We only have one heap for now */
+
+                        ctx,
+
+                        panfrost_slab_can_reclaim,
+                        panfrost_slab_alloc,
+                        panfrost_slab_free);
 
         /* Prepare for render! */
         panfrost_setup_hardware(ctx);

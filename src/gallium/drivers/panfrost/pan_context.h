@@ -193,6 +193,9 @@ struct panfrost_context {
         struct pipe_blend_color blend_color;
         struct pipe_depth_stencil_alpha_state *depth_stencil;
         struct pipe_stencil_ref stencil_ref;
+
+        /* Memory management is based on subdividing slabs with AMD's allocator */
+        struct pb_slabs slabs;
 };
 
 /* Corresponds to the CSO */
