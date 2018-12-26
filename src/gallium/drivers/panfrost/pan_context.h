@@ -293,6 +293,9 @@ struct panfrost_resource {
 
         mali_ptr gpu[MAX_MIP_LEVELS];
 
+        /* Memory entry corresponding to gpu above */
+        struct panfrost_memory_entry *entry[MAX_MIP_LEVELS];
+
         /* Is something other than level 0 ever written? */
         bool is_mipmap;
 

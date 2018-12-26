@@ -2702,6 +2702,15 @@ panfrost_tile_texture(struct panfrost_context *ctx, struct panfrost_resource *rs
         struct panfrost_memory *backing = (struct panfrost_memory *) entry->slab;
         uint8_t *swizzled = backing->cpu + p_entry->offset;
 
+        /* Save the entry. But if there was already an entry here (from a
+         * previous upload of the resource), free that one so we don't leak */
+
+        if (rsrc->entry[level] != NULL) {
+                pb_slab_free(&ctx->slabs, &p_entry->base);
+        }
+
+        rsrc->entry[level] = p_entry;
+
         if (rsrc->tiled) {
                 /* Run actual texture swizzle, writing directly to the mapped
                  * GPU chunk we allocated */
