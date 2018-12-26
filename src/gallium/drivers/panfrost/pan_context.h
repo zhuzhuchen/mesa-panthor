@@ -165,6 +165,10 @@ struct panfrost_context {
         mali_ptr vertex_jobs[MAX_DRAW_CALLS];
         mali_ptr tiler_jobs[MAX_DRAW_CALLS];
 
+        struct mali_job_descriptor_header *u_set_value_job;
+        struct mali_job_descriptor_header *u_vertex_jobs[MAX_DRAW_CALLS];
+        struct mali_job_descriptor_header *u_tiler_jobs[MAX_DRAW_CALLS];
+
         unsigned vertex_job_count;
         unsigned tiler_job_count;
 
@@ -364,9 +368,7 @@ panfrost_resource_create_front(struct pipe_screen *screen,
 void
 panfrost_emit_for_draw(struct panfrost_context *ctx, bool with_vertex_data);
 
-mali_ptr
+struct panfrost_transfer
 panfrost_vertex_tiler_job(struct panfrost_context *ctx, bool is_tiler, bool is_elided_tiler);
-
-#define JOB_DESC(ptr) ((struct mali_job_descriptor_header *) (uintptr_t) (ptr - mem.gpu + (uintptr_t) mem.cpu))
 
 #endif

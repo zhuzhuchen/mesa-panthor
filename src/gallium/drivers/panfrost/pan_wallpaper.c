@@ -245,8 +245,10 @@ panfrost_draw_wallpaper(struct pipe_context *pipe)
         ctx->payload_tiler.postfix.varying_meta = panfrost_upload(&ctx->cmdstream, varying_meta, sizeof(varying_meta), true);
 
         /* Emit the tiler job */
-        mali_ptr tiler_job = panfrost_vertex_tiler_job(ctx, true, true);
-        ctx->tiler_jobs[ctx->tiler_job_count++] = tiler_job;
+        struct panfrost_transfer tiler = panfrost_vertex_tiler_job(ctx, true, true);
+        struct mali_job_descriptor_header *jd = (struct mali_job_descriptor_header *) tiler.cpu;
+        ctx->u_tiler_jobs[ctx->tiler_job_count] = jd;
+        ctx->tiler_jobs[ctx->tiler_job_count++] = tiler.gpu;
         ctx->draw_count++;
 
         /* Okay, so we have the tiler job emitted. Since we set elided_tiler
@@ -259,7 +261,7 @@ panfrost_draw_wallpaper(struct pipe_context *pipe)
 
         if (ctx->tiler_job_count > 1) {
                 struct panfrost_memory mem = ctx->cmdstream;
-                JOB_DESC(ctx->tiler_jobs[0])->job_dependency_index_2 = JOB_DESC(tiler_job)->job_index;
+                ctx->u_tiler_jobs[0]->job_dependency_index_2 = jd->job_index;
         }
 
         printf("Wallpaper boop\n");

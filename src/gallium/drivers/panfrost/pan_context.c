@@ -851,7 +851,7 @@ panfrost_default_shader_backend(struct panfrost_context *ctx)
  * Mali parlance, "fragment" refers to framebuffer writeout). Clear it for
  * vertex jobs. */
 
-mali_ptr
+struct panfrost_transfer
 panfrost_vertex_tiler_job(struct panfrost_context *ctx, bool is_tiler, bool is_elided_tiler)
 {
         /* Each draw call corresponds to two jobs, and we want to offset to leave room for the set-value job */
@@ -897,35 +897,35 @@ panfrost_vertex_tiler_job(struct panfrost_context *ctx, bool is_tiler, bool is_e
         int offset = 4;
 
 #endif
-
-        mali_ptr job_p = panfrost_upload(&ctx->cmdstream, &job, sizeof(job) - offset, true);
-
-        panfrost_upload_sequential(&ctx->cmdstream, payload, sizeof(*payload));
-
-        return job_p;
+        struct panfrost_transfer transfer = panfrost_allocate_transient(ctx, sizeof(job) + sizeof(*payload));
+        memcpy(transfer.cpu, &job, sizeof(job));
+        memcpy(transfer.cpu + sizeof(job) - offset, payload, sizeof(*payload));
+        return transfer;
 }
 
 /* Generates a set value job. It's unclear what exactly this does, why it's
  * necessary, and when to call it. */
 
-static mali_ptr
+static void
 panfrost_set_value_job(struct panfrost_context *ctx)
 {
-        struct mali_job_descriptor_header job_0 = {
+        struct mali_job_descriptor_header job = {
                 .job_type = JOB_TYPE_SET_VALUE,
                 .job_descriptor_size = 1,
                 .job_index = 1 + (2 * ctx->draw_count),
         };
 
-        struct mali_payload_set_value payload_0 = {
+        struct mali_payload_set_value payload = {
                 .out = ctx->misc_0.gpu,
                 .unknown = 0x3,
         };
 
-        mali_ptr job_0_p = panfrost_upload(&ctx->cmdstream, &job_0, sizeof(job_0), true);
-        panfrost_upload_sequential(&ctx->cmdstream, &payload_0, sizeof(payload_0));
-
-        return job_0_p;
+        struct panfrost_transfer transfer = panfrost_allocate_transient(ctx, sizeof(job) + sizeof(payload));
+        memcpy(transfer.cpu, &job, sizeof(job));
+        memcpy(transfer.cpu + sizeof(job), &payload, sizeof(payload));
+        
+        ctx->u_set_value_job = (struct mali_job_descriptor_header *) transfer.cpu;
+        ctx->set_value_job = transfer.gpu;
 }
 
 /* Generate a fragment job. This should be called once per frame. (According to
@@ -983,10 +983,10 @@ panfrost_fragment_job(struct panfrost_context *ctx)
          * shared with 64-bit Bifrost systems, and accordingly there is 4-bytes
          * of zero padding in between. */
 
-        mali_ptr job_pointer = panfrost_upload(&ctx->cmdstream, &header, sizeof(header), true);
-        panfrost_upload_sequential(&ctx->cmdstream, &payload, sizeof(payload));
-
-        return job_pointer;
+        struct panfrost_transfer transfer = panfrost_allocate_transient(ctx, sizeof(header) + sizeof(payload));
+        memcpy(transfer.cpu, &header, sizeof(header));
+        memcpy(transfer.cpu + sizeof(header), &payload, sizeof(payload));
+        return transfer.gpu;
 }
 
 /* Emits attributes and varying descriptors, which should be called every draw,
@@ -1343,8 +1343,15 @@ panfrost_queue_draw(struct panfrost_context *ctx)
         /* Handle dirty flags now */
         panfrost_emit_for_draw(ctx, true);
 
-        ctx->vertex_jobs[ctx->vertex_job_count++] = panfrost_vertex_tiler_job(ctx, false, false);
-        ctx->tiler_jobs[ctx->tiler_job_count++] = panfrost_vertex_tiler_job(ctx, true, false);
+        struct panfrost_transfer vertex = panfrost_vertex_tiler_job(ctx, false, false);
+        struct panfrost_transfer tiler = panfrost_vertex_tiler_job(ctx, true, false);
+
+        ctx->u_vertex_jobs[ctx->vertex_job_count] = (struct mali_job_descriptor_header *) vertex.cpu;
+        ctx->vertex_jobs[ctx->vertex_job_count++] = vertex.gpu;
+
+        ctx->u_tiler_jobs[ctx->tiler_job_count] = (struct mali_job_descriptor_header *) tiler.cpu;
+        ctx->tiler_jobs[ctx->tiler_job_count++] = tiler.gpu;
+
         ctx->draw_count++;
 }
 
@@ -1353,12 +1360,12 @@ panfrost_queue_draw(struct panfrost_context *ctx)
  * unknown reasons. */
 
 static void
-panfrost_link_job_pair(struct panfrost_memory mem, mali_ptr first, mali_ptr next)
+panfrost_link_job_pair(struct panfrost_memory mem, struct mali_job_descriptor_header *first, mali_ptr next)
 {
-        if (JOB_DESC(first)->job_descriptor_size)
-                JOB_DESC(first)->next_job_64 = (u64) (uintptr_t) next;
+        if (first->job_descriptor_size)
+                first->next_job_64 = (u64) (uintptr_t) next;
         else
-                JOB_DESC(first)->next_job_32 = (u32) (uintptr_t) next;
+                first->next_job_32 = (u32) (uintptr_t) next;
 }
 
 static void
@@ -1366,28 +1373,28 @@ panfrost_link_jobs(struct panfrost_context *ctx)
 {
         if (ctx->draw_count) {
                 /* Generate the set_value_job */
-                ctx->set_value_job = panfrost_set_value_job(ctx);
+                panfrost_set_value_job(ctx);
 
                 struct panfrost_memory mem = ctx->cmdstream;
 
                 /* Have the first vertex job depend on the set value job */
-                JOB_DESC(ctx->vertex_jobs[0])->job_dependency_index_1 = JOB_DESC(ctx->set_value_job)->job_index;
+                ctx->u_vertex_jobs[0]->job_dependency_index_1 = ctx->u_set_value_job->job_index;
 
                 /* SV -> V */
-                panfrost_link_job_pair(mem, ctx->set_value_job, ctx->vertex_jobs[0]);
+                panfrost_link_job_pair(mem, ctx->u_set_value_job, ctx->vertex_jobs[0]);
         }
 
         /* V -> V/T ; T -> T/null */
         for (int i = 0; i < ctx->vertex_job_count; ++i) {
                 bool isLast = (i + 1) == ctx->vertex_job_count;
 
-                panfrost_link_job_pair(ctx->cmdstream, ctx->vertex_jobs[i], isLast ? ctx->tiler_jobs[0]: ctx->vertex_jobs[i + 1]);
+                panfrost_link_job_pair(ctx->cmdstream, ctx->u_vertex_jobs[i], isLast ? ctx->tiler_jobs[0]: ctx->vertex_jobs[i + 1]);
         }
 
         /* T -> T/null */
         for (int i = 0; i < ctx->tiler_job_count; ++i) {
                 bool isLast = (i + 1) == ctx->tiler_job_count;
-                panfrost_link_job_pair(ctx->cmdstream, ctx->tiler_jobs[i], isLast ? 0 : ctx->tiler_jobs[i + 1]);
+                panfrost_link_job_pair(ctx->cmdstream, ctx->u_tiler_jobs[i], isLast ? 0 : ctx->tiler_jobs[i + 1]);
         }
 }
 
