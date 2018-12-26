@@ -2901,7 +2901,7 @@ panfrost_setup_hardware(struct panfrost_context *ctx)
                 panfrost_allocate_slab(ctx, &ctx->cmdstream_rings[i], 8 * 64 * 8 * 16, true, true, 0, 0, 0);
 
                 /* Allocate the beginning of the transient pool */
-                int entry_size = 4096*64; /* 256kb */
+                int entry_size = (1 << 22); /* 4MB */
 
                 ctx->transient_pools[i].entry_size = entry_size;
                 ctx->transient_pools[i].entry_count = 1;
