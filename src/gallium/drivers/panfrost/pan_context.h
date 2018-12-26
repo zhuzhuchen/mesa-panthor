@@ -90,7 +90,6 @@ struct panfrost_context {
         struct panfrost_memory cmdstream;
 
         struct panfrost_memory cmdstream_persistent;
-        struct panfrost_memory textures;
         struct panfrost_memory shaders;
         struct panfrost_memory scratchpad;
         struct panfrost_memory tiler_heap;
@@ -193,6 +192,9 @@ struct panfrost_context {
         struct pipe_blend_color blend_color;
         struct pipe_depth_stencil_alpha_state *depth_stencil;
         struct pipe_stencil_ref stencil_ref;
+
+        /* Memory management is based on subdividing slabs with AMD's allocator */
+        struct pb_slabs slabs;
 };
 
 /* Corresponds to the CSO */
@@ -290,6 +292,9 @@ struct panfrost_resource {
          * CPU-side, untiled texture from mesa */
 
         mali_ptr gpu[MAX_MIP_LEVELS];
+
+        /* Memory entry corresponding to gpu above */
+        struct panfrost_memory_entry *entry[MAX_MIP_LEVELS];
 
         /* Is something other than level 0 ever written? */
         bool is_mipmap;

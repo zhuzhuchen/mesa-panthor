@@ -44,6 +44,9 @@
 #include "pan_blend_shaders.h"
 #include "pan_wallpaper.h"
 
+/* Texture memory */
+#define HEAP_TEXTURE 0
+
 static void
 panfrost_flush(
         struct pipe_context *pipe,
@@ -2694,7 +2697,20 @@ panfrost_tile_texture(struct panfrost_context *ctx, struct panfrost_resource *rs
         int swizzled_sz = panfrost_swizzled_size(width, height, rsrc->bytes_per_pixel);
 
         /* Allocate the transfer given that known size but do not copy */
-        uint8_t *swizzled = panfrost_allocate_transfer(&ctx->textures, swizzled_sz, &rsrc->gpu[level]);
+        struct pb_slab_entry *entry = pb_slab_alloc(&ctx->slabs, swizzled_sz, HEAP_TEXTURE);
+        struct panfrost_memory_entry *p_entry = (struct panfrost_memory_entry *) entry;
+        struct panfrost_memory *backing = (struct panfrost_memory *) entry->slab;
+        uint8_t *swizzled = backing->cpu + p_entry->offset;
+
+        /* Save the entry. But if there was already an entry here (from a
+         * previous upload of the resource), free that one so we don't leak */
+
+        if (rsrc->entry[level] != NULL) {
+                p_entry->freed = true;
+                pb_slab_free(&ctx->slabs, &p_entry->base);
+        }
+
+        rsrc->entry[level] = p_entry;
 
         if (rsrc->tiled) {
                 /* Run actual texture swizzle, writing directly to the mapped
@@ -2885,7 +2901,6 @@ panfrost_setup_hardware(struct panfrost_context *ctx)
                 panfrost_allocate_slab(ctx, &ctx->cmdstream_rings[i], 8 * 64 * 8 * 16, true, true, 0, 0, 0);
 
         panfrost_allocate_slab(ctx, &ctx->cmdstream_persistent, 8 * 64 * 8 * 2, true, true, 0, 0, 0);
-        panfrost_allocate_slab(ctx, &ctx->textures, 4 * 64 * 64 * 4, true, true, 0, 0, 0);
         panfrost_allocate_slab(ctx, &ctx->scratchpad, 64, true, true, 0, 0, 0);
         panfrost_allocate_slab(ctx, &ctx->varying_mem, 16384, false, true, 0, 0, 0);
         panfrost_allocate_slab(ctx, &ctx->shaders, 4096, true, false, MALI_MEM_PROT_GPU_EX, 0, 0);
@@ -2904,6 +2919,52 @@ static const struct u_transfer_vtbl transfer_vtbl = {
         //.set_stencil              = panfrost_resource_set_stencil,
         //.get_stencil              = panfrost_resource_get_stencil,
 };
+
+static struct pb_slab *
+panfrost_slab_alloc(void *priv, unsigned heap, unsigned entry_size, unsigned group_index)
+{
+        struct panfrost_context *ctx = (struct panfrost_context *) priv;
+        struct panfrost_memory *mem = CALLOC_STRUCT(panfrost_memory);
+
+        size_t slab_size = (1 << 25); /* One greater than the max entry size */
+
+        mem->slab.num_entries = slab_size / entry_size;
+        mem->slab.num_free = mem->slab.num_entries;
+
+        LIST_INITHEAD(&mem->slab.free);
+        for (unsigned i = 0; i < mem->slab.num_entries; ++i) {
+                /* Create a slab entry */
+                struct panfrost_memory_entry *entry = CALLOC_STRUCT(panfrost_memory_entry);
+                entry->offset = entry_size * i;
+
+                entry->base.slab = &mem->slab;
+                entry->base.group_index = group_index;
+
+                LIST_ADDTAIL(&entry->base.head, &mem->slab.free);
+        }
+
+        /* Actually allocate the memory from kernel-space. Mapped, same_va, no
+         * special flags */
+
+        panfrost_allocate_slab(ctx, mem, slab_size / 4096, true, true, 0, 0, 0);
+
+        return &mem->slab;
+}
+
+static bool
+panfrost_slab_can_reclaim(void *priv, struct pb_slab_entry *entry)
+{
+        struct panfrost_memory_entry *p_entry = (struct panfrost_memory_entry *) entry;
+        return p_entry->freed;
+}
+
+static void
+panfrost_slab_free(void *priv, struct pb_slab *slab)
+{
+        /* STUB */
+        //struct panfrost_memory *mem = (struct panfrost_memory *) slab;
+        printf("stub: Tried to free slab\n");
+}
 
 /* New context creation, which also does hardware initialisation since I don't
  * know the better way to structure this :smirk: */
@@ -3013,6 +3074,20 @@ panfrost_create_context(struct pipe_screen *screen, void *priv, unsigned flags)
 
         ctx->blitter = util_blitter_create(gallium);
         assert(ctx->blitter);
+
+        pb_slabs_init(&ctx->slabs,
+
+                        /* slabs from 2^min to 2^max */
+                        10, /* 2^10 = 1024 */
+                        24, /* 2^24 = 16 MB, why would you need more? T_T */
+
+                        1, /* We only have one heap for now (texture memory) */
+
+                        ctx,
+
+                        panfrost_slab_can_reclaim,
+                        panfrost_slab_alloc,
+                        panfrost_slab_free);
 
         /* Prepare for render! */
         panfrost_setup_hardware(ctx);
