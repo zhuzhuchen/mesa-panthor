@@ -44,6 +44,9 @@
 #include "pan_blend_shaders.h"
 #include "pan_wallpaper.h"
 
+/* Persistent command-streams */
+#define HEAP_PERISTENT 0
+
 static void
 panfrost_flush(
         struct pipe_context *pipe,
@@ -2905,27 +2908,56 @@ static const struct u_transfer_vtbl transfer_vtbl = {
         //.get_stencil              = panfrost_resource_get_stencil,
 };
 
+#if 0
+struct mali_ptr
+panfrost_upload_slabbed(struct panfrost_context *ctx, int heap, const void *data, size_t sz, bool no_pad)
+{
+        struct pb_slab_entry *entry = pb_slab_alloc(&ctx->slabs, sz, heap);
+}
+#endif
+
 static struct pb_slab *
 panfrost_slab_alloc(void *priv, unsigned heap, unsigned entry_size, unsigned group_index)
 {
         struct panfrost_memory *mem = CALLOC_STRUCT(panfrost_memory);
 
         /* STUB */
+        printf("stub: Tried to allocate to %d of %d for %d\n", heap, entry_size, group_index);
+
+        size_t slab_size = (1 << 19); /* One greater than the max entry size */
+
+        mem->slab.num_entries = slab_size / entry_size;
+        mem->slab.num_free = mem->slab.num_entries;
+
+        LIST_INITHEAD(&mem->slab.free);
+        for (unsigned i = 0; i < mem->slab.num_entries; ++i) {
+                /* Create a slab entry */
+                struct panfrost_memory_entry *entry = CALLOC_STRUCT(panfrost_memory_entry);
+                entry->offset = entry_size * i;
+
+                entry->base.slab = &mem->slab;
+                entry->base.group_index = group_index;
+
+                LIST_ADDTAIL(&entry->base.head, &mem->slab.free);
+        }
 
         return (struct pb_slab *) mem;
 }
 
 static bool
-panfrost_slab_can_reclaim(void *priv, struct pb_slab_entry *slab)
+panfrost_slab_can_reclaim(void *priv, struct pb_slab_entry *entry)
 {
         /* STUB */
+        printf("Can reclaim? Dunno!\n");
         return false; 
 }
 
 static void
-panfrost_slab_free(void *priv, struct pb_slab *entry)
+panfrost_slab_free(void *priv, struct pb_slab *slab)
 {
         /* STUB */
+        struct panfrost_memory *mem = (struct panfrost_memory *) slab;
+        printf("stub: Tried to free slab\n");
 }
 
 /* New context creation, which also does hardware initialisation since I don't
@@ -3043,7 +3075,7 @@ panfrost_create_context(struct pipe_screen *screen, void *priv, unsigned flags)
                         12, /* 2^12 = 4096 = PAGE_SIZE -- allocate on pages */
                         18, /* 2^18 = 256 KB, same as AMDGPU */
 
-                        1, /* We only have one heap for now */
+                        1, /* We only have one heap for now (persistent commandstreams) */
 
                         ctx,
 

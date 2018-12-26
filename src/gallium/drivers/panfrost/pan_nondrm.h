@@ -60,6 +60,14 @@ struct panfrost_memory {
         size_t size;
 };
 
+struct panfrost_memory_entry {
+        /* Subclass */
+        struct pb_slab_entry base;
+
+        /* Offset into the slab of the entry */
+        off_t offset;
+};
+
 /* Functions for replay */
 mali_ptr pandev_upload(int cheating_offset, int *stack_bottom, mali_ptr base, void *base_map, const void *data, size_t sz, bool no_pad);
 mali_ptr pandev_upload_sequential(mali_ptr base, void *base_map, const void *data, size_t sz);
