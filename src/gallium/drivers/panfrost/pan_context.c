@@ -2702,8 +2702,6 @@ panfrost_tile_texture(struct panfrost_context *ctx, struct panfrost_resource *rs
         struct panfrost_memory *backing = (struct panfrost_memory *) entry->slab;
         uint8_t *swizzled = backing->cpu + p_entry->offset;
 
-        //uint8_t *swizzled = panfrost_allocate_transfer(&ctx->textures, swizzled_sz, &rsrc->gpu[level]);
-
         if (rsrc->tiled) {
                 /* Run actual texture swizzle, writing directly to the mapped
                  * GPU chunk we allocated */
@@ -2893,7 +2891,6 @@ panfrost_setup_hardware(struct panfrost_context *ctx)
                 panfrost_allocate_slab(ctx, &ctx->cmdstream_rings[i], 8 * 64 * 8 * 16, true, true, 0, 0, 0);
 
         panfrost_allocate_slab(ctx, &ctx->cmdstream_persistent, 8 * 64 * 8 * 2, true, true, 0, 0, 0);
-        //panfrost_allocate_slab(ctx, &ctx->textures, 4 * 64 * 64 * 4, true, true, 0, 0, 0);
         panfrost_allocate_slab(ctx, &ctx->scratchpad, 64, true, true, 0, 0, 0);
         panfrost_allocate_slab(ctx, &ctx->varying_mem, 16384, false, true, 0, 0, 0);
         panfrost_allocate_slab(ctx, &ctx->shaders, 4096, true, false, MALI_MEM_PROT_GPU_EX, 0, 0);
