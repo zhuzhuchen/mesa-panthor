@@ -2700,9 +2700,9 @@ panfrost_tile_texture(struct panfrost_context *ctx, struct panfrost_resource *rs
         struct pb_slab_entry *entry = pb_slab_alloc(&ctx->slabs, swizzled_sz, 0);
         struct panfrost_memory_entry *p_entry = (struct panfrost_memory_entry *) entry;
         struct panfrost_memory *backing = (struct panfrost_memory *) entry->slab;
-        uint8_t *p_swizzled = backing->cpu + p_entry->offset;
+        uint8_t *swizzled = backing->cpu + p_entry->offset;
 
-        uint8_t *swizzled = panfrost_allocate_transfer(&ctx->textures, swizzled_sz, &rsrc->gpu[level]);
+        //uint8_t *swizzled = panfrost_allocate_transfer(&ctx->textures, swizzled_sz, &rsrc->gpu[level]);
 
         if (rsrc->tiled) {
                 /* Run actual texture swizzle, writing directly to the mapped
@@ -2893,7 +2893,7 @@ panfrost_setup_hardware(struct panfrost_context *ctx)
                 panfrost_allocate_slab(ctx, &ctx->cmdstream_rings[i], 8 * 64 * 8 * 16, true, true, 0, 0, 0);
 
         panfrost_allocate_slab(ctx, &ctx->cmdstream_persistent, 8 * 64 * 8 * 2, true, true, 0, 0, 0);
-        panfrost_allocate_slab(ctx, &ctx->textures, 4 * 64 * 64 * 4, true, true, 0, 0, 0);
+        //panfrost_allocate_slab(ctx, &ctx->textures, 4 * 64 * 64 * 4, true, true, 0, 0, 0);
         panfrost_allocate_slab(ctx, &ctx->scratchpad, 64, true, true, 0, 0, 0);
         panfrost_allocate_slab(ctx, &ctx->varying_mem, 16384, false, true, 0, 0, 0);
         panfrost_allocate_slab(ctx, &ctx->shaders, 4096, true, false, MALI_MEM_PROT_GPU_EX, 0, 0);
@@ -2924,6 +2924,7 @@ panfrost_upload_slabbed(struct panfrost_context *ctx, int heap, const void *data
 static struct pb_slab *
 panfrost_slab_alloc(void *priv, unsigned heap, unsigned entry_size, unsigned group_index)
 {
+        struct panfrost_context *ctx = (struct panfrost_context *) priv;
         struct panfrost_memory *mem = CALLOC_STRUCT(panfrost_memory);
 
         /* STUB */
@@ -2945,6 +2946,11 @@ panfrost_slab_alloc(void *priv, unsigned heap, unsigned entry_size, unsigned gro
 
                 LIST_ADDTAIL(&entry->base.head, &mem->slab.free);
         }
+
+        /* Actually allocate the memory from kernel-space. Mapped, same_va, no
+         * special flags */
+
+        panfrost_allocate_slab(ctx, mem, slab_size / 4096, true, true, 0, 0, 0);
 
         return &mem->slab;
 }
