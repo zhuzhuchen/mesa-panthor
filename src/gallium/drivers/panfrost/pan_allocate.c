@@ -70,12 +70,17 @@ panfrost_upload_transient(struct panfrost_context *ctx, const void *data, size_t
         /* We have an entry we can write to, so do the upload! */
         struct panfrost_memory_entry *p_entry = pool->entries[pool->entry_index];
         struct panfrost_memory *backing = (struct panfrost_memory *) p_entry->base.slab;
-        uint8_t *dest = backing->cpu + p_entry->offset;
+        uint8_t *dest = backing->cpu + p_entry->offset + pool->entry_offset;
 
         memcpy(dest, data, sz);
 
         /* Return the GPU pointer */
-        return backing->gpu + p_entry->offset;
+        mali_ptr out = backing->gpu + p_entry->offset + pool->entry_offset;
+
+        /* Advance the pointer */
+        pool->entry_offset += sz;
+
+        return out;
 }
 
 // TODO: An actual allocator, perhaps

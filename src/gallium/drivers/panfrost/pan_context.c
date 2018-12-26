@@ -1006,7 +1006,7 @@ panfrost_emit_vertex_data(struct panfrost_context *ctx)
                 assert(!buf->is_user_buffer);
                 attrs[i].size = buf->buffer.resource->width0 - buf->buffer_offset;
 
-                attrs[i].elements = panfrost_upload(&ctx->cmdstream, rsrc->cpu[0] + buf->buffer_offset, attrs[i].size, false) | 1;
+                attrs[i].elements = panfrost_upload_transient(ctx, rsrc->cpu[0] + buf->buffer_offset, attrs[i].size) | 1;
         }
 
         for (int i = 0; i < ctx->vs->varyings.varying_buffer_count; ++i) {
@@ -1027,9 +1027,9 @@ panfrost_emit_vertex_data(struct panfrost_context *ctx)
                 assert(ctx->varying_height < ctx->varying_mem.size);
         }
 
-        ctx->payload_vertex.postfix.attributes = panfrost_upload(&ctx->cmdstream, attrs, ctx->vertex_buffer_count * sizeof(struct mali_attr), false);
+        ctx->payload_vertex.postfix.attributes = panfrost_upload_transient(ctx, attrs, ctx->vertex_buffer_count * sizeof(struct mali_attr));
 
-        mali_ptr varyings_p = panfrost_upload(&ctx->cmdstream, &varyings, ctx->vs->varyings.varying_buffer_count * sizeof(struct mali_attr), false);
+        mali_ptr varyings_p = panfrost_upload_transient(ctx, &varyings, ctx->vs->varyings.varying_buffer_count * sizeof(struct mali_attr));
         ctx->payload_vertex.postfix.varyings = varyings_p;
         ctx->payload_tiler.postfix.varyings = varyings_p;
 }
