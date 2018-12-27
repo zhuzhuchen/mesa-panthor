@@ -2920,8 +2920,8 @@ panfrost_setup_hardware(struct panfrost_context *ctx)
         panfrost_allocate_slab(ctx, &ctx->scratchpad, 64, true, true, 0, 0, 0);
         panfrost_allocate_slab(ctx, &ctx->varying_mem, 16384, false, true, 0, 0, 0);
         panfrost_allocate_slab(ctx, &ctx->shaders, 4096, true, false, MALI_MEM_PROT_GPU_EX, 0, 0);
-        panfrost_allocate_slab(ctx, &ctx->tiler_heap, 32768, false, false, 0, 0, 0);
-        panfrost_allocate_slab(ctx, &ctx->misc_0, 128, false, false, 0, 0, 0);
+        panfrost_allocate_slab(ctx, &ctx->tiler_heap, 32768, false, false, MALI_MEM_GROW_ON_GPF, 1, 128);
+        panfrost_allocate_slab(ctx, &ctx->misc_0, 128, false, false, MALI_MEM_GROW_ON_GPF, 1, 128);
 
 }
 
