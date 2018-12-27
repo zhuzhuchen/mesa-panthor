@@ -603,6 +603,12 @@ struct radv_meta_state {
 		VkPipeline pipeline_statistics_query_pipeline;
 		VkPipeline tfb_query_pipeline;
 	} query;
+
+	struct {
+		VkDescriptorSetLayout ds_layout;
+		VkPipelineLayout p_layout;
+		VkPipeline pipeline[MAX_SAMPLES_LOG2];
+	} fmask_expand;
 };
 
 /* queue types */
@@ -1894,6 +1900,9 @@ void radv_meta_push_descriptor_set(struct radv_cmd_buffer *cmd_buffer,
 
 void radv_initialize_dcc(struct radv_cmd_buffer *cmd_buffer,
 			 struct radv_image *image, uint32_t value);
+
+void radv_initialize_fmask(struct radv_cmd_buffer *cmd_buffer,
+			   struct radv_image *image);
 
 struct radv_fence {
 	struct radeon_winsys_fence *fence;

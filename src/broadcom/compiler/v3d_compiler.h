@@ -313,8 +313,6 @@ struct v3d_key {
                 uint8_t swizzle[4];
                 uint8_t return_size;
                 uint8_t return_channels;
-                unsigned compare_mode:1;
-                unsigned compare_func:3;
                 bool clamp_s:1;
                 bool clamp_t:1;
                 bool clamp_r:1;
@@ -773,6 +771,7 @@ void vir_emit_thrsw(struct v3d_compile *c);
 
 void vir_dump(struct v3d_compile *c);
 void vir_dump_inst(struct v3d_compile *c, struct qinst *inst);
+void vir_dump_uniform(enum quniform_contents contents, uint32_t data);
 
 void vir_validate(struct v3d_compile *c);
 
@@ -1077,7 +1076,7 @@ vir_LOAD_IMM_I2(struct v3d_compile *c, uint32_t val)
 */
 
 static inline struct qinst *
-vir_BRANCH(struct v3d_compile *c, enum v3d_qpu_cond cond)
+vir_BRANCH(struct v3d_compile *c, enum v3d_qpu_branch_cond cond)
 {
         /* The actual uniform_data value will be set at scheduling time */
         return vir_emit_nondef(c, vir_branch_inst(cond, vir_uniform_ui(c, 0)));
