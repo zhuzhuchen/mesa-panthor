@@ -2714,8 +2714,8 @@ panfrost_tile_texture(struct panfrost_context *ctx, struct panfrost_resource *rs
          * previous upload of the resource), free that one so we don't leak */
 
         if (rsrc->entry[level] != NULL) {
-                p_entry->freed = true;
-                pb_slab_free(&ctx->slabs, &p_entry->base);
+                rsrc->entry[level]->freed = true;
+                pb_slab_free(&ctx->slabs, &rsrc->entry[level]->base);
         }
 
         rsrc->entry[level] = p_entry;
