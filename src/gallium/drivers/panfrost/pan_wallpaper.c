@@ -209,7 +209,7 @@ panfrost_draw_wallpaper(struct pipe_context *pipe)
                 2048.0, 1280.0, 0.0, 1.0,
         };
 
-        ctx->payload_tiler.postfix.position_varying = panfrost_upload(&ctx->cmdstream, implied_position_varying, sizeof(implied_position_varying), true);
+        ctx->payload_tiler.postfix.position_varying = panfrost_upload_transient(ctx, implied_position_varying, sizeof(implied_position_varying));
 
         /* Similarly, setup the texture coordinate varying, hardcoded to match
          * the corners of the screen */
@@ -223,13 +223,13 @@ panfrost_draw_wallpaper(struct pipe_context *pipe)
 
         struct mali_attr varyings[1] = {
                 {
-                        .elements = panfrost_upload(&ctx->cmdstream, texture_coordinates, sizeof(texture_coordinates), true) | 1,
+                        .elements = panfrost_upload_transient(ctx, texture_coordinates, sizeof(texture_coordinates)) | 1,
                         .stride = sizeof(float) * 4,
                         .size = sizeof(texture_coordinates)
                 }
         };
 
-        ctx->payload_tiler.postfix.varyings = panfrost_upload(&ctx->cmdstream, varyings, sizeof(varyings), true);
+        ctx->payload_tiler.postfix.varyings = panfrost_upload_transient(ctx, varyings, sizeof(varyings));
 
         struct mali_attr_meta varying_meta[1] = {
                 {
@@ -242,7 +242,7 @@ panfrost_draw_wallpaper(struct pipe_context *pipe)
         };
 
         mali_ptr saved_varying_meta = ctx->payload_tiler.postfix.varying_meta;
-        ctx->payload_tiler.postfix.varying_meta = panfrost_upload(&ctx->cmdstream, varying_meta, sizeof(varying_meta), true);
+        ctx->payload_tiler.postfix.varying_meta = panfrost_upload_transient(ctx, varying_meta, sizeof(varying_meta));
 
         /* Emit the tiler job */
         struct panfrost_transfer tiler = panfrost_vertex_tiler_job(ctx, true, true);
@@ -260,7 +260,6 @@ panfrost_draw_wallpaper(struct pipe_context *pipe)
          */
 
         if (ctx->tiler_job_count > 1) {
-                struct panfrost_memory mem = ctx->cmdstream;
                 ctx->u_tiler_jobs[0]->job_dependency_index_2 = jd->job_index;
         }
 

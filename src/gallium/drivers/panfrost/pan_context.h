@@ -102,14 +102,11 @@ struct panfrost_context {
         int fd;
         struct pipe_framebuffer_state pipe_framebuffer;
 
-        /* The number of concurrent FBOs allowed depends on the number of rings used */
-        struct panfrost_memory cmdstream_rings[2];
-        int cmdstream_i;
-
-        struct panfrost_memory cmdstream;
+        /* The number of concurrent FBOs allowed depends on the number of pools
+         * used; pools are ringed for parallelism opportunities */
 
         struct panfrost_transient_pool transient_pools[2];
-        /* Indexed by cmdstream_i */
+        int cmdstream_i;
 
         struct panfrost_memory cmdstream_persistent;
         struct panfrost_memory shaders;

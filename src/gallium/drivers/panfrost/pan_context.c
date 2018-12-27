@@ -558,9 +558,7 @@ static void
 panfrost_invalidate_frame(struct panfrost_context *ctx)
 {
         /* Rotate cmdstream */
-        ctx->cmdstream = ctx->cmdstream_rings[ctx->cmdstream_i];
-
-        if ((++ctx->cmdstream_i) == (sizeof(ctx->cmdstream_rings) / sizeof(ctx->cmdstream_rings[0])))
+        if ((++ctx->cmdstream_i) == (sizeof(ctx->transient_pools) / sizeof(ctx->transient_pools[0])))
                 ctx->cmdstream_i = 0;
 
         ctx->vt_framebuffer = panfrost_emit_fbd(ctx);
@@ -571,7 +569,6 @@ panfrost_invalidate_frame(struct panfrost_context *ctx)
 
         /* The transient cmdstream is dirty every frame; the only bits worth preserving
          * (textures, shaders, etc) are in other buffers anyways */
-        ctx->cmdstream.stack_bottom = 0;
 
         ctx->transient_pools[ctx->cmdstream_i].entry_index = 0;
         ctx->transient_pools[ctx->cmdstream_i].entry_offset = 0;
@@ -2909,9 +2906,7 @@ panfrost_setup_hardware(struct panfrost_context *ctx)
         panfrost_setup_framebuffer(ctx, 2048, 1280);
 #endif
 
-        for (int i = 0; i < sizeof(ctx->cmdstream_rings) / sizeof(ctx->cmdstream_rings[0]); ++i) {
-                panfrost_allocate_slab(ctx, &ctx->cmdstream_rings[i], 8 * 64 * 8 * 16, true, true, 0, 0, 0);
-
+        for (int i = 0; i < sizeof(ctx->transient_pools) / sizeof(ctx->transient_pools[0]); ++i) {
                 /* Allocate the beginning of the transient pool */
                 int entry_size = (1 << 22); /* 4MB */
 
