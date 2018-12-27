@@ -43,10 +43,12 @@
 
 /* Denotes an opcode that takes a vector input with a fixed-number of
  * channels, but outputs to only a single output channel, like dot products.
- * For these, to determine the effective mask, this quirk can be set */
+ * For these, to determine the effective mask, this quirk can be set. We have
+ * an intentional off-by-one (a la MALI_POSITIVE), since 0-channel makes no
+ * sense but we need to fit 4 channels in 2-bits */
 
-#define OP_CHANNEL_COUNT(c) (c << 0)
-#define OP_CHANNEL_MASK (0x3 << 0)
+#define OP_CHANNEL_COUNT(c) ((c - 1) << 0)
+#define GET_CHANNEL_COUNT(c) ((c & (0x3 << 0)) + 1)
 
 /* Vector-independant shorthands for the above; these numbers are arbitrary and
  * not from the ISA. Convert to the above with unit_enum_to_midgard */
