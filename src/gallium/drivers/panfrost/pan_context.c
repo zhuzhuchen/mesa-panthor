@@ -1358,7 +1358,7 @@ panfrost_queue_draw(struct panfrost_context *ctx)
  * unknown reasons. */
 
 static void
-panfrost_link_job_pair(struct panfrost_memory mem, struct mali_job_descriptor_header *first, mali_ptr next)
+panfrost_link_job_pair(struct mali_job_descriptor_header *first, mali_ptr next)
 {
         if (first->job_descriptor_size)
                 first->next_job_64 = (u64) (uintptr_t) next;
@@ -1373,26 +1373,24 @@ panfrost_link_jobs(struct panfrost_context *ctx)
                 /* Generate the set_value_job */
                 panfrost_set_value_job(ctx);
 
-                struct panfrost_memory mem = ctx->cmdstream;
-
                 /* Have the first vertex job depend on the set value job */
                 ctx->u_vertex_jobs[0]->job_dependency_index_1 = ctx->u_set_value_job->job_index;
 
                 /* SV -> V */
-                panfrost_link_job_pair(mem, ctx->u_set_value_job, ctx->vertex_jobs[0]);
+                panfrost_link_job_pair(ctx->u_set_value_job, ctx->vertex_jobs[0]);
         }
 
         /* V -> V/T ; T -> T/null */
         for (int i = 0; i < ctx->vertex_job_count; ++i) {
                 bool isLast = (i + 1) == ctx->vertex_job_count;
 
-                panfrost_link_job_pair(ctx->cmdstream, ctx->u_vertex_jobs[i], isLast ? ctx->tiler_jobs[0]: ctx->vertex_jobs[i + 1]);
+                panfrost_link_job_pair(ctx->u_vertex_jobs[i], isLast ? ctx->tiler_jobs[0]: ctx->vertex_jobs[i + 1]);
         }
 
         /* T -> T/null */
         for (int i = 0; i < ctx->tiler_job_count; ++i) {
                 bool isLast = (i + 1) == ctx->tiler_job_count;
-                panfrost_link_job_pair(ctx->cmdstream, ctx->u_tiler_jobs[i], isLast ? 0 : ctx->tiler_jobs[i + 1]);
+                panfrost_link_job_pair(ctx->u_tiler_jobs[i], isLast ? 0 : ctx->tiler_jobs[i + 1]);
         }
 }
 
