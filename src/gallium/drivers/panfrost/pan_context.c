@@ -1267,23 +1267,23 @@ panfrost_emit_for_draw(struct panfrost_context *ctx, bool with_vertex_data)
                 struct panfrost_constant_buffer *buf = &ctx->constant_buffer[i];
 
                 if (buf->dirty) {
-                        mali_ptr address_prefix = 0, address = 0;
+                        /* It doesn't matter if we don't use all the memory;
+                         * we'd need a dummy UBO anyway. Compute the max */
 
-                        /* Attach vertex prefix */
-                        if (i == PIPE_SHADER_VERTEX)
-                                address_prefix = panfrost_upload(&ctx->cmdstream, viewport_vec4, sizeof(viewport_vec4), true);
+                        size_t size = sizeof(viewport_vec4) + buf->size;
+                        struct panfrost_transfer transfer = panfrost_allocate_transient(ctx, size);
 
-                        /* Attach uniforms */
-                        if (buf->size)
-                                address = panfrost_upload_sequential(&ctx->cmdstream, buf->buffer, buf->size);
+                        /* Keep track how much we've uploaded */
+                        off_t offset = 0;
 
-                        /* Always fill out -something- */
-                        if (!address)
-                                address = panfrost_reserve(&ctx->cmdstream, 256);
+                        if (i == PIPE_SHADER_VERTEX) {
+                                /* Upload viewport */
+                                memcpy(transfer.cpu + offset, viewport_vec4, sizeof(viewport_vec4));
+                                offset += sizeof(viewport_vec4);
+                        }
 
-                        /* Use whichever came first */
-                        if (address_prefix)
-                                address = address_prefix;
+                        /* Upload uniforms */
+                        memcpy(transfer.cpu + offset, buf->buffer, buf->size);
 
                         int uniform_count = 0;
 
@@ -1311,12 +1311,12 @@ panfrost_emit_for_draw(struct panfrost_context *ctx, bool with_vertex_data)
                         struct mali_uniform_buffer_meta uniform_buffers[] = {
                                 {
                                         .size = MALI_POSITIVE((2 + uniform_count)),
-                                        .ptr = address >> 2,
+                                        .ptr = transfer.gpu >> 2,
                                 },
                         };
 
                         mali_ptr ubufs = panfrost_upload_transient(ctx, uniform_buffers, sizeof(uniform_buffers));
-                        postfix->uniforms = address;
+                        postfix->uniforms = transfer.gpu;
                         postfix->uniform_buffers = ubufs;
 
                         buf->dirty = 0;
