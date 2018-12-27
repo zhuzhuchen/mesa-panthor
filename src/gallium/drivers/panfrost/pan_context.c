@@ -953,15 +953,21 @@ panfrost_fragment_job(struct panfrost_context *ctx)
         /* The frame is complete and therefore the framebuffer descriptor is
          * ready for linkage and upload */
 
-        mali_ptr fbd = panfrost_upload(&ctx->cmdstream, &ctx->fragment_fbd, sizeof(ctx->fragment_fbd), true);
+        size_t sz = sizeof(ctx->fragment_fbd) + sizeof(struct bifrost_fb_extra) + sizeof(struct bifrost_render_target) * 1;
+        struct panfrost_transfer fbd_t = panfrost_allocate_transient(ctx, sz);
+        off_t offset = 0;
+
+        memcpy(fbd_t.cpu, &ctx->fragment_fbd, sizeof(ctx->fragment_fbd));
+        offset += sizeof(ctx->fragment_fbd);
 
         /* Upload extra framebuffer info if necessary */
         if (ctx->fragment_fbd.unk3 & MALI_MFBD_EXTRA) {
-                panfrost_upload_sequential(&ctx->cmdstream, &ctx->fragment_extra, sizeof(struct bifrost_fb_extra));
+                memcpy(fbd_t.cpu + offset, &ctx->fragment_extra, sizeof(struct bifrost_fb_extra));
+                offset += sizeof(struct bifrost_fb_extra);
         }
 
         /* Upload (single) render target */
-        panfrost_upload_sequential(&ctx->cmdstream, &ctx->fragment_rts[0], sizeof(struct bifrost_render_target) * 1);
+        memcpy(fbd_t.cpu + offset, &ctx->fragment_rts[0], sizeof(struct bifrost_render_target) * 1);
 
         /* Generate the fragment (frame) job */
 
@@ -976,7 +982,7 @@ panfrost_fragment_job(struct panfrost_context *ctx)
         struct mali_payload_fragment payload = {
                 .min_tile_coord = MALI_COORDINATE_TO_TILE_MIN(0, 0),
                 .max_tile_coord = MALI_COORDINATE_TO_TILE_MAX(ctx->pipe_framebuffer.width, ctx->pipe_framebuffer.height),
-                .framebuffer = fbd | PANFROST_DEFAULT_FBD | (ctx->fragment_fbd.unk3 & MALI_MFBD_EXTRA ? 2 : 0),
+                .framebuffer = fbd_t.gpu | PANFROST_DEFAULT_FBD | (ctx->fragment_fbd.unk3 & MALI_MFBD_EXTRA ? 2 : 0),
         };
 
         /* Normally, there should be no padding. However, fragment jobs are
