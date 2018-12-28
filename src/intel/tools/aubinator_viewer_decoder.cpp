@@ -625,8 +625,6 @@ decode_dynamic_state_pointers(struct aub_viewer_decode_ctx *ctx,
                               struct gen_group *inst, const uint32_t *p,
                               const char *struct_type,  int count)
 {
-   struct gen_group *state = gen_spec_find_struct(ctx->spec, struct_type);
-
    uint32_t state_offset = 0;
 
    struct gen_field_iterator iter;
@@ -649,12 +647,28 @@ decode_dynamic_state_pointers(struct aub_viewer_decode_ctx *ctx,
       return;
    }
 
-   for (int i = 0; i < count; i++) {
-      ImGui::Text("%s %d", struct_type, i);
-      aub_viewer_print_group(ctx, state, state_offset, state_map);
+   struct gen_group *state = gen_spec_find_struct(ctx->spec, struct_type);
+   if (strcmp(struct_type, "BLEND_STATE") == 0) {
+      /* Blend states are different from the others because they have a header
+       * struct called BLEND_STATE which is followed by a variable number of
+       * BLEND_STATE_ENTRY structs.
+       */
+      ImGui::Text("%s", struct_type);
+      aub_viewer_print_group(ctx, state, state_addr, state_map);
 
       state_addr += state->dw_length * 4;
-      state_map += state->dw_length;
+      state_map += state->dw_length * 4;
+
+      struct_type = "BLEND_STATE_ENTRY";
+      state = gen_spec_find_struct(ctx->spec, struct_type);
+   }
+
+   for (int i = 0; i < count; i++) {
+      ImGui::Text("%s %d", struct_type, i);
+      aub_viewer_print_group(ctx, state, state_addr, state_map);
+
+      state_addr += state->dw_length * 4;
+      state_map += state->dw_length * 4;
    }
 }
 

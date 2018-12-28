@@ -68,6 +68,13 @@ typedef struct {
 /* Forward declare so midgard_branch can reference */
 struct midgard_block;
 
+/* Target types. Defaults to TARGET_GOTO (the type corresponding directly to
+ * the hardware), hence why that must be zero */
+
+#define TARGET_GOTO 0
+#define TARGET_BREAK 1
+#define TARGET_CONTINUE 2
+
 typedef struct midgard_branch {
         /* If conditional, the condition is specified in r31.w */
         bool conditional;
@@ -75,9 +82,15 @@ typedef struct midgard_branch {
         /* For conditionals, if this is true, we branch on FALSE. If false, we  branch on TRUE. */
         bool invert_conditional;
 
-        /* We can either branch to the start or the end of the block */
-        int target_start;
-        int target_after;
+        /* Branch targets: the start of a block, the start of a loop (continue), the end of a loop (break). Value is one of TARGET_ */
+        unsigned target_type;
+
+        /* The actual target */
+        union {
+                int target_block;
+                int target_break;
+                int target_continue;
+        };
 } midgard_branch;
 
 /* Generic in-memory data type repesenting a single logical instruction, rather
@@ -344,6 +357,9 @@ typedef struct compiler_context {
         /* List of midgard_instructions emitted for the current block */
         midgard_block *current_block;
 
+        /* The index corresponding to the current loop, e.g. for breaks/contineus */
+        int current_loop;
+
         /* Constants which have been loaded, for later inlining */
         struct hash_table_u64 *ssa_constants;
 
@@ -440,14 +456,23 @@ mir_next_op(struct midgard_instruction *ins)
         return list_first_entry(&(ins->link), midgard_instruction, link);
 }
 
+static midgard_block *
+mir_next_block(struct midgard_block *blk)
+{
+        return list_first_entry(&(blk->link), midgard_block, link);
+}
+
 
 #define mir_foreach_block(ctx, v) list_for_each_entry(struct midgard_block, v, &ctx->blocks, link) 
+#define mir_foreach_block_from(ctx, from, v) list_for_each_entry_from(struct midgard_block, v, from, &ctx->blocks, link)
+
 #define mir_foreach_instr(ctx, v) list_for_each_entry(struct midgard_instruction, v, &ctx->current_block->instructions, link) 
 #define mir_foreach_instr_safe(ctx, v) list_for_each_entry_safe(struct midgard_instruction, v, &ctx->current_block->instructions, link) 
-#define mir_foreach_instr_in_block(ctx, block, v) list_for_each_entry(struct midgard_instruction, v, &block->instructions, link) 
-#define mir_foreach_instr_in_block_safe(ctx, block, v) list_for_each_entry_safe(struct midgard_instruction, v, &block->instructions, link) 
-#define mir_foreach_instr_in_block_safe_rev(ctx, block, v) list_for_each_entry_safe_rev(struct midgard_instruction, v, &block->instructions, link) 
+#define mir_foreach_instr_in_block(block, v) list_for_each_entry(struct midgard_instruction, v, &block->instructions, link) 
+#define mir_foreach_instr_in_block_safe(block, v) list_for_each_entry_safe(struct midgard_instruction, v, &block->instructions, link) 
+#define mir_foreach_instr_in_block_safe_rev(block, v) list_for_each_entry_safe_rev(struct midgard_instruction, v, &block->instructions, link) 
 #define mir_foreach_instr_in_block_from(block, v, from) list_for_each_entry_from(struct midgard_instruction, v, from, &block->instructions, link) 
+
 
 static midgard_instruction *
 mir_last_in_block(struct midgard_block *block)
@@ -543,7 +568,7 @@ print_mir_block(midgard_block *block)
 {
         printf("{\n");
 
-        mir_foreach_instr_in_block(ctx, block, ins) {
+        mir_foreach_instr_in_block(block, ins) {
                 print_mir_instruction(ins);
         }
 
@@ -643,7 +668,7 @@ optimise_nir(nir_shader *nir)
                 NIR_PASS(progress, nir, nir_opt_vectorize);
                 NIR_PASS(progress, nir, nir_opt_dead_cf);
                 NIR_PASS(progress, nir, nir_opt_cse);
-                NIR_PASS(progress, nir, nir_opt_peephole_select, 64);
+                NIR_PASS(progress, nir, nir_opt_peephole_select, 64, false, true);
                 NIR_PASS(progress, nir, nir_opt_algebraic);
                 NIR_PASS(progress, nir, nir_opt_constant_folding);
                 NIR_PASS(progress, nir, nir_opt_undef);
@@ -759,7 +784,10 @@ squeeze_writemask(unsigned mask)
 static unsigned
 effective_writemask(midgard_vector_alu *alu)
 {
-        unsigned channel_count = alu_opcode_props[alu->op] & OP_CHANNEL_MASK;
+        /* Channel count is off-by-one to fit in two-bits (0 channel makes no
+         * sense) */
+
+        unsigned channel_count = GET_CHANNEL_COUNT(alu_opcode_props[alu->op]);
 
         /* If there is a fixed channel count, construct the appropriate mask */
 
@@ -1252,6 +1280,7 @@ emit_intrinsic(compiler_context *ctx, nir_intrinsic_instr *instr)
                 } else if (ctx->stage == MESA_SHADER_VERTEX) {
                         midgard_instruction ins = m_load_attr_32(reg, offset);
                         ins.load_store.unknown = 0x1E1E; /* XXX: What is this? */
+                        ins.load_store.mask = (1 << instr->num_components) - 1;
                         emit_mir_instruction(ctx, ins);
                 } else {
                         printf("Unknown load\n");
@@ -1447,6 +1476,27 @@ emit_tex(compiler_context *ctx, nir_tex_instr *instr)
 }
 
 static void
+emit_jump(compiler_context *ctx, nir_jump_instr *instr)
+{
+        switch (instr->type) {
+                case nir_jump_break: {
+                        /* Emit a branch out of the loop */
+                        struct midgard_instruction br = v_branch(false, false);
+                        br.branch.target_type = TARGET_BREAK;
+                        br.branch.target_break = ctx->current_loop;
+                        emit_mir_instruction(ctx, br);
+
+                        printf("break..\n");
+                        break;
+                }
+
+                default:
+                        printf("Unknown jump type %d\n", instr->type);
+                        break;
+        }
+}
+
+static void
 emit_instr(compiler_context *ctx, struct nir_instr *instr)
 {
 #ifdef NIR_DEBUG_FINE
@@ -1469,6 +1519,10 @@ emit_instr(compiler_context *ctx, struct nir_instr *instr)
 
         case nir_instr_type_tex:
                 emit_tex(ctx, nir_instr_as_tex(instr));
+                break;
+
+        case nir_instr_type_jump:
+                emit_jump(ctx, nir_instr_as_jump(instr));
                 break;
 
         case nir_instr_type_ssa_undef:
@@ -1528,15 +1582,33 @@ midgard_ra_select_callback(struct ra_graph *g, BITSET_WORD *regs, void *data)
 }
 
 static bool
-is_live_after(midgard_block *block, midgard_instruction *start, int src)
+midgard_is_live_in_instr(midgard_instruction *ins, int src)
+{
+        if (ins->ssa_args.src0 == src) return true;
+        if (ins->ssa_args.src1 == src) return true;
+
+        return false;
+}
+
+static bool
+is_live_after(compiler_context *ctx, midgard_block *block, midgard_instruction *start, int src)
 {
         /* Check the rest of the block for liveness */
         mir_foreach_instr_in_block_from(block, ins, mir_next_op(start)) {
-                if (ins->ssa_args.src0 == src) return true;
-                if (ins->ssa_args.src1 == src) return true;
+                if (midgard_is_live_in_instr(ins, src))
+                        return true;
         }
 
-        /* TODO: Check the succeeding blocks */
+        /* Check the rest of the blocks for liveness */
+        mir_foreach_block_from(ctx, mir_next_block(block), b) {
+                mir_foreach_instr_in_block(b, ins) {
+                        if (midgard_is_live_in_instr(ins, src))
+                                return true;
+                }
+        }
+
+        /* TODO: How does control flow interact in complex shaders? */
+
         return false;
 }
 
@@ -1566,7 +1638,7 @@ allocate_registers(compiler_context *ctx)
 
         /* Transform the MIR into squeezed index form */
         mir_foreach_block(ctx, block) {
-                mir_foreach_instr_in_block(ctx, block, ins) {
+                mir_foreach_instr_in_block(block, ins) {
                         if (ins->compact_branch) continue;
 
                         ins->ssa_args.src0 = find_or_allocate_temp(ctx, ins->ssa_args.src0);
@@ -1585,7 +1657,7 @@ allocate_registers(compiler_context *ctx)
          * special to go */
 
         mir_foreach_block(ctx, block) {
-                mir_foreach_instr_in_block(ctx, block, ins) {
+                mir_foreach_instr_in_block(block, ins) {
                         if (ins->compact_branch) continue;
 
                         if (ins->ssa_args.dest < 0) continue;
@@ -1622,7 +1694,7 @@ allocate_registers(compiler_context *ctx)
         int d = 0;
 
         mir_foreach_block(ctx, block) {
-                mir_foreach_instr_in_block(ctx, block, ins) {
+                mir_foreach_instr_in_block(block, ins) {
                         if (ins->compact_branch) continue;
 
                         if (ins->ssa_args.dest < SSA_FIXED_MINIMUM) {
@@ -1648,7 +1720,7 @@ allocate_registers(compiler_context *ctx)
 
                                 if (s >= SSA_FIXED_MINIMUM) continue;
 
-                                if (!is_live_after(block, ins, s)) {
+                                if (!is_live_after(ctx, block, ins, s)) {
                                         live_end[s] = d;
                                 }
                         }
@@ -1687,7 +1759,7 @@ allocate_registers(compiler_context *ctx)
         free(live_end);
 
         mir_foreach_block(ctx, block) {
-                mir_foreach_instr_in_block(ctx, block, ins) {
+                mir_foreach_instr_in_block(block, ins) {
                         if (ins->compact_branch) continue;
 
                         ssa_args args = ins->ssa_args;
@@ -2275,7 +2347,7 @@ schedule_block(compiler_context *ctx, midgard_block *block)
 
         block->quadword_count = 0;
 
-        mir_foreach_instr_in_block(ctx, block, ins) {
+        mir_foreach_instr_in_block(block, ins) {
                 int skip;
                 midgard_bundle bundle = schedule_bundle(ctx, block, ins, &skip);
                 util_dynarray_append(&block->bundles, midgard_bundle, bundle);
@@ -2638,7 +2710,7 @@ map_ssa_to_alias(compiler_context *ctx, int *ref)
 static void
 midgard_eliminate_orphan_moves(compiler_context *ctx, midgard_block *block)
 {
-        mir_foreach_instr_in_block_safe(ctx, block, ins) {
+        mir_foreach_instr_in_block_safe(block, ins) {
                 if (ins->type != TAG_ALU_4) continue;
 
                 if (ins->alu.op != midgard_alu_op_fmov) continue;
@@ -2647,7 +2719,7 @@ midgard_eliminate_orphan_moves(compiler_context *ctx, midgard_block *block)
 
                 if (midgard_is_pinned(ctx, ins->ssa_args.dest)) continue;
 
-                if (is_live_after(block, ins, ins->ssa_args.dest)) continue;
+                if (is_live_after(ctx, block, ins, ins->ssa_args.dest)) continue;
 
                 mir_remove_instruction(ins);
         }
@@ -2658,7 +2730,7 @@ midgard_eliminate_orphan_moves(compiler_context *ctx, midgard_block *block)
 static void
 midgard_pair_load_store(compiler_context *ctx, midgard_block *block)
 {
-        mir_foreach_instr_in_block_safe(ctx, block, ins) {
+        mir_foreach_instr_in_block_safe(block, ins) {
                 if (ins->type != TAG_LOAD_STORE_4) continue;
 
                 /* We've found a load/store op. Check if next is also load/store. */
@@ -2699,7 +2771,7 @@ static void
 midgard_emit_store(compiler_context *ctx, midgard_block *block) {
         /* Iterate in reverse to get the final write, rather than the first */
 
-        mir_foreach_instr_in_block_safe_rev(ctx, block, ins) {
+        mir_foreach_instr_in_block_safe_rev(block, ins) {
                 /* Check if what we just wrote needs a store */
                 int idx = ins->ssa_args.dest;
                 uintptr_t varying = ((uintptr_t) _mesa_hash_table_u64_search(ctx->ssa_varyings, idx + 1));
@@ -3058,17 +3130,62 @@ emit_if(struct compiler_context *ctx, nir_if *nif)
         if (ctx->instruction_count == count_in) {
                 /* The else block is empty, so don't emit an exit jump */
                 mir_remove_instruction(then_exit);
-                then_branch->branch.target_start = else_idx + 1;
+                then_branch->branch.target_block = else_idx + 1;
         } else {
-                then_branch->branch.target_start = else_idx;
-                then_exit->branch.target_start = else_idx + 1;
+                then_branch->branch.target_block = else_idx;
+                then_exit->branch.target_block = else_idx + 1;
         }
 }
 
 static void
 emit_loop(struct compiler_context *ctx, nir_loop *nloop)
 {
+        /* Remember where we are */
+        midgard_block *start_block = ctx->current_block;
+
+        /* Allocate a loop number for this. TODO: Nested loops. Instead of a
+         * single current_loop variable, maybe we need a stack */
+
+        int loop_idx = ++ctx->current_loop;
+
+        /* Get index from before the body so we can loop back later */
+        int start_idx = ctx->block_count;
+
+        /* Emit the body itself */
         emit_cf_list(ctx, &nloop->body);
+
+        /* Branch back to loop back */
+        struct midgard_instruction br_back = v_branch(false, false);
+        br_back.branch.target_block = start_idx;
+        emit_mir_instruction(ctx, br_back);
+
+        /* Find the index of the block about to follow us (note: we don't add
+         * one; blocks are 0-indexed so we get a fencepost problem) */
+        int break_block_idx = ctx->block_count;
+
+        /* Fix up the break statements we emitted to point to the right place,
+         * now that we can allocate a block number for them */
+
+        list_for_each_entry_from(struct midgard_block, block, start_block, &ctx->blocks, link) {
+                print_mir_block(block);
+                mir_foreach_instr_in_block(block, ins) {
+                        if (ins->type != TAG_ALU_4) continue;
+                        if (!ins->compact_branch) continue;
+                        if (ins->prepacked_branch) continue;
+
+                        /* We found a branch -- check the type to see if we need to do anything */
+                        if (ins->branch.target_type != TARGET_BREAK) continue;
+
+                        /* It's a break! Check if it's our break */
+                        if (ins->branch.target_break != loop_idx) continue;
+
+                        /* Okay, cool, we're breaking out of this loop.
+                         * Rewrite from a break to a goto */
+
+                        ins->branch.target_type = TARGET_GOTO;
+                        ins->branch.target_block = break_block_idx;
+                }
+        }
 }
 
 static midgard_block *
@@ -3256,7 +3373,7 @@ midgard_compile_shader_nir(nir_shader *nir, midgard_program *program, bool is_bl
                                 uint16_t compact;
 
                                 /* Determine the block we're jumping to */
-                                int target_number = ins->branch.target_start;
+                                int target_number = ins->branch.target_block;
 
                                 midgard_block *target = mir_get_block(ctx, target_number);
                                 assert(target);
@@ -3268,15 +3385,26 @@ midgard_compile_shader_nir(nir_shader *nir, midgard_program *program, bool is_bl
                                 int dest_tag = first->tag;
 
                                 /* Count up the number of quadwords we're jumping over. That is, the number of quadwords in each of the blocks between (br_block_idx, target_number) */
-                                assert(target_number > br_block_idx); /* TODO: Jumps backwards */
-
                                 int quadword_offset = 0;
 
-                                for (int idx = br_block_idx + 1; idx < target_number; ++idx) {
-                                        midgard_block *blk = mir_get_block(ctx, idx);
-                                        assert(blk);
+                                if (target_number > br_block_idx) {
+                                        /* Jump forward */
 
-                                        quadword_offset += blk->quadword_count;
+                                        for (int idx = br_block_idx + 1; idx < target_number; ++idx) {
+                                                midgard_block *blk = mir_get_block(ctx, idx);
+                                                assert(blk);
+
+                                                quadword_offset += blk->quadword_count;
+                                        }
+                                } else {
+                                        /* Jump backwards */
+
+                                        for (int idx = br_block_idx; idx >= target_number; --idx) {
+                                                midgard_block *blk = mir_get_block(ctx, idx);
+                                                assert(blk);
+
+                                                quadword_offset -= blk->quadword_count;
+                                        }
                                 }
 
                                 if (ins->branch.conditional) {
@@ -3353,11 +3481,28 @@ midgard_compile_shader_nir(nir_shader *nir, midgard_program *program, bool is_bl
 
         free(source_order_bundles);
 
-        /* Due to lookahead, we need to report in the command stream the first tag executed */
+        /* Due to lookahead, we need to report in the command stream the first
+         * tag executed. An initial block might be empty, so iterate until we
+         * find one that 'works' */
 
         midgard_block *initial_block = list_first_entry(&ctx->blocks, midgard_block, link);
-        midgard_bundle *initial_bundle = util_dynarray_element(&initial_block->bundles, midgard_bundle, 0);
-        program->first_tag = initial_bundle->tag;
+
+        program->first_tag = 0;
+
+        do {
+                midgard_bundle *initial_bundle = util_dynarray_element(&initial_block->bundles, midgard_bundle, 0);
+
+                if (initial_bundle) {
+                        program->first_tag = initial_bundle->tag;
+                        break;
+                }
+
+                /* Initial block is empty, try the next block */
+                initial_block = list_first_entry(&(initial_block->link), midgard_block, link);
+        } while(initial_block != NULL);
+
+        /* Make sure we actually set the tag */
+        assert(program->first_tag);
 
         /* Deal with off-by-one related to the fencepost problem */
         program->work_register_count = ctx->work_registers + 1;

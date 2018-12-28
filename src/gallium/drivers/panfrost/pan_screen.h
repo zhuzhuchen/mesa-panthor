@@ -44,6 +44,9 @@ struct panfrost_screen {
         int fd;
 
         struct panfrost_context *any_context;
+        
+        /* TODO: Where? */
+        struct panfrost_resource *display_target;
 };
 
 static inline struct panfrost_screen *

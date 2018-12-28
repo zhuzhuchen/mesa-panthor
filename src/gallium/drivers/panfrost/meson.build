@@ -36,6 +36,7 @@ files_panfrost = files(
   'pan_swizzle.c',
   'pan_blending.c',
   'pan_blend_shaders.c',
+  'pan_wallpaper.c',
 )
 
 inc_panfrost = [

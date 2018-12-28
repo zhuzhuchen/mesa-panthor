@@ -10,13 +10,13 @@ git clone https://github.com/freedreno/envytools.git
 The rules-ng-ng source files this header was generated from are:
 - /home/robclark/src/envytools/rnndb/adreno.xml               (    501 bytes, from 2018-07-03 19:37:13)
 - /home/robclark/src/envytools/rnndb/freedreno_copyright.xml  (   1572 bytes, from 2018-07-03 19:37:13)
-- /home/robclark/src/envytools/rnndb/adreno/a2xx.xml          (  37936 bytes, from 2018-10-08 11:43:51)
-- /home/robclark/src/envytools/rnndb/adreno/adreno_common.xml (  14201 bytes, from 2018-10-08 11:43:51)
-- /home/robclark/src/envytools/rnndb/adreno/adreno_pm4.xml    (  43052 bytes, from 2018-10-29 18:02:00)
+- /home/robclark/src/envytools/rnndb/adreno/a2xx.xml          (  42463 bytes, from 2018-11-19 13:44:03)
+- /home/robclark/src/envytools/rnndb/adreno/adreno_common.xml (  14239 bytes, from 2018-12-05 15:25:53)
+- /home/robclark/src/envytools/rnndb/adreno/adreno_pm4.xml    (  43052 bytes, from 2018-12-21 18:21:34)
 - /home/robclark/src/envytools/rnndb/adreno/a3xx.xml          (  83840 bytes, from 2018-07-03 19:37:13)
 - /home/robclark/src/envytools/rnndb/adreno/a4xx.xml          ( 112086 bytes, from 2018-07-03 19:37:13)
-- /home/robclark/src/envytools/rnndb/adreno/a5xx.xml          ( 147240 bytes, from 2018-10-29 18:01:45)
-- /home/robclark/src/envytools/rnndb/adreno/a6xx.xml          ( 140790 bytes, from 2018-10-29 18:02:00)
+- /home/robclark/src/envytools/rnndb/adreno/a5xx.xml          ( 147240 bytes, from 2018-12-21 18:21:34)
+- /home/robclark/src/envytools/rnndb/adreno/a6xx.xml          ( 141895 bytes, from 2018-12-21 18:21:34)
 - /home/robclark/src/envytools/rnndb/adreno/a6xx_gmu.xml      (  10431 bytes, from 2018-09-14 13:03:07)
 - /home/robclark/src/envytools/rnndb/adreno/ocmem.xml         (   1773 bytes, from 2018-07-03 19:37:13)
 
@@ -949,6 +949,15 @@ enum a6xx_cmp_perfcounter_select {
 	PERF_CMPDECMP_2D_BUSY_CYCLES = 37,
 	PERF_CMPDECMP_2D_REORDER_STARVE_CYCLES = 38,
 	PERF_CMPDECMP_2D_PIXELS = 39,
+};
+
+enum a6xx_2d_ifmt {
+	R2D_UNORM8 = 16,
+	R2D_INT32 = 7,
+	R2D_INT16 = 6,
+	R2D_INT8 = 5,
+	R2D_FLOAT32 = 4,
+	R2D_FLOAT16 = 3,
 };
 
 enum a6xx_tex_filter {
@@ -3016,6 +3025,12 @@ static inline uint32_t A6XX_GRAS_2D_BLIT_CNTL_COLOR_FORMAT(enum a6xx_color_fmt v
 	return ((val) << A6XX_GRAS_2D_BLIT_CNTL_COLOR_FORMAT__SHIFT) & A6XX_GRAS_2D_BLIT_CNTL_COLOR_FORMAT__MASK;
 }
 #define A6XX_GRAS_2D_BLIT_CNTL_SCISSOR				0x00010000
+#define A6XX_GRAS_2D_BLIT_CNTL_IFMT__MASK			0x1f000000
+#define A6XX_GRAS_2D_BLIT_CNTL_IFMT__SHIFT			24
+static inline uint32_t A6XX_GRAS_2D_BLIT_CNTL_IFMT(enum a6xx_2d_ifmt val)
+{
+	return ((val) << A6XX_GRAS_2D_BLIT_CNTL_IFMT__SHIFT) & A6XX_GRAS_2D_BLIT_CNTL_IFMT__MASK;
+}
 
 #define REG_A6XX_GRAS_2D_SRC_TL_X				0x00008401
 #define A6XX_GRAS_2D_SRC_TL_X_X__MASK				0x00ffff00
@@ -3830,6 +3845,12 @@ static inline uint32_t A6XX_RB_2D_BLIT_CNTL_COLOR_FORMAT(enum a6xx_color_fmt val
 	return ((val) << A6XX_RB_2D_BLIT_CNTL_COLOR_FORMAT__SHIFT) & A6XX_RB_2D_BLIT_CNTL_COLOR_FORMAT__MASK;
 }
 #define A6XX_RB_2D_BLIT_CNTL_SCISSOR				0x00010000
+#define A6XX_RB_2D_BLIT_CNTL_IFMT__MASK				0x1f000000
+#define A6XX_RB_2D_BLIT_CNTL_IFMT__SHIFT			24
+static inline uint32_t A6XX_RB_2D_BLIT_CNTL_IFMT(enum a6xx_2d_ifmt val)
+{
+	return ((val) << A6XX_RB_2D_BLIT_CNTL_IFMT__SHIFT) & A6XX_RB_2D_BLIT_CNTL_IFMT__MASK;
+}
 
 #define REG_A6XX_RB_UNKNOWN_8C01				0x00008c01
 
@@ -4699,7 +4720,16 @@ static inline uint32_t A6XX_SP_FS_CONFIG_NSAMP(uint32_t val)
 
 #define REG_A6XX_SP_UNKNOWN_AB20				0x0000ab20
 
-#define REG_A6XX_SP_UNKNOWN_ACC0				0x0000acc0
+#define REG_A6XX_SP_2D_SRC_FORMAT				0x0000acc0
+#define A6XX_SP_2D_SRC_FORMAT_NORM				0x00000001
+#define A6XX_SP_2D_SRC_FORMAT_SINT				0x00000002
+#define A6XX_SP_2D_SRC_FORMAT_UINT				0x00000004
+#define A6XX_SP_2D_SRC_FORMAT_COLOR_FORMAT__MASK		0x000007f8
+#define A6XX_SP_2D_SRC_FORMAT_COLOR_FORMAT__SHIFT		3
+static inline uint32_t A6XX_SP_2D_SRC_FORMAT_COLOR_FORMAT(enum a6xx_color_fmt val)
+{
+	return ((val) << A6XX_SP_2D_SRC_FORMAT_COLOR_FORMAT__SHIFT) & A6XX_SP_2D_SRC_FORMAT_COLOR_FORMAT__MASK;
+}
 
 #define REG_A6XX_SP_UNKNOWN_AE00				0x0000ae00
 
@@ -5180,6 +5210,13 @@ static inline uint32_t A6XX_TEX_CONST_3_ARRAY_PITCH(uint32_t val)
 {
 	assert(!(val & 0xfff));
 	return ((val >> 12) << A6XX_TEX_CONST_3_ARRAY_PITCH__SHIFT) & A6XX_TEX_CONST_3_ARRAY_PITCH__MASK;
+}
+#define A6XX_TEX_CONST_3_MIN_LAYERSZ__MASK			0x07800000
+#define A6XX_TEX_CONST_3_MIN_LAYERSZ__SHIFT			23
+static inline uint32_t A6XX_TEX_CONST_3_MIN_LAYERSZ(uint32_t val)
+{
+	assert(!(val & 0xfff));
+	return ((val >> 12) << A6XX_TEX_CONST_3_MIN_LAYERSZ__SHIFT) & A6XX_TEX_CONST_3_MIN_LAYERSZ__MASK;
 }
 #define A6XX_TEX_CONST_3_FLAG					0x10000000
 

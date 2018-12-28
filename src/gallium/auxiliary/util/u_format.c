@@ -32,7 +32,7 @@
  * @author Jose Fonseca <jfonseca@vmware.com>
  */
 
-#include "u_memory.h"
+#include "util/u_memory.h"
 #include "u_format.h"
 #include "u_format_s3tc.h"
 #include "u_surface.h"
@@ -165,6 +165,27 @@ util_format_is_snorm(enum pipe_format format)
       return FALSE;
 
    return desc->channel[i].type == UTIL_FORMAT_TYPE_SIGNED &&
+          !desc->channel[i].pure_integer &&
+          desc->channel[i].normalized;
+}
+
+/**
+ * Returns true if all non-void channels are normalized unsigned.
+ */
+boolean
+util_format_is_unorm(enum pipe_format format)
+{
+   const struct util_format_description *desc = util_format_description(format);
+   int i;
+
+   if (desc->is_mixed)
+      return FALSE;
+
+   i = util_format_get_first_non_void_channel(format);
+   if (i == -1)
+      return FALSE;
+
+   return desc->channel[i].type == UTIL_FORMAT_TYPE_UNSIGNED &&
           !desc->channel[i].pure_integer &&
           desc->channel[i].normalized;
 }

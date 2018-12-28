@@ -34,8 +34,6 @@ cpp = meson.get_compiler('cpp')
 
 null_dep = dependency('', required : false)
 
-system_has_kms_drm = ['openbsd', 'netbsd', 'freebsd', 'dragonfly', 'linux'].contains(host_machine.system())
-
 # Arguments for the preprocessor, put these in a separate array from the C and
 # C++ (cpp in meson terminology) arguments since they need to be added to the
 # default arguments for both C and C++.
@@ -43,8 +41,7 @@ pre_args = [
   '-D__STDC_CONSTANT_MACROS',
   '-D__STDC_FORMAT_MACROS',
   '-D__STDC_LIMIT_MACROS',
-  '-DVERSION="@0@"'.format(meson.project_version()),
-  '-DPACKAGE_VERSION=VERSION',
+  '-DPACKAGE_VERSION="@0@"'.format(meson.project_version()),
   '-DPACKAGE_BUGREPORT="https://bugs.freedesktop.org/enter_bug.cgi?product=Mesa"',
 ]
 
@@ -54,11 +51,12 @@ with_valgrind = get_option('valgrind')
 with_libunwind = get_option('libunwind')
 with_asm = get_option('asm')
 with_glx_read_only_text = get_option('glx-read-only-text')
+with_glx_direct = get_option('glx-direct')
 with_osmesa = get_option('osmesa')
 with_swr_arches = get_option('swr-arches')
 with_tools = get_option('tools')
 if with_tools.contains('all')
-  with_tools = ['freedreno', 'glsl', 'intel', 'nir', 'nouveau', 'xvmc']
+  with_tools = ['etnaviv', 'freedreno', 'glsl', 'intel', 'nir', 'nouveau', 'xvmc']
 endif
 
 dri_drivers_path = get_option('dri-drivers-path')
@@ -225,8 +223,6 @@ elif system_has_kms_drm
 else
   # FIXME: haiku doesn't use dri, and xlib doesn't use dri, probably should
   # assert here that one of those cases has been met.
-  # FIXME: GNU (hurd) ends up here as well, but meson doesn't officially
-  # support Hurd at time of writing (2017/11)
   # FIXME: illumos ends up here as well
   with_dri_platform = 'none'
 endif
@@ -372,9 +368,6 @@ if with_glvnd
   endif
 endif
 
-# TODO: toggle for this
-with_glx_direct = true
-
 if with_vulkan_icd_dir == ''
   with_vulkan_icd_dir = join_paths(get_option('datadir'), 'vulkan/icd.d')
 endif
@@ -390,9 +383,9 @@ endif
 if with_any_vk and (with_platform_x11 and not with_dri3)
   error('Vulkan drivers require dri3 for X11 support')
 endif
-if with_dri or with_gallium
-  if with_glx == 'disabled' and not with_egl and not with_platform_haiku
-    error('building dri or gallium drivers require at least one window system')
+if with_dri
+  if with_glx == 'disabled' and not with_egl and not with_gbm
+    error('building dri drivers require at least one windowing system')
   endif
 endif
 
@@ -622,7 +615,7 @@ if with_gallium_st_nine
     error('The nine state tracker requires gallium softpipe/llvmpipe.')
   elif not (with_gallium_radeonsi or with_gallium_nouveau or with_gallium_r600
             or with_gallium_r300 or with_gallium_svga or with_gallium_i915)
-    error('The nine state tracker requires at least on non-swrast gallium driver.')
+    error('The nine state tracker requires at least one non-swrast gallium driver.')
   endif
   if not with_dri3
     error('Using nine with wine requires dri3')
@@ -630,7 +623,12 @@ if with_gallium_st_nine
 endif
 
 if get_option('power8') != 'false'
-  if host_machine.cpu_family() == 'ppc64le'
+  # on old versions of meson the cpu family would return as ppc64le on little
+  # endian power8, this was changed in 0.48 such that the family would always
+  # be ppc64 regardless of endianness, and the the machine.endian() value
+  # should be checked. Since we support versions < 0.48 we need to use
+  # startswith.
+  if host_machine.cpu_family().startswith('ppc64') and host_machine.endian() == 'little'
     if cc.get_id() == 'gcc' and cc.version().version_compare('< 4.8')
       error('Altivec is not supported with gcc version < 4.8.')
     endif
@@ -783,7 +781,7 @@ if cc.compiles('int foo(void) __attribute__((__noreturn__));',
 endif
 
 # TODO: this is very incomplete
-if ['linux', 'cygwin'].contains(host_machine.system())
+if ['linux', 'cygwin', 'gnu'].contains(host_machine.system())
   pre_args += '-D_GNU_SOURCE'
 endif
 
@@ -920,7 +918,7 @@ endif
 # case of cross compiling where we can use asm, and that's x86_64 -> x86 when
 # host OS == build OS, since in that case the build machine can run the host's
 # binaries.
-if meson.is_cross_build() 
+if with_asm and meson.is_cross_build()
   if build_machine.system() != host_machine.system()
     # TODO: It may be possible to do this with an exe_wrapper (like wine).
     message('Cross compiling from one OS to another, disabling assembly.')
@@ -942,7 +940,7 @@ endif
 with_asm_arch = ''
 if with_asm
   if host_machine.cpu_family() == 'x86'
-    if system_has_kms_drm
+    if system_has_kms_drm or host_machine.system() == 'gnu'
       with_asm_arch = 'x86'
       pre_args += ['-DUSE_X86_ASM', '-DUSE_MMX_ASM', '-DUSE_3DNOW_ASM',
                    '-DUSE_SSE_ASM']
@@ -971,7 +969,7 @@ if with_asm
       with_asm_arch = 'sparc'
       pre_args += ['-DUSE_SPARC_ASM']
     endif
-  elif host_machine.cpu_family() == 'ppc64le'
+  elif host_machine.cpu_family().startswith('ppc64') and host_machine.endian() == 'little'
     if system_has_kms_drm
       with_asm_arch = 'ppc64le'
       pre_args += ['-DUSE_PPC64LE_ASM']
@@ -1165,7 +1163,7 @@ endif
 llvm_modules = ['bitwriter', 'engine', 'mcdisassembler', 'mcjit']
 llvm_optional_modules = []
 if with_amd_vk or with_gallium_radeonsi or with_gallium_r600
-  llvm_modules += ['amdgpu', 'bitreader', 'ipo']
+  llvm_modules += ['amdgpu', 'native', 'bitreader', 'ipo']
   if with_gallium_r600
     llvm_modules += 'asmparser'
   endif
@@ -1179,7 +1177,7 @@ if with_gallium_opencl
 endif
 
 if with_amd_vk or with_gallium_radeonsi
-  _llvm_version = '>= 6.0.0'
+  _llvm_version = '>= 7.0.0'
 elif with_gallium_swr
   _llvm_version = '>= 6.0.0'
 elif with_gallium_opencl or with_gallium_r600
@@ -1352,7 +1350,7 @@ if with_platform_x11
     dep_xdamage = dependency('xdamage', version : '>= 1.1')
     dep_xfixes = dependency('xfixes')
     dep_xcb_glx = dependency('xcb-glx', version : '>= 1.8.1')
-    dep_xxf86vm = dependency('xxf86vm', required : false)
+    dep_xxf86vm = dependency('xxf86vm')
   elif with_gallium_panfrost == 'panfrost'
     dep_x11 = dependency('x11')
     dep_xext = dependency('xext')
@@ -1382,6 +1380,7 @@ if with_platform_x11
   if with_glx == 'dri'
     if with_dri_platform == 'drm'
       dep_dri2proto = dependency('dri2proto', version : '>= 2.8')
+      dep_xxf86vm = dependency('xxf86vm')
     endif
     dep_glproto = dependency('glproto', version : '>= 1.4.14')
   endif
@@ -1402,7 +1401,7 @@ endif
 
 _sensors = get_option('lmsensors')
 if _sensors != 'false'
-  dep_lmsensors = cc.find_library('libsensors', required : _sensors == 'true')
+  dep_lmsensors = cc.find_library('sensors', required : _sensors == 'true')
   if dep_lmsensors.found()
     pre_args += '-DHAVE_LIBSENSORS=1'
   endif
@@ -1432,13 +1431,11 @@ elif with_glx == 'dri'
     'xcb-glx >= 1.8.1']
   if with_dri_platform == 'drm'
     gl_priv_reqs += 'xcb-dri2 >= 1.8'
+    gl_priv_reqs += 'xxf86vm'
   endif
 endif
 if dep_libdrm.found()
   gl_priv_reqs += 'libdrm >= 2.4.75'
-endif
-if dep_xxf86vm.found()
-  gl_priv_reqs += 'xxf86vm'
 endif
 
 gl_priv_libs = []

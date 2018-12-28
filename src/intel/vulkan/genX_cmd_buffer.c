@@ -86,26 +86,26 @@ genX(cmd_buffer_emit_state_base_address)(struct anv_cmd_buffer *cmd_buffer)
 
    anv_batch_emit(&cmd_buffer->batch, GENX(STATE_BASE_ADDRESS), sba) {
       sba.GeneralStateBaseAddress = (struct anv_address) { NULL, 0 };
-      sba.GeneralStateMemoryObjectControlState = GENX(MOCS);
+      sba.GeneralStateMOCS = GENX(MOCS);
       sba.GeneralStateBaseAddressModifyEnable = true;
 
       sba.SurfaceStateBaseAddress =
          anv_cmd_buffer_surface_base_address(cmd_buffer);
-      sba.SurfaceStateMemoryObjectControlState = GENX(MOCS);
+      sba.SurfaceStateMOCS = GENX(MOCS);
       sba.SurfaceStateBaseAddressModifyEnable = true;
 
       sba.DynamicStateBaseAddress =
          (struct anv_address) { &device->dynamic_state_pool.block_pool.bo, 0 };
-      sba.DynamicStateMemoryObjectControlState = GENX(MOCS);
+      sba.DynamicStateMOCS = GENX(MOCS);
       sba.DynamicStateBaseAddressModifyEnable = true;
 
       sba.IndirectObjectBaseAddress = (struct anv_address) { NULL, 0 };
-      sba.IndirectObjectMemoryObjectControlState = GENX(MOCS);
+      sba.IndirectObjectMOCS = GENX(MOCS);
       sba.IndirectObjectBaseAddressModifyEnable = true;
 
       sba.InstructionBaseAddress =
          (struct anv_address) { &device->instruction_state_pool.block_pool.bo, 0 };
-      sba.InstructionMemoryObjectControlState = GENX(MOCS);
+      sba.InstructionMOCS = GENX(MOCS);
       sba.InstructionBaseAddressModifyEnable = true;
 
 #  if (GEN_GEN >= 8)
@@ -124,13 +124,13 @@ genX(cmd_buffer_emit_state_base_address)(struct anv_cmd_buffer *cmd_buffer)
 #  endif
 #  if (GEN_GEN >= 9)
       sba.BindlessSurfaceStateBaseAddress = (struct anv_address) { NULL, 0 };
-      sba.BindlessSurfaceStateMemoryObjectControlState = GENX(MOCS);
+      sba.BindlessSurfaceStateMOCS = GENX(MOCS);
       sba.BindlessSurfaceStateBaseAddressModifyEnable = true;
       sba.BindlessSurfaceStateSize = 0;
 #  endif
 #  if (GEN_GEN >= 10)
       sba.BindlessSamplerStateBaseAddress = (struct anv_address) { NULL, 0 };
-      sba.BindlessSamplerStateMemoryObjectControlState = GENX(MOCS);
+      sba.BindlessSamplerStateMOCS = GENX(MOCS);
       sba.BindlessSamplerStateBaseAddressModifyEnable = true;
       sba.BindlessSamplerStateBufferSize = 0;
 #  endif
@@ -1137,6 +1137,14 @@ transition_color_buffer(struct anv_cmd_buffer *cmd_buffer,
                                            level, array_layer, resolve_op,
                                            final_fast_clear);
          } else {
+            /* We only support fast-clear on the first layer so partial
+             * resolves should not be used on other layers as they will use
+             * the clear color stored in memory that is only valid for layer0.
+             */
+            if (resolve_op == ISL_AUX_OP_PARTIAL_RESOLVE &&
+                array_layer != 0)
+               continue;
+
             anv_cmd_predicated_mcs_resolve(cmd_buffer, image, aspect,
                                            array_layer, resolve_op,
                                            final_fast_clear);
@@ -1623,6 +1631,7 @@ genX(cmd_buffer_config_l3)(struct anv_cmd_buffer *cmd_buffer,
     * desirable behavior.
    */
                    .ErrorDetectionBehaviorControl = true,
+                   .UseFullWays = true,
 #endif
                    .URBAllocation = cfg->n[GEN_L3P_URB],
                    .ROAllocation = cfg->n[GEN_L3P_RO],
@@ -1764,6 +1773,12 @@ genX(cmd_buffer_apply_pipe_flushes)(struct anv_cmd_buffer *cmd_buffer)
                        ANV_PIPE_STALL_AT_SCOREBOARD_BIT)))
             pipe.StallAtPixelScoreboard = true;
       }
+
+      /* If a render target flush was emitted, then we can toggle off the bit
+       * saying that render target writes are ongoing.
+       */
+      if (bits & ANV_PIPE_RENDER_TARGET_CACHE_FLUSH_BIT)
+         bits &= ~(ANV_PIPE_RENDER_TARGET_WRITES);
 
       bits &= ~(ANV_PIPE_FLUSH_BITS | ANV_PIPE_CS_STALL_BIT);
    }
@@ -2565,8 +2580,7 @@ genX(cmd_buffer_flush_state)(struct anv_cmd_buffer *cmd_buffer)
          struct GENX(VERTEX_BUFFER_STATE) state = {
             .VertexBufferIndex = vb,
 
-            .VertexBufferMOCS = anv_mocs_for_bo(cmd_buffer->device,
-                                                buffer->address.bo),
+            .MOCS = anv_mocs_for_bo(cmd_buffer->device, buffer->address.bo),
 #if GEN_GEN <= 7
             .BufferAccessType = pipeline->vb[vb].instanced ? INSTANCEDATA : VERTEXDATA,
             .InstanceDataStepRate = pipeline->vb[vb].instance_divisor,
@@ -2684,7 +2698,7 @@ emit_vertex_bo(struct anv_cmd_buffer *cmd_buffer,
          .VertexBufferIndex = index,
          .AddressModifyEnable = true,
          .BufferPitch = 0,
-         .VertexBufferMOCS = anv_mocs_for_bo(cmd_buffer->device, addr.bo),
+         .MOCS = anv_mocs_for_bo(cmd_buffer->device, addr.bo),
 #if (GEN_GEN >= 8)
          .BufferStartingAddress = addr,
          .BufferSize = size
@@ -2776,6 +2790,8 @@ void genX(CmdDraw)(
       prim.StartInstanceLocation    = firstInstance;
       prim.BaseVertexLocation       = 0;
    }
+
+   cmd_buffer->state.pending_pipe_bits |= ANV_PIPE_RENDER_TARGET_WRITES;
 }
 
 void genX(CmdDrawIndexed)(
@@ -2815,6 +2831,8 @@ void genX(CmdDrawIndexed)(
       prim.StartInstanceLocation    = firstInstance;
       prim.BaseVertexLocation       = vertexOffset;
    }
+
+   cmd_buffer->state.pending_pipe_bits |= ANV_PIPE_RENDER_TARGET_WRITES;
 }
 
 /* Auto-Draw / Indirect Registers */
@@ -2948,6 +2966,8 @@ void genX(CmdDrawIndirect)(
 
       offset += stride;
    }
+
+   cmd_buffer->state.pending_pipe_bits |= ANV_PIPE_RENDER_TARGET_WRITES;
 }
 
 void genX(CmdDrawIndexedIndirect)(
@@ -2987,6 +3007,8 @@ void genX(CmdDrawIndexedIndirect)(
 
       offset += stride;
    }
+
+   cmd_buffer->state.pending_pipe_bits |= ANV_PIPE_RENDER_TARGET_WRITES;
 }
 
 static VkResult

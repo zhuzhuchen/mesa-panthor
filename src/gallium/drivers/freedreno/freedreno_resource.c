@@ -35,6 +35,7 @@
 
 #include "freedreno_resource.h"
 #include "freedreno_batch_cache.h"
+#include "freedreno_blitter.h"
 #include "freedreno_fence.h"
 #include "freedreno_screen.h"
 #include "freedreno_surface.h"
@@ -97,9 +98,12 @@ rebind_resource(struct fd_context *ctx, struct pipe_resource *prsc)
 static void
 realloc_bo(struct fd_resource *rsc, uint32_t size)
 {
+	struct pipe_resource *prsc = &rsc->base;
 	struct fd_screen *screen = fd_screen(rsc->base.screen);
 	uint32_t flags = DRM_FREEDRENO_GEM_CACHE_WCOMBINE |
-			DRM_FREEDRENO_GEM_TYPE_KMEM; /* TODO */
+			DRM_FREEDRENO_GEM_TYPE_KMEM |
+			COND(prsc->bind & PIPE_BIND_SCANOUT, DRM_FREEDRENO_GEM_SCANOUT);
+			/* TODO other flags? */
 
 	/* if we start using things other than write-combine,
 	 * be sure to check for PIPE_RESOURCE_FLAG_MAP_COHERENT
@@ -108,7 +112,8 @@ realloc_bo(struct fd_resource *rsc, uint32_t size)
 	if (rsc->bo)
 		fd_bo_del(rsc->bo);
 
-	rsc->bo = fd_bo_new(screen->dev, size, flags);
+	rsc->bo = fd_bo_new(screen->dev, size, flags, "%ux%ux%u@%u:%x",
+			prsc->width0, prsc->height0, prsc->depth0, rsc->cpp, prsc->bind);
 	rsc->seqno = p_atomic_inc_return(&screen->rsc_seqno);
 	util_range_set_empty(&rsc->valid_buffer_range);
 	fd_bc_invalidate_resource(rsc, true);
@@ -340,17 +345,6 @@ fd_blit_to_staging(struct fd_context *ctx, struct fd_transfer *trans)
 	blit.filter = PIPE_TEX_FILTER_NEAREST;
 
 	do_blit(ctx, &blit, false);
-}
-
-static unsigned
-fd_resource_layer_offset(struct fd_resource *rsc,
-						 struct fd_resource_slice *slice,
-						 unsigned layer)
-{
-	if (rsc->layer_first)
-		return layer * rsc->layer_size;
-	else
-		return layer * slice->size0;
 }
 
 static void fd_resource_transfer_flush_region(struct pipe_context *pctx,
@@ -621,10 +615,10 @@ fd_resource_transfer_map(struct pipe_context *pctx,
 	}
 
 	buf = fd_bo_map(rsc->bo);
-	offset = slice->offset +
+	offset =
 		box->y / util_format_get_blockheight(format) * ptrans->stride +
 		box->x / util_format_get_blockwidth(format) * rsc->cpp +
-		fd_resource_layer_offset(rsc, slice, box->z);
+		fd_resource_offset(rsc, level, box->z);
 
 	if (usage & PIPE_TRANSFER_WRITE)
 		rsc->valid = true;
@@ -851,6 +845,15 @@ fd_resource_create(struct pipe_screen *pscreen,
 				DRM_FREEDRENO_GEM_TYPE_KMEM; /* TODO */
 		unsigned lrz_pitch  = align(DIV_ROUND_UP(tmpl->width0, 8), 64);
 		unsigned lrz_height = DIV_ROUND_UP(tmpl->height0, 8);
+
+		/* LRZ buffer is super-sampled: */
+		switch (prsc->nr_samples) {
+		case 4:
+			lrz_pitch *= 2;
+		case 2:
+			lrz_height *= 2;
+		}
+
 		unsigned size = lrz_pitch * lrz_height * 2;
 
 		size += 0x1000; /* for GRAS_LRZ_FAST_CLEAR_BUFFER */
@@ -858,7 +861,7 @@ fd_resource_create(struct pipe_screen *pscreen,
 		rsc->lrz_height = lrz_height;
 		rsc->lrz_width = lrz_pitch;
 		rsc->lrz_pitch = lrz_pitch;
-		rsc->lrz = fd_bo_new(screen->dev, size, flags);
+		rsc->lrz = fd_bo_new(screen->dev, size, flags, "lrz");
 	}
 
 	size = screen->setup_slices(rsc);
@@ -942,68 +945,6 @@ fd_resource_from_handle(struct pipe_screen *pscreen,
 fail:
 	fd_resource_destroy(pscreen, prsc);
 	return NULL;
-}
-
-/**
- * _copy_region using pipe (3d engine)
- */
-static bool
-fd_blitter_pipe_copy_region(struct fd_context *ctx,
-		struct pipe_resource *dst,
-		unsigned dst_level,
-		unsigned dstx, unsigned dsty, unsigned dstz,
-		struct pipe_resource *src,
-		unsigned src_level,
-		const struct pipe_box *src_box)
-{
-	/* not until we allow rendertargets to be buffers */
-	if (dst->target == PIPE_BUFFER || src->target == PIPE_BUFFER)
-		return false;
-
-	if (!util_blitter_is_copy_supported(ctx->blitter, dst, src))
-		return false;
-
-	/* TODO we could discard if dst box covers dst level fully.. */
-	fd_blitter_pipe_begin(ctx, false, false, FD_STAGE_BLIT);
-	util_blitter_copy_texture(ctx->blitter,
-			dst, dst_level, dstx, dsty, dstz,
-			src, src_level, src_box);
-	fd_blitter_pipe_end(ctx);
-
-	return true;
-}
-
-/**
- * Copy a block of pixels from one resource to another.
- * The resource must be of the same format.
- * Resources with nr_samples > 1 are not allowed.
- */
-static void
-fd_resource_copy_region(struct pipe_context *pctx,
-		struct pipe_resource *dst,
-		unsigned dst_level,
-		unsigned dstx, unsigned dsty, unsigned dstz,
-		struct pipe_resource *src,
-		unsigned src_level,
-		const struct pipe_box *src_box)
-{
-	struct fd_context *ctx = fd_context(pctx);
-
-	/* TODO if we have 2d core, or other DMA engine that could be used
-	 * for simple copies and reasonably easily synchronized with the 3d
-	 * core, this is where we'd plug it in..
-	 */
-
-	/* try blit on 3d pipe: */
-	if (fd_blitter_pipe_copy_region(ctx,
-			dst, dst_level, dstx, dsty, dstz,
-			src, src_level, src_box))
-		return;
-
-	/* else fallback to pure sw: */
-	util_resource_copy_region(pctx,
-			dst, dst_level, dstx, dsty, dstz,
-			src, src_level, src_box);
 }
 
 bool
@@ -1192,6 +1133,50 @@ fd_resource_screen_init(struct pipe_screen *pscreen)
 		screen->setup_slices = fd_setup_slices;
 }
 
+static void
+fd_get_sample_position(struct pipe_context *context,
+                         unsigned sample_count, unsigned sample_index,
+                         float *pos_out)
+{
+	/* The following is copied from nouveau/nv50 except for position
+	 * values, which are taken from blob driver */
+	static const uint8_t pos1[1][2] = { { 0x8, 0x8 } };
+	static const uint8_t pos2[2][2] = {
+		{ 0xc, 0xc }, { 0x4, 0x4 } };
+	static const uint8_t pos4[4][2] = {
+		{ 0x6, 0x2 }, { 0xe, 0x6 },
+		{ 0x2, 0xa }, { 0xa, 0xe } };
+	/* TODO needs to be verified on supported hw */
+	static const uint8_t pos8[8][2] = {
+		{ 0x9, 0x5 }, { 0x7, 0xb },
+		{ 0xd, 0x9 }, { 0x5, 0x3 },
+		{ 0x3, 0xd }, { 0x1, 0x7 },
+		{ 0xb, 0xf }, { 0xf, 0x1 } };
+
+	const uint8_t (*ptr)[2];
+
+	switch (sample_count) {
+	case 1:
+		ptr = pos1;
+		break;
+	case 2:
+		ptr = pos2;
+		break;
+	case 4:
+		ptr = pos4;
+		break;
+	case 8:
+		ptr = pos8;
+		break;
+	default:
+		assert(0);
+		return;
+	}
+
+	pos_out[0] = ptr[sample_index][0] / 16.0f;
+	pos_out[1] = ptr[sample_index][1] / 16.0f;
+}
+
 void
 fd_resource_context_init(struct pipe_context *pctx)
 {
@@ -1206,4 +1191,5 @@ fd_resource_context_init(struct pipe_context *pctx)
 	pctx->blit = fd_blit;
 	pctx->flush_resource = fd_flush_resource;
 	pctx->invalidate_resource = fd_invalidate_resource;
+	pctx->get_sample_position = fd_get_sample_position;
 }

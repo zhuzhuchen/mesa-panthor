@@ -38,12 +38,14 @@
 #include "util/u_transfer.h"
 #include "util/u_transfer_helper.h"
 #include "util/u_memory.h"
+#include "util/half_float.h"
 #include "indices/u_primconvert.h"
 #include "tgsi/tgsi_parse.h"
 
 #include "pan_screen.h"
 #include "pan_blending.h"
 #include "pan_blend_shaders.h"
+#include "pan_wallpaper.h"
 
 static void
 panfrost_flush(
@@ -59,7 +61,6 @@ panfrost_allocate_slab(struct panfrost_context *ctx,
                        int extra_flags,
                        int commit_count,
                        int extent);
-
 
 static bool USE_TRANSACTION_ELIMINATION = false;
 
@@ -396,7 +397,7 @@ panfrost_clear(
         bool clear_stencil = buffers & PIPE_CLEAR_STENCIL;
 
         /* Remember that we've done something */
-        ctx->dirty |= PAN_DIRTY_DUMMY;
+        ctx->frame_cleared = true;
 
         /* Alpha clear only meaningful without alpha channel */
         bool has_alpha = ctx->pipe_framebuffer.nr_cbufs && util_format_has_alpha(ctx->pipe_framebuffer.cbufs[0]->format);
@@ -533,9 +534,13 @@ panfrost_viewport(struct panfrost_context *ctx,
 
         struct mali_viewport ret = {
                 .floats = {
+#if 0
                         -inff, -inff,
-                                inff, inff,
-                        },
+                        inff, inff,
+#endif
+                        0.0, 0.0,
+                        2048.0, 1600.0,
+                },
 
                 .depth_range_n = depth_range_n,
                 .depth_range_f = depth_range_f,
@@ -845,8 +850,8 @@ panfrost_default_shader_backend(struct panfrost_context *ctx)
  * Mali parlance, "fragment" refers to framebuffer writeout). Clear it for
  * vertex jobs. */
 
-static mali_ptr
-panfrost_vertex_tiler_job(struct panfrost_context *ctx, bool is_tiler)
+mali_ptr
+panfrost_vertex_tiler_job(struct panfrost_context *ctx, bool is_tiler, bool is_elided_tiler)
 {
         /* Each draw call corresponds to two jobs, and we want to offset to leave room for the set-value job */
         int draw_job_index = 1 + (2 * ctx->draw_count);
@@ -867,9 +872,9 @@ panfrost_vertex_tiler_job(struct panfrost_context *ctx, bool is_tiler)
 
 #endif
 
-        /* Only tiler jobs have dependencies which are known at this point */
+        /* Only non-elided tiler jobs have dependencies which are known at this point */
 
-        if (is_tiler) {
+        if (is_tiler && !is_elided_tiler) {
                 /* Tiler jobs depend on vertex jobs */
 
                 job.job_dependency_index_1 = draw_job_index;
@@ -1036,10 +1041,12 @@ panfrost_emit_vertex_data(struct panfrost_context *ctx)
 
 /* Go through dirty flags and actualise them in the cmdstream. */
 
-static void
-panfrost_emit_for_draw(struct panfrost_context *ctx)
+void
+panfrost_emit_for_draw(struct panfrost_context *ctx, bool with_vertex_data)
 {
-        panfrost_emit_vertex_data(ctx);
+        if (with_vertex_data) {
+                panfrost_emit_vertex_data(ctx);
+        }
 
         if (ctx->dirty & PAN_DIRTY_RASTERIZER) {
                 ctx->payload_tiler.line_width = ctx->rasterizer->base.line_width;
@@ -1334,10 +1341,10 @@ panfrost_queue_draw(struct panfrost_context *ctx)
         }
 
         /* Handle dirty flags now */
-        panfrost_emit_for_draw(ctx);
+        panfrost_emit_for_draw(ctx, true);
 
-        ctx->vertex_jobs[ctx->draw_count] = panfrost_vertex_tiler_job(ctx, false);
-        ctx->tiler_jobs[ctx->draw_count] = panfrost_vertex_tiler_job(ctx, true);
+        ctx->vertex_jobs[ctx->vertex_job_count++] = panfrost_vertex_tiler_job(ctx, false, false);
+        ctx->tiler_jobs[ctx->tiler_job_count++] = panfrost_vertex_tiler_job(ctx, true, false);
         ctx->draw_count++;
 }
 
@@ -1345,7 +1352,6 @@ panfrost_queue_draw(struct panfrost_context *ctx)
  * then the fragment job is plonked at the end. Set value job is first for
  * unknown reasons. */
 
-#define JOB_DESC(ptr) ((struct mali_job_descriptor_header *) (uintptr_t) (ptr - mem.gpu + (uintptr_t) mem.cpu))
 static void
 panfrost_link_job_pair(struct panfrost_memory mem, mali_ptr first, mali_ptr next)
 {
@@ -1372,10 +1378,15 @@ panfrost_link_jobs(struct panfrost_context *ctx)
         }
 
         /* V -> V/T ; T -> T/null */
-        for (int i = 0; i < ctx->draw_count; ++i) {
-                bool isLast = (i + 1) == ctx->draw_count;
+        for (int i = 0; i < ctx->vertex_job_count; ++i) {
+                bool isLast = (i + 1) == ctx->vertex_job_count;
 
                 panfrost_link_job_pair(ctx->cmdstream, ctx->vertex_jobs[i], isLast ? ctx->tiler_jobs[0]: ctx->vertex_jobs[i + 1]);
+        }
+
+        /* T -> T/null */
+        for (int i = 0; i < ctx->tiler_job_count; ++i) {
+                bool isLast = (i + 1) == ctx->tiler_job_count;
                 panfrost_link_job_pair(ctx->cmdstream, ctx->tiler_jobs[i], isLast ? 0 : ctx->tiler_jobs[i + 1]);
         }
 }
@@ -1448,6 +1459,8 @@ panfrost_submit_frame(struct panfrost_context *ctx, bool flush_immediate)
         panfrost_link_jobs(ctx);
 
         ctx->draw_count = 0;
+        ctx->vertex_job_count = 0;
+        ctx->tiler_job_count = 0;
 
 #ifndef DRY_RUN
         /* XXX: flush_immediate was causing lock-ups wrt readpixels in dEQP. Investigate. */
@@ -1525,7 +1538,21 @@ panfrost_flush(
         struct panfrost_context *ctx = panfrost_context(pipe);
 
         /* If there is nothing drawn, skip the frame */
-        if (!ctx->draw_count && !(ctx->dirty & PAN_DIRTY_DUMMY)) return;
+        if (!ctx->draw_count && !ctx->frame_cleared) return;
+
+        if (!ctx->frame_cleared) {
+                /* While there are draws, there was no clear. This is a partial
+                 * update, which needs to be handled via the "wallpaper"
+                 * method. We also need to fake a clear, just to get the
+                 * FRAGMENT job correct. */
+
+                panfrost_clear(&ctx->base, ctx->last_clear.buffers, ctx->last_clear.color, ctx->last_clear.depth, ctx->last_clear.stencil);
+
+                panfrost_draw_wallpaper(pipe);
+        }
+
+        /* Frame clear handled, reset */
+        ctx->frame_cleared = false;
 
         /* Whether to stall the pipeline for immediately correct results */
         bool flush_immediate = flags & PIPE_FLUSH_END_OF_FRAME;
@@ -1815,8 +1842,6 @@ panfrost_create_vertex_elements_state(
                 }
 
                 so->hw[i].type = type;
-                so->nr_components[i] = desc->nr_channels;
-                so->hw[i].nr_components = MALI_POSITIVE(4); /* XXX: Why is this needed? */
                 so->hw[i].not_normalised = !chan.normalized;
 
                 /* Bit used for both signed/unsigned and full/half designation */
@@ -1825,7 +1850,21 @@ panfrost_create_vertex_elements_state(
                         (chan.type == UTIL_FORMAT_TYPE_FLOAT && chan.size != 32) ? 1 :
                         0;
 
-                so->hw[i].unknown1 = 0x2a22;
+                so->hw[i].nr_components = MALI_POSITIVE(desc->nr_channels);
+                so->nr_components[i] = desc->nr_channels;
+
+                /* The meaning of these magic values is unclear at the moment,
+                 * but likely has to do with how attributes are padded */
+
+                unsigned unknown1_for_components[4] = {
+                        0x2c82, /* float */
+                        0x2c22, /* vec2 */
+                        0x2a22, /* vec3 */
+                        0x1a22, /* vec4 */
+                };
+
+                so->hw[i].unknown1 = unknown1_for_components[desc->nr_channels - 1];
+
                 so->hw[i].unknown2 = 0x1;
 
                 /* The field itself should probably be shifted over */
@@ -1979,8 +2018,11 @@ panfrost_set_vertex_buffers(
                 ctx->vertex_buffer_count = num_buffers;
                 memcpy(ctx->vertex_buffers, buffers, sz);
         } else {
-                /* XXX leak */
-                ctx->vertex_buffers = NULL;
+                if (ctx->vertex_buffers) {
+                        free(ctx->vertex_buffers);
+                        ctx->vertex_buffers = NULL;
+                }
+
                 ctx->vertex_buffer_count = 0;
         }
 }
@@ -2075,9 +2117,24 @@ panfrost_create_sampler_view(
         assert(bytes_per_pixel >= 1 && bytes_per_pixel <= 4);
 
         /* TODO: Detect from format better */
+        const struct util_format_description *desc = util_format_description(prsrc->base.format);
         bool depth = prsrc->base.format == PIPE_FORMAT_Z32_UNORM;
         bool has_alpha = true;
         bool alpha_only = prsrc->base.format == PIPE_FORMAT_A8_UNORM;
+
+        /* Compose the format swizzle with the descriptor swizzle to find the
+         * actual swizzle to send to the hardware */
+
+        unsigned char composed_swizzle[4];
+
+        unsigned char desc_swizzle[4] = {
+                template->swizzle_r,
+                template->swizzle_g,
+                template->swizzle_b,
+                template->swizzle_a
+        };
+
+        util_format_compose_swizzles(desc->swizzle, desc_swizzle, composed_swizzle);
 
         struct mali_texture_descriptor texture_descriptor = {
                 .width = MALI_POSITIVE(texture->width0),
@@ -2102,10 +2159,10 @@ panfrost_create_sampler_view(
                         .usage2 = prsrc->has_afbc ? 0x1c : (prsrc->tiled ? 0x11 : 0x12),
                 },
 
-                .swizzle_r = panfrost_translate_texture_swizzle(template->swizzle_r),
-                .swizzle_g = panfrost_translate_texture_swizzle(template->swizzle_g),
-                .swizzle_b = panfrost_translate_texture_swizzle(template->swizzle_b),
-                .swizzle_a = panfrost_translate_texture_swizzle(template->swizzle_a),
+                .swizzle_r = panfrost_translate_texture_swizzle(composed_swizzle[0]),
+                .swizzle_g = panfrost_translate_texture_swizzle(composed_swizzle[1]),
+                .swizzle_b = panfrost_translate_texture_swizzle(composed_swizzle[2]),
+                .swizzle_a = panfrost_translate_texture_swizzle(composed_swizzle[3]),
         };
 
         /* TODO: Other base levels require adjusting dimensions / level numbers / etc */
@@ -2196,6 +2253,7 @@ panfrost_resource_create_front(struct pipe_screen *screen,
                                 return NULL;
 
                         so->scanout = scanout;
+                        pscreen->display_target = so;
                 } else {
                         /* TODO: Mipmapped RTs */
                         //assert(template->last_level == 0);
@@ -2394,8 +2452,10 @@ panfrost_set_framebuffer_state(struct pipe_context *pctx,
         if (ctx->last_clear.color)
                 panfrost_clear(&ctx->base, ctx->last_clear.buffers, ctx->last_clear.color, ctx->last_clear.depth, ctx->last_clear.stencil);
 
+#if 0
         /* Don't consider the buffer dirty */
-        ctx->dirty &= ~PAN_DIRTY_DUMMY;
+        ctx->dirty &= ~PAN_DIRTY_CLEAR;
+#endif
 }
 
 static void *
@@ -2704,6 +2764,60 @@ panfrost_blit(struct pipe_context *pipe,
         return;
 }
 
+struct panfrost_query {
+        unsigned type;
+        unsigned index;
+};
+
+static struct pipe_query *
+panfrost_create_query(struct pipe_context *pipe, 
+		      unsigned type,
+		      unsigned index)
+{
+        /* STUB */
+        struct panfrost_query *q = CALLOC_STRUCT(panfrost_query);
+        printf("Creating query %d, %d\n", type, index);
+
+        q->type = type;
+        q->index = index;
+
+        return (struct pipe_query *) q;
+}
+
+static void
+panfrost_destroy_query(struct pipe_context *pipe, struct pipe_query *q)
+{
+        FREE(q);
+}
+
+static boolean
+panfrost_begin_query(struct pipe_context *pipe, struct pipe_query *q)
+{
+        struct panfrost_query *query = (struct panfrost_query *) q;
+        printf("Skipping query %d\n", query->type);
+        /* STUB */
+        return true;
+}
+
+static bool
+panfrost_end_query(struct pipe_context *pipe, struct pipe_query *q)
+{
+        /* STUB */
+        return true;
+}
+
+static boolean
+panfrost_get_query_result(struct pipe_context *pipe, 
+                          struct pipe_query *q,
+                          boolean wait,
+                          union pipe_query_result *vresult)
+{
+        /* STUB */
+        struct panfrost_query *query = (struct panfrost_query *) q;
+        printf("Skipped query get %d\n", query->type);
+        return true;
+}
+
 static void
 panfrost_allocate_slab(struct panfrost_context *ctx,
                        struct panfrost_memory *mem,
@@ -2888,6 +3002,13 @@ panfrost_create_context(struct pipe_screen *screen, void *priv, unsigned flags)
         gallium->set_scissor_states = panfrost_set_scissor_states;
         gallium->set_polygon_stipple = panfrost_set_polygon_stipple;
         gallium->set_active_query_state = panfrost_set_active_query_state;
+
+        gallium->create_query = panfrost_create_query;
+        gallium->destroy_query = panfrost_destroy_query;
+        gallium->begin_query = panfrost_begin_query;
+        gallium->end_query = panfrost_end_query;
+        gallium->get_query_result = panfrost_get_query_result;
+
 
         gallium->blit = panfrost_blit;
 

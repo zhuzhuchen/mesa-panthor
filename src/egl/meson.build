@@ -93,9 +93,6 @@ if with_dri2
     'drivers/dri2/egl_dri2.h',
     'drivers/dri2/egl_dri2_fallbacks.h',
   )
-  c_args_for_egl += [
-    '-DDEFAULT_DRIVER_DIR="@0@"'.format(dri_search_path),
-  ]
 
   if with_platform_x11
     files_egl += files('drivers/dri2/platform_x11.c')
@@ -203,11 +200,13 @@ if with_tests
     test('egl-symbols-check',
       find_program('egl-symbols-check'),
       env : env_test,
-      args : libegl
+      args : libegl,
+      suite : ['egl'],
     )
   endif
   test('egl-entrypoint-check',
     find_program('egl-entrypoint-check'),
-    env : [ 'srcdir=' + meson.current_source_dir() ]
+    env : ['srcdir=' + meson.current_source_dir()],
+    suite : ['egl'],
   )
 endif

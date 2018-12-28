@@ -223,7 +223,7 @@ enum quniform_contents {
          */
         QUNIFORM_TEXTURE_CONFIG_P1,
 
-        /* A a V3D 4.x texture config parameter.  The high 8 bits will be
+        /* A V3D 4.x texture config parameter.  The high 8 bits will be
          * which texture or sampler is being sampled, and the driver must
          * replace the address field with the appropriate address.
          */
@@ -243,10 +243,7 @@ enum quniform_contents {
         QUNIFORM_TEXRECT_SCALE_X,
         QUNIFORM_TEXRECT_SCALE_Y,
 
-        QUNIFORM_TEXTURE_BORDER_COLOR,
-
         QUNIFORM_ALPHA_REF,
-        QUNIFORM_SAMPLE_MASK,
 
         /**
          * Returns the the offset of the scratch buffer for register spilling.
@@ -254,6 +251,21 @@ enum quniform_contents {
         QUNIFORM_SPILL_OFFSET,
         QUNIFORM_SPILL_SIZE_PER_THREAD,
 };
+
+static inline uint32_t v3d_tmu_config_data_create(uint32_t unit, uint32_t value)
+{
+        return unit << 24 | value;
+}
+
+static inline uint32_t v3d_tmu_config_data_get_unit(uint32_t data)
+{
+        return data >> 24;
+}
+
+static inline uint32_t v3d_tmu_config_data_get_value(uint32_t data)
+{
+        return data & 0xffffff;
+}
 
 struct v3d_varying_slot {
         uint8_t slot_and_component;
@@ -301,8 +313,6 @@ struct v3d_key {
                 uint8_t swizzle[4];
                 uint8_t return_size;
                 uint8_t return_channels;
-                unsigned compare_mode:1;
-                unsigned compare_func:3;
                 bool clamp_s:1;
                 bool clamp_t:1;
                 bool clamp_r:1;
@@ -649,6 +659,11 @@ struct v3d_vs_prog_data {
         /* Total number of components written, for the shader state record. */
         uint32_t vpm_output_size;
 
+        /* Set if there should be separate VPM segments for input and output.
+         * If unset, vpm_input_size will be 0.
+         */
+        bool separate_segments;
+
         /* Value to be programmed in VCM_CACHE_SIZE. */
         uint8_t vcm_cache_size;
 };
@@ -756,6 +771,7 @@ void vir_emit_thrsw(struct v3d_compile *c);
 
 void vir_dump(struct v3d_compile *c);
 void vir_dump_inst(struct v3d_compile *c, struct qinst *inst);
+void vir_dump_uniform(enum quniform_contents contents, uint32_t data);
 
 void vir_validate(struct v3d_compile *c);
 
@@ -1060,7 +1076,7 @@ vir_LOAD_IMM_I2(struct v3d_compile *c, uint32_t val)
 */
 
 static inline struct qinst *
-vir_BRANCH(struct v3d_compile *c, enum v3d_qpu_cond cond)
+vir_BRANCH(struct v3d_compile *c, enum v3d_qpu_branch_cond cond)
 {
         /* The actual uniform_data value will be set at scheduling time */
         return vir_emit_nondef(c, vir_branch_inst(cond, vir_uniform_ui(c, 0)));

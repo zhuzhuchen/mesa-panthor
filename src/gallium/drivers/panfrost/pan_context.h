@@ -58,7 +58,7 @@ struct prim_convert_context;
 #define MAX_DRAW_CALLS 4096
 #define MAX_VARYINGS   4096
 
-#define PAN_DIRTY_DUMMY	     (1 << 0)
+//#define PAN_DIRTY_CLEAR	     (1 << 0)
 #define PAN_DIRTY_RASTERIZER (1 << 2)
 #define PAN_DIRTY_FS	     (1 << 3)
 #define PAN_DIRTY_FRAG_CORE  (PAN_DIRTY_FS) /* Dirty writes are tied */
@@ -139,8 +139,14 @@ struct panfrost_context {
         mali_ptr vertex_jobs[MAX_DRAW_CALLS];
         mali_ptr tiler_jobs[MAX_DRAW_CALLS];
 
-        /* Dirty flags are setup like any other driver */
+        unsigned vertex_job_count;
+        unsigned tiler_job_count;
+
+        /* Per-draw Dirty flags are setup like any other driver */
         int dirty;
+
+        /* Per frame dirty flag - whether there was a clear. If not, we need to do a partial update, maybe */
+        bool frame_cleared;
 
         unsigned vertex_count;
 
@@ -351,5 +357,13 @@ struct pipe_resource *
 panfrost_resource_create_front(struct pipe_screen *screen,
                                const struct pipe_resource *template,
                                const void *map_front_private);
+
+void
+panfrost_emit_for_draw(struct panfrost_context *ctx, bool with_vertex_data);
+
+mali_ptr
+panfrost_vertex_tiler_job(struct panfrost_context *ctx, bool is_tiler, bool is_elided_tiler);
+
+#define JOB_DESC(ptr) ((struct mali_job_descriptor_header *) (uintptr_t) (ptr - mem.gpu + (uintptr_t) mem.cpu))
 
 #endif

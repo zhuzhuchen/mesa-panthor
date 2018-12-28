@@ -107,8 +107,8 @@ dnl LLVM versions
 LLVM_REQUIRED_GALLIUM=3.3.0
 LLVM_REQUIRED_OPENCL=3.9.0
 LLVM_REQUIRED_R600=3.9.0
-LLVM_REQUIRED_RADEONSI=6.0.0
-LLVM_REQUIRED_RADV=6.0.0
+LLVM_REQUIRED_RADEONSI=7.0.0
+LLVM_REQUIRED_RADV=7.0.0
 LLVM_REQUIRED_SWR=6.0.0
 
 dnl Check for progs
@@ -1716,6 +1716,8 @@ xdri)
             if test x"$enable_dri" = xyes; then
                dri_modules="$dri_modules xcb-dri2 >= $XCBDRI2_REQUIRED"
             fi
+
+            dri_modules="$dri_modules xxf86vm"
         fi
         if test x"$dri_platform" = xapple ; then
             DEFINES="$DEFINES -DGLX_USE_APPLEGL"
@@ -1723,12 +1725,6 @@ xdri)
         if test x"$dri_platform" = xwindows ; then
             DEFINES="$DEFINES -DGLX_USE_WINDOWSGL"
         fi
-    fi
-
-    # add xf86vidmode if available
-    PKG_CHECK_MODULES([XF86VIDMODE], [xxf86vm], HAVE_XF86VIDMODE=yes, HAVE_XF86VIDMODE=no)
-    if test "$HAVE_XF86VIDMODE" = yes ; then
-        dri_modules="$dri_modules xxf86vm"
     fi
 
     PKG_CHECK_MODULES([DRIGL], [$dri_modules])
@@ -1741,10 +1737,6 @@ xdri)
     GL_PC_LIB_PRIV="-lm $PTHREAD_LIBS $DLOPEN_LIBS"
     ;;
 esac
-
-# This is outside the case (above) so that it is invoked even for non-GLX
-# builds.
-AM_CONDITIONAL(HAVE_XF86VIDMODE, test "x$HAVE_XF86VIDMODE" = xyes)
 
 GLESv1_CM_LIB_DEPS="$LIBDRM_LIBS -lm $PTHREAD_LIBS $DLOPEN_LIBS"
 GLESv1_CM_PC_LIB_PRIV="-lm $PTHREAD_LIBS $DLOPEN_LIBS"
@@ -1761,8 +1753,6 @@ AC_SUBST([GLESv1_CM_LIB_DEPS])
 AC_SUBST([GLESv1_CM_PC_LIB_PRIV])
 AC_SUBST([GLESv2_LIB_DEPS])
 AC_SUBST([GLESv2_PC_LIB_PRIV])
-
-AC_SUBST([HAVE_XF86VIDMODE])
 
 dnl
 dnl More GLX setup
@@ -2913,6 +2903,7 @@ if test "x$enable_llvm" = xyes; then
     LLVM_LDFLAGS=`$LLVM_CONFIG --ldflags`
     LLVM_CFLAGS=$LLVM_CPPFLAGS   # CPPFLAGS seem to be sufficient
     LLVM_CXXFLAGS=`strip_unwanted_llvm_flags "$LLVM_CONFIG --cxxflags"`
+    LLVM_CXXFLAGS="$CXX11_CXXFLAGS $LLVM_CXXFLAGS"
 
     dnl Set LLVM_LIBS - This is done after the driver configuration so
     dnl that drivers can add additional components to LLVM_COMPONENTS.
@@ -3007,6 +2998,7 @@ AM_CONDITIONAL(HAVE_AMD_DRIVERS, test "x$HAVE_GALLIUM_RADEONSI" = xyes -o \
 AM_CONDITIONAL(HAVE_BROADCOM_DRIVERS, test "x$HAVE_GALLIUM_VC4" = xyes -o \
                                       "x$HAVE_GALLIUM_V3D" = xyes)
 
+AM_CONDITIONAL(HAVE_FREEDRENO_DRIVERS, test "x$HAVE_GALLIUM_FREEDRENO" = xyes)
 AM_CONDITIONAL(HAVE_INTEL_DRIVERS, test "x$HAVE_INTEL_VULKAN" = xyes -o \
                                         "x$HAVE_I965_DRI" = xyes)
 
@@ -3099,6 +3091,7 @@ AC_CONFIG_FILES([Makefile
                  src/amd/vulkan/Makefile
                  src/broadcom/Makefile
                  src/compiler/Makefile
+                 src/freedreno/Makefile
                  src/egl/Makefile
                  src/egl/main/egl.pc
                  src/egl/wayland/wayland-drm/Makefile
