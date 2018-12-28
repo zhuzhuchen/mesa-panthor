@@ -256,6 +256,19 @@ nir_format_float_to_snorm(nir_builder *b, nir_ssa_def *f, const unsigned *bits)
    return nir_f2i32(b, nir_fround_even(b, nir_fmul(b, f, factor)));
 }
 
+/* Converts a vector of floats to a vector of half-floats packed in the low 16
+ * bits.
+ */
+static inline nir_ssa_def *
+nir_format_float_to_half(nir_builder *b, nir_ssa_def *f)
+{
+   nir_ssa_def *zero = nir_imm_float(b, 0);
+   nir_ssa_def *f16comps[4];
+   for (unsigned i = 0; i < f->num_components; i++)
+      f16comps[i] = nir_pack_half_2x16_split(b, nir_channel(b, f, i), zero);
+   return nir_vec(b, f16comps, f->num_components);
+}
+
 static inline nir_ssa_def *
 nir_format_linear_to_srgb(nir_builder *b, nir_ssa_def *c)
 {
@@ -294,7 +307,7 @@ nir_format_clamp_uint(nir_builder *b, nir_ssa_def *f, const unsigned *bits)
    nir_const_value max;
    for (unsigned i = 0; i < f->num_components; i++) {
       assert(bits[i] < 32);
-      max.i32[i] = (1 << (bits[i] - 1)) - 1;
+      max.u32[i] = (1 << bits[i]) - 1;
    }
    return nir_umin(b, f, nir_build_imm(b, f->num_components, 32, max));
 }

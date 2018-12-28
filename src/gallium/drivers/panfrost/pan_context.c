@@ -44,6 +44,9 @@
 #include "pan_blend_shaders.h"
 #include "pan_wallpaper.h"
 
+/* Texture memory */
+#define HEAP_TEXTURE 0
+
 static void
 panfrost_flush(
         struct pipe_context *pipe,
@@ -2942,7 +2945,7 @@ panfrost_slab_alloc(void *priv, unsigned heap, unsigned entry_size, unsigned gro
         struct panfrost_context *ctx = (struct panfrost_context *) priv;
         struct panfrost_memory *mem = CALLOC_STRUCT(panfrost_memory);
 
-        size_t slab_size = (1 << 25); /* One greater than the max entry size */
+        size_t slab_size = (1 << (MAX_SLAB_ENTRY_SIZE + 1));
 
         mem->slab.num_entries = slab_size / entry_size;
         mem->slab.num_free = mem->slab.num_entries;
@@ -3092,10 +3095,8 @@ panfrost_create_context(struct pipe_screen *screen, void *priv, unsigned flags)
         assert(ctx->blitter);
 
         pb_slabs_init(&ctx->slabs,
-
-                        /* slabs from 2^min to 2^max */
-                        10, /* 2^10 = 1024 */
-                        24, /* 2^24 = 16 MB, why would you need more? T_T */
+                        MIN_SLAB_ENTRY_SIZE,
+                        MAX_SLAB_ENTRY_SIZE,
 
                         2, /* Number of heaps */
 

@@ -79,6 +79,13 @@ struct panfrost_memory {
         size_t size;
 };
 
+/* Slab entry sizes range from 2^min to 2^max. In this case, we range from 1k
+ * to 16MB. Numbers are kind of arbitrary but these seem to work alright in
+ * practice. */
+
+#define MIN_SLAB_ENTRY_SIZE (10)
+#define MAX_SLAB_ENTRY_SIZE (24)
+
 struct panfrost_memory_entry {
         /* Subclass */
         struct pb_slab_entry base;

@@ -545,7 +545,7 @@ convert_color_for_store(nir_builder *b, const struct gen_device_info *devinfo,
 
    case ISL_SFLOAT:
       if (image.bits[0] == 16)
-         color = nir_pack_half_2x16_split(b, color, nir_imm_float(b, 0));
+         color = nir_format_float_to_half(b, color);
       break;
 
    case ISL_UINT:

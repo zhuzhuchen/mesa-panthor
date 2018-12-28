@@ -668,7 +668,7 @@ optimise_nir(nir_shader *nir)
                 NIR_PASS(progress, nir, nir_opt_vectorize);
                 NIR_PASS(progress, nir, nir_opt_dead_cf);
                 NIR_PASS(progress, nir, nir_opt_cse);
-                NIR_PASS(progress, nir, nir_opt_peephole_select, 64);
+                NIR_PASS(progress, nir, nir_opt_peephole_select, 64, false, true);
                 NIR_PASS(progress, nir, nir_opt_algebraic);
                 NIR_PASS(progress, nir, nir_opt_constant_folding);
                 NIR_PASS(progress, nir, nir_opt_undef);
@@ -784,7 +784,10 @@ squeeze_writemask(unsigned mask)
 static unsigned
 effective_writemask(midgard_vector_alu *alu)
 {
-        unsigned channel_count = alu_opcode_props[alu->op] & OP_CHANNEL_MASK;
+        /* Channel count is off-by-one to fit in two-bits (0 channel makes no
+         * sense) */
+
+        unsigned channel_count = GET_CHANNEL_COUNT(alu_opcode_props[alu->op]);
 
         /* If there is a fixed channel count, construct the appropriate mask */
 

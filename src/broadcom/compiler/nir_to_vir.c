@@ -506,45 +506,45 @@ ntq_emit_comparison(struct v3d_compile *c, struct qreg *dest,
         bool cond_invert = false;
 
         switch (compare_instr->op) {
-        case nir_op_feq:
+        case nir_op_feq32:
         case nir_op_seq:
                 vir_PF(c, vir_FCMP(c, src0, src1), V3D_QPU_PF_PUSHZ);
                 break;
-        case nir_op_ieq:
+        case nir_op_ieq32:
                 vir_PF(c, vir_XOR(c, src0, src1), V3D_QPU_PF_PUSHZ);
                 break;
 
-        case nir_op_fne:
+        case nir_op_fne32:
         case nir_op_sne:
                 vir_PF(c, vir_FCMP(c, src0, src1), V3D_QPU_PF_PUSHZ);
                 cond_invert = true;
                 break;
-        case nir_op_ine:
+        case nir_op_ine32:
                 vir_PF(c, vir_XOR(c, src0, src1), V3D_QPU_PF_PUSHZ);
                 cond_invert = true;
                 break;
 
-        case nir_op_fge:
+        case nir_op_fge32:
         case nir_op_sge:
                 vir_PF(c, vir_FCMP(c, src1, src0), V3D_QPU_PF_PUSHC);
                 break;
-        case nir_op_ige:
+        case nir_op_ige32:
                 vir_PF(c, vir_MIN(c, src1, src0), V3D_QPU_PF_PUSHC);
                 cond_invert = true;
                 break;
-        case nir_op_uge:
+        case nir_op_uge32:
                 vir_PF(c, vir_SUB(c, src0, src1), V3D_QPU_PF_PUSHC);
                 cond_invert = true;
                 break;
 
         case nir_op_slt:
-        case nir_op_flt:
+        case nir_op_flt32:
                 vir_PF(c, vir_FCMP(c, src0, src1), V3D_QPU_PF_PUSHN);
                 break;
-        case nir_op_ilt:
+        case nir_op_ilt32:
                 vir_PF(c, vir_MIN(c, src1, src0), V3D_QPU_PF_PUSHC);
                 break;
-        case nir_op_ult:
+        case nir_op_ult32:
                 vir_PF(c, vir_SUB(c, src0, src1), V3D_QPU_PF_PUSHC);
                 break;
 
@@ -565,7 +565,7 @@ ntq_emit_comparison(struct v3d_compile *c, struct qreg *dest,
                                 vir_uniform_f(c, 1.0), vir_uniform_f(c, 0.0));
                 break;
 
-        case nir_op_bcsel:
+        case nir_op_b32csel:
                 *dest = vir_SEL(c, cond,
                                 ntq_get_alu_src(c, sel_instr, 1),
                                 ntq_get_alu_src(c, sel_instr, 2));
@@ -748,22 +748,22 @@ ntq_emit_alu(struct v3d_compile *c, nir_alu_instr *instr)
         case nir_op_sne:
         case nir_op_sge:
         case nir_op_slt:
-        case nir_op_feq:
-        case nir_op_fne:
-        case nir_op_fge:
-        case nir_op_flt:
-        case nir_op_ieq:
-        case nir_op_ine:
-        case nir_op_ige:
-        case nir_op_uge:
-        case nir_op_ilt:
-        case nir_op_ult:
+        case nir_op_feq32:
+        case nir_op_fne32:
+        case nir_op_fge32:
+        case nir_op_flt32:
+        case nir_op_ieq32:
+        case nir_op_ine32:
+        case nir_op_ige32:
+        case nir_op_uge32:
+        case nir_op_ilt32:
+        case nir_op_ult32:
                 if (!ntq_emit_comparison(c, &result, instr, instr)) {
                         fprintf(stderr, "Bad comparison instruction\n");
                 }
                 break;
 
-        case nir_op_bcsel:
+        case nir_op_b32csel:
                 result = ntq_emit_bcsel(c, instr, src);
                 break;
         case nir_op_fcsel:
@@ -850,6 +850,9 @@ ntq_emit_alu(struct v3d_compile *c, nir_alu_instr *instr)
                 break;
 
         case nir_op_unpack_half_2x16_split_x:
+                /* XXX perf: It would be good to be able to merge this unpack
+                 * with whatever uses our result.
+                 */
                 result = vir_FMOV(c, src[0]);
                 vir_set_unpack(c->defs[result.index], 0, V3D_QPU_UNPACK_L);
                 break;
@@ -1238,7 +1241,7 @@ v3d_optimize_nir(struct nir_shader *s)
                 NIR_PASS(progress, s, nir_opt_dce);
                 NIR_PASS(progress, s, nir_opt_dead_cf);
                 NIR_PASS(progress, s, nir_opt_cse);
-                NIR_PASS(progress, s, nir_opt_peephole_select, 8);
+                NIR_PASS(progress, s, nir_opt_peephole_select, 8, true, true);
                 NIR_PASS(progress, s, nir_opt_algebraic);
                 NIR_PASS(progress, s, nir_opt_constant_folding);
                 NIR_PASS(progress, s, nir_opt_undef);
@@ -1489,6 +1492,10 @@ ntq_setup_registers(struct v3d_compile *c, struct exec_list *list)
 static void
 ntq_emit_load_const(struct v3d_compile *c, nir_load_const_instr *instr)
 {
+        /* XXX perf: Experiment with using immediate loads to avoid having
+         * these end up in the uniform stream.  Watch out for breaking the
+         * small immediates optimization in the process!
+         */
         struct qreg *qregs = ntq_init_ssa_def(c, &instr->def);
         for (int i = 0; i < instr->def.num_components; i++)
                 qregs[i] = vir_uniform_ui(c, instr->value.u32[i]);
@@ -1535,6 +1542,11 @@ ntq_emit_intrinsic(struct v3d_compile *c, nir_intrinsic_instr *instr)
                 for (int i = 0; i < instr->num_components; i++) {
                         int ubo = nir_src_as_uint(instr->src[0]);
 
+                        /* XXX perf: On V3D 4.x with uniform offsets, we
+                         * should probably try setting UBOs up in the A
+                         * register file and doing a sequence of loads that
+                         * way.
+                         */
                         /* Adjust for where we stored the TGSI register base. */
                         vir_ADD_dest(c,
                                      vir_reg(QFILE_MAGIC, V3D_QPU_WADDR_TMUA),
@@ -1669,6 +1681,12 @@ ntq_emit_intrinsic(struct v3d_compile *c, nir_intrinsic_instr *instr)
 
 /* Clears (activates) the execute flags for any channels whose jump target
  * matches this block.
+ *
+ * XXX perf: Could we be using flpush/flpop somehow for our execution channel
+ * enabling?
+ *
+ * XXX perf: For uniform control flow, we should be able to skip c->execute
+ * handling entirely.
  */
 static void
 ntq_activate_execute_for_block(struct v3d_compile *c)
@@ -1704,6 +1722,10 @@ ntq_emit_if(struct v3d_compile *c, nir_if *if_stmt)
         /* Set A for executing (execute == 0) and jumping (if->condition ==
          * 0) channels, and then update execute flags for those to point to
          * the ELSE block.
+         *
+         * XXX perf: we could reuse ntq_emit_comparison() to generate our if
+         * condition, and the .uf field to ignore non-executing channels, to
+         * reduce the overhead of if statements.
          */
         vir_PF(c, vir_OR(c,
                          c->execute,
@@ -1925,6 +1947,10 @@ nir_to_vir(struct v3d_compile *c)
                 c->payload_w_centroid = vir_MOV(c, vir_reg(QFILE_REG, 1));
                 c->payload_z = vir_MOV(c, vir_reg(QFILE_REG, 2));
 
+                /* XXX perf: We could set the "disable implicit point/line
+                 * varyings" field in the shader record and not emit these, if
+                 * they're not going to be used.
+                 */
                 if (c->fs_key->is_points) {
                         c->point_x = emit_fragment_varying(c, NULL, 0);
                         c->point_y = emit_fragment_varying(c, NULL, 0);
@@ -2119,7 +2145,14 @@ v3d_nir_to_vir(struct v3d_compile *c)
 
         vir_check_payload_w(c);
 
-        /* XXX: vir_schedule_instructions(c); */
+        /* XXX perf: On VC4, we do a VIR-level instruction scheduling here.
+         * We used that on that platform to pipeline TMU writes and reduce the
+         * number of thread switches, as well as try (mostly successfully) to
+         * reduce maximum register pressure to allow more threads.  We should
+         * do something of that sort for V3D -- either instruction scheduling
+         * here, or delay the the THRSW and LDTMUs from our texture
+         * instructions until the results are needed.
+         */
 
         if (V3D_DEBUG & (V3D_DEBUG_VIR |
                          v3d_debug_flag_for_shader_stage(c->s->info.stage))) {
