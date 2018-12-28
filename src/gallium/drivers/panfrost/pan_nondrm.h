@@ -32,6 +32,7 @@
 #include <panfrost-job.h>
 #include <linux/ioctl.h>
 #include "pan_slowfb.h"
+#include "pipebuffer/pb_slab.h"
 
 int pandev_open(void);
 
@@ -49,10 +50,32 @@ void
 panfrost_shader_compile(struct panfrost_context *ctx, struct mali_shader_meta *meta, const char *src, int type, struct panfrost_shader_state *state);
 
 struct panfrost_memory {
+        /* Subclassing slab object */
+        struct pb_slab slab;
+
+        /* Backing for the slab in memory */
         uint8_t *cpu;
         mali_ptr gpu;
         int stack_bottom;
         size_t size;
+};
+
+/* Slab entry sizes range from 2^min to 2^max. In this case, we range from 1k
+ * to 16MB. Numbers are kind of arbitrary but these seem to work alright in
+ * practice. */
+
+#define MIN_SLAB_ENTRY_SIZE (10)
+#define MAX_SLAB_ENTRY_SIZE (24)
+
+struct panfrost_memory_entry {
+        /* Subclass */
+        struct pb_slab_entry base;
+
+        /* Have we been freed? */
+        bool freed;
+
+        /* Offset into the slab of the entry */
+        off_t offset;
 };
 
 /* Functions for replay */
