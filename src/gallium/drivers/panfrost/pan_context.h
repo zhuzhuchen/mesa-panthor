@@ -75,6 +75,25 @@ struct panfrost_constant_buffer {
         void *buffer;
 };
 
+#define PANFROST_MAX_TRANSIENT_ENTRIES 64
+
+struct panfrost_transient_pool {
+        /* Memory blocks in the pool */
+        struct panfrost_memory_entry *entries[PANFROST_MAX_TRANSIENT_ENTRIES];
+
+        /* Number of entries we own */
+        unsigned entry_count;
+
+        /* Current entry that we are writing to, zero-indexed, strictly less than entry_count */
+        unsigned entry_index;
+
+        /* Number of bytes into the current entry we are */
+        off_t entry_offset;
+
+        /* Entry size (all entries must be homogenous) */
+        size_t entry_size;
+};
+
 struct panfrost_context {
         /* Gallium context */
         struct pipe_context base;
@@ -83,11 +102,11 @@ struct panfrost_context {
         int fd;
         struct pipe_framebuffer_state pipe_framebuffer;
 
-        /* The number of concurrent FBOs allowed depends on the number of rings used */
-        struct panfrost_memory cmdstream_rings[2];
-        int cmdstream_i;
+        /* The number of concurrent FBOs allowed depends on the number of pools
+         * used; pools are ringed for parallelism opportunities */
 
-        struct panfrost_memory cmdstream;
+        struct panfrost_transient_pool transient_pools[2];
+        int cmdstream_i;
 
         struct panfrost_memory cmdstream_persistent;
         struct panfrost_memory shaders;
@@ -142,6 +161,10 @@ struct panfrost_context {
         mali_ptr set_value_job;
         mali_ptr vertex_jobs[MAX_DRAW_CALLS];
         mali_ptr tiler_jobs[MAX_DRAW_CALLS];
+
+        struct mali_job_descriptor_header *u_set_value_job;
+        struct mali_job_descriptor_header *u_vertex_jobs[MAX_DRAW_CALLS];
+        struct mali_job_descriptor_header *u_tiler_jobs[MAX_DRAW_CALLS];
 
         unsigned vertex_job_count;
         unsigned tiler_job_count;
@@ -342,9 +365,7 @@ panfrost_resource_create_front(struct pipe_screen *screen,
 void
 panfrost_emit_for_draw(struct panfrost_context *ctx, bool with_vertex_data);
 
-mali_ptr
+struct panfrost_transfer
 panfrost_vertex_tiler_job(struct panfrost_context *ctx, bool is_tiler, bool is_elided_tiler);
-
-#define JOB_DESC(ptr) ((struct mali_job_descriptor_header *) (uintptr_t) (ptr - mem.gpu + (uintptr_t) mem.cpu))
 
 #endif

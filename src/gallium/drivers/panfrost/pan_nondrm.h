@@ -49,6 +49,25 @@ struct panfrost_shader_state;
 void
 panfrost_shader_compile(struct panfrost_context *ctx, struct mali_shader_meta *meta, const char *src, int type, struct panfrost_shader_state *state);
 
+/* Texture memory */
+
+#define HEAP_TEXTURE 0
+
+/* Single-frame (transient) command stream memory, done at the block scale
+ * rather than the individual cmdstream alllocation scale. We use pb_alloc for
+ * pooling, but we have to implement our own logic atop the API for performance
+ * reasons when considering many low-latency tiny heterogenous allocations */
+
+#define HEAP_TRANSIENT 1
+
+/* Represents a fat pointer for GPU-mapped memory, returned from the transient
+ * allocator and not used for much else */
+
+struct panfrost_transfer {
+        uint8_t *cpu;
+        mali_ptr gpu;
+};
+
 struct panfrost_memory {
         /* Subclassing slab object */
         struct pb_slab slab;
@@ -85,6 +104,12 @@ mali_ptr pandev_upload_sequential(mali_ptr base, void *base_map, const void *dat
 /* Functions for the actual Galliumish driver */
 mali_ptr panfrost_upload(struct panfrost_memory *mem, const void *data, size_t sz, bool no_pad);
 mali_ptr panfrost_upload_sequential(struct panfrost_memory *mem, const void *data, size_t sz);
+
+struct panfrost_transfer
+panfrost_allocate_transient(struct panfrost_context *ctx, size_t sz);
+
+mali_ptr
+panfrost_upload_transient(struct panfrost_context *ctx, const void *data, size_t sz);
 
 void *
 panfrost_allocate_transfer(struct panfrost_memory *mem, size_t sz, mali_ptr *gpu);
