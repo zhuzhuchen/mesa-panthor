@@ -77,9 +77,20 @@ pandev_standard_allocate(int fd, int va_pages, int flags,
                                        out_flags);
 }
 
+/* XXX: This is kind of a hack, but pandev_open can be called more than
+ * once (e.g. in glmark2-es2-drm), which messes up the kernel. So, do some
+ * basic state tracking */
+
+bool fd_already_opened = false;
+
 int
 pandev_open(int fd)
 {
+	if (fd_already_opened) {
+		/* Spurious */
+		return fd;
+	}
+
 #ifdef USE_LEGACY_KERNEL
         struct kbase_ioctl_version_check version = { .major = 11, .minor = 11 };
         struct kbase_ioctl_set_flags set_flags = {};
@@ -91,13 +102,12 @@ pandev_open(int fd)
                         ret, version.major, version.minor);
                 abort();
         }
-        printf("panfrost: Using kbase UK version %d.%d\n", version.major, version.minor);
+        printf("panfrost: Using kbase UK version %d.%d, fd %d\n", version.major, version.minor, fd);
 
         if (mmap(NULL, 4096, PROT_NONE, MAP_SHARED, fd, BASE_MEM_MAP_TRACKING_HANDLE) == MAP_FAILED) {
                 perror("mmap");
                 abort();
         }
-
         ret = ioctl(fd, KBASE_IOCTL_SET_FLAGS, &set_flags);
         if (ret != 0) {
                 fprintf(stderr, "Setting context flags failed with %d\n", ret);
@@ -105,6 +115,7 @@ pandev_open(int fd)
         }
 
 #endif
+	fd_already_opened = true;
 
         return fd;
 }
