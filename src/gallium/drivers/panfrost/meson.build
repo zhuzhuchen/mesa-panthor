@@ -28,6 +28,9 @@ files_panfrost = files(
   'midgard/cppwrap.cpp',
   'midgard/disassemble.c',
 
+  'bifrost/bifrost_compile.c',
+  'bifrost/disassemble.c',
+
   'pan_context.c',
 
   'pan_nondrm.c',
@@ -68,6 +71,7 @@ libpanfrost = static_library(
     inc_include,
     inc_src,
     include_directories('midgard'),
+    include_directories('bifrost'),
     include_directories('include')
   ],
   c_args : [c_vis_args, c_msvc_compat_args],
@@ -85,6 +89,12 @@ files_midgard = files(
   'midgard/cmdline.c',
 )
 
+files_bifrost = files(
+  'bifrost/bifrost_compile.c',
+  'bifrost/disassemble.c',
+  'bifrost/cmdline.c',
+)
+
 midgard_compiler = executable(
   'midgard_compiler',
   [files_midgard, midgard_nir_algebraic_c],
@@ -95,6 +105,29 @@ midgard_compiler = executable(
     inc_gallium,
     inc_gallium_aux,
     include_directories('midgard')
+    ],
+  dependencies : [
+    dep_thread,
+    idep_nir
+  ],
+  link_with : [
+    libgallium,
+    libglsl_standalone,
+    libmesa_util
+  ],
+  build_by_default : true
+)
+
+bifrost_compiler = executable(
+  'bifrost_compiler',
+  [files_bifrost],
+  include_directories : [
+    inc_common,
+    inc_src,
+    inc_include,
+    inc_gallium,
+    inc_gallium_aux,
+    include_directories('bifrost')
     ],
   dependencies : [
     dep_thread,
