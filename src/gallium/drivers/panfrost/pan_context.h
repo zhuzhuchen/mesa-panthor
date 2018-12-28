@@ -75,20 +75,38 @@ struct panfrost_constant_buffer {
         void *buffer;
 };
 
+#define PANFROST_MAX_TRANSIENT_ENTRIES 64
+
+struct panfrost_transient_pool {
+        /* Memory blocks in the pool */
+        struct panfrost_memory_entry *entries[PANFROST_MAX_TRANSIENT_ENTRIES];
+
+        /* Number of entries we own */
+        unsigned entry_count;
+
+        /* Current entry that we are writing to, zero-indexed, strictly less than entry_count */
+        unsigned entry_index;
+
+        /* Number of bytes into the current entry we are */
+        off_t entry_offset;
+
+        /* Entry size (all entries must be homogenous) */
+        size_t entry_size;
+};
+
 struct panfrost_context {
         /* Gallium context */
         struct pipe_context base;
 
         struct pipe_framebuffer_state pipe_framebuffer;
 
-        /* The number of concurrent FBOs allowed depends on the number of rings used */
-        struct panfrost_memory cmdstream_rings[2];
+        /* The number of concurrent FBOs allowed depends on the number of pools
+         * used; pools are ringed for parallelism opportunities */
+
+        struct panfrost_transient_pool transient_pools[2];
         int cmdstream_i;
 
-        struct panfrost_memory cmdstream;
-
         struct panfrost_memory cmdstream_persistent;
-        struct panfrost_memory textures;
         struct panfrost_memory shaders;
         struct panfrost_memory scratchpad;
         struct panfrost_memory tiler_heap;
@@ -139,6 +157,10 @@ struct panfrost_context {
         mali_ptr vertex_jobs[MAX_DRAW_CALLS];
         mali_ptr tiler_jobs[MAX_DRAW_CALLS];
 
+        struct mali_job_descriptor_header *u_set_value_job;
+        struct mali_job_descriptor_header *u_vertex_jobs[MAX_DRAW_CALLS];
+        struct mali_job_descriptor_header *u_tiler_jobs[MAX_DRAW_CALLS];
+
         unsigned vertex_job_count;
         unsigned tiler_job_count;
 
@@ -188,6 +210,9 @@ struct panfrost_context {
         struct pipe_blend_color blend_color;
         struct pipe_depth_stencil_alpha_state *depth_stencil;
         struct pipe_stencil_ref stencil_ref;
+
+        /* Memory management is based on subdividing slabs with AMD's allocator */
+        struct pb_slabs slabs;
 };
 
 /* Corresponds to the CSO */
@@ -309,6 +334,9 @@ struct panfrost_resource {
 
         mali_ptr gpu[MAX_MIP_LEVELS];
 
+        /* Memory entry corresponding to gpu above */
+        struct panfrost_memory_entry *entry[MAX_MIP_LEVELS];
+
         /* Is something other than level 0 ever written? */
         bool is_mipmap;
 
@@ -361,9 +389,7 @@ panfrost_resource_create_front(struct pipe_screen *screen,
 void
 panfrost_emit_for_draw(struct panfrost_context *ctx, bool with_vertex_data);
 
-mali_ptr
+struct panfrost_transfer
 panfrost_vertex_tiler_job(struct panfrost_context *ctx, bool is_tiler, bool is_elided_tiler);
-
-#define JOB_DESC(ptr) ((struct mali_job_descriptor_header *) (uintptr_t) (ptr - mem.gpu + (uintptr_t) mem.cpu))
 
 #endif

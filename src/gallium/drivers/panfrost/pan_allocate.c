@@ -28,10 +28,70 @@
 #include <assert.h>
 #include <panfrost-misc.h>
 #include <panfrost-job.h>
+#include "pan_context.h"
 #include "pan_nondrm.h"
 
 /* TODO: What does this actually have to be? */
 #define ALIGNMENT 128
+
+/* Transient command stream pooling: command stream uploads try to simply copy
+ * into whereever we left off. If there isn't space, we allocate a new entry
+ * into the pool and copy there */
+
+struct panfrost_transfer
+panfrost_allocate_transient(struct panfrost_context *ctx, size_t sz)
+{
+        /* Pad the size */
+        sz = ALIGN(sz, ALIGNMENT);
+
+        /* Check if there is room in the current entry */
+        struct panfrost_transient_pool *pool = &ctx->transient_pools[ctx->cmdstream_i];
+
+        if ((pool->entry_offset + sz) > pool->entry_size) {
+                /* Don't overflow this entry -- advance to the next */
+
+                pool->entry_offset = 0;
+
+                pool->entry_index++;
+                assert(pool->entry_index < PANFROST_MAX_TRANSIENT_ENTRIES);
+
+                /* Check if this entry exists */
+                
+                if (pool->entry_index >= pool->entry_count) {
+                        /* Don't overflow the pool -- allocate a new one */
+                        struct pb_slab_entry *entry = pb_slab_alloc(&ctx->slabs, pool->entry_size, HEAP_TRANSIENT);
+
+                        pool->entry_count++;
+                        pool->entries[pool->entry_index] = (struct panfrost_memory_entry *) entry;
+                }
+
+                /* Make sure we -still- won't overflow */
+                assert(sz < pool->entry_size);
+        }
+
+        /* We have an entry we can write to, so do the upload! */
+        struct panfrost_memory_entry *p_entry = pool->entries[pool->entry_index];
+        struct panfrost_memory *backing = (struct panfrost_memory *) p_entry->base.slab;
+
+        struct panfrost_transfer ret = {
+                .cpu = backing->cpu + p_entry->offset + pool->entry_offset,
+                .gpu = backing->gpu + p_entry->offset + pool->entry_offset
+        };
+
+        /* Advance the pointer */
+        pool->entry_offset += sz;
+
+        return ret;
+
+}
+
+mali_ptr
+panfrost_upload_transient(struct panfrost_context *ctx, const void *data, size_t sz)
+{
+        struct panfrost_transfer transfer = panfrost_allocate_transient(ctx, sz);
+        memcpy(transfer.cpu, data, sz);
+        return transfer.gpu;
+}
 
 // TODO: An actual allocator, perhaps
 // TODO: Multiple stacks for multiple bases?
