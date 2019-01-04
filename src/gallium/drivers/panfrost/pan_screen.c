@@ -37,6 +37,7 @@
 #include "pipe/p_screen.h"
 #include "draw/draw_context.h"
 #include "state_tracker/winsys_handle.h"
+#include <xf86drm.h>
 
 #include <fcntl.h>
 
@@ -681,9 +682,11 @@ panfrost_resource_from_handle(struct pipe_screen *pscreen,
                               unsigned usage)
 {
         struct panfrost_screen *screen = pan_screen(pscreen);
+        struct drm_mode_map_dumb map_arg;
         struct panfrost_resource *rsc;
         struct pipe_resource *prsc;
         int ret;
+        unsigned gem_handle;
 
         assert(whandle->type == WINSYS_HANDLE_TYPE_FD);
 
@@ -711,9 +714,29 @@ panfrost_resource_from_handle(struct pipe_screen *pscreen,
         };
 
         ret = pandev_ioctl(screen->fd, KBASE_IOCTL_MEM_IMPORT, &framebuffer_import);
+        assert(ret == 0);
 
         rsc->gpu[0] = mmap(NULL, framebuffer_import.out.va_pages * 4096, PROT_READ | PROT_WRITE, MAP_SHARED, screen->fd, framebuffer_import.out.gpu_va);
-        rsc->cpu[0] = mmap(NULL, framebuffer_import.out.va_pages * 4096, PROT_READ | PROT_WRITE, MAP_SHARED, whandle->handle, 0);
+
+        ret = drmPrimeFDToHandle(screen->ro->kms_fd, whandle->handle, &gem_handle);
+        assert(ret >= 0);
+
+        memset(&map_arg, 0, sizeof(map_arg));
+        map_arg.handle = gem_handle;
+
+        ret = drmIoctl(screen->ro->kms_fd, DRM_IOCTL_MODE_MAP_DUMB, &map_arg);
+        assert(!ret);
+
+        rsc->cpu[0] = mmap(NULL, framebuffer_import.out.va_pages * 4096, PROT_READ | PROT_WRITE, MAP_SHARED, screen->ro->kms_fd, map_arg.offset);
+
+        u64 addresses[1];
+        addresses[0] = rsc->gpu[0];
+        struct kbase_ioctl_sticky_resource_map map = {
+                .count = 1,
+                .address = addresses,
+        };
+        ret = pandev_ioctl(screen->fd, KBASE_IOCTL_STICKY_RESOURCE_MAP, &map);
+        assert(ret == 0);
 
         return prsc;
 }
@@ -741,8 +764,7 @@ panfrost_resource_get_handle(struct pipe_screen *pscreen,
                 if (renderonly_get_handle(scanout, handle)) {
                         return TRUE;
                 } else {
-                        printf("Missed nonrenderonly KMS handle\n");
-                        assert(0);
+                        printf("Missed nonrenderonly KMS handle for resource %p with scanout %p\n", pt, scanout);
                         return FALSE;
                 }
         } else if (handle->type == WINSYS_HANDLE_TYPE_FD) {

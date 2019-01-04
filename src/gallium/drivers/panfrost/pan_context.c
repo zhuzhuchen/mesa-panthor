@@ -317,7 +317,8 @@ panfrost_is_scanout(struct panfrost_context *ctx)
                 return true;
 
         return ctx->pipe_framebuffer.cbufs[0]->texture->bind & PIPE_BIND_DISPLAY_TARGET ||
-               ctx->pipe_framebuffer.cbufs[0]->texture->bind & PIPE_BIND_SCANOUT;
+               ctx->pipe_framebuffer.cbufs[0]->texture->bind & PIPE_BIND_SCANOUT ||
+               ctx->pipe_framebuffer.cbufs[0]->texture->bind & PIPE_BIND_SHARED;
 }
 
 /* The above function is for generalised fbd emission, used in both fragment as
@@ -2109,7 +2110,6 @@ panfrost_create_sampler_view(
 {
         struct panfrost_sampler_view *so = CALLOC_STRUCT(panfrost_sampler_view);
         int bytes_per_pixel = util_format_get_blocksize(texture->format);
-        int stride = bytes_per_pixel * texture->width0; /* TODO: Alignment? */
 
         pipe_reference(NULL, &texture->reference);
 
@@ -2245,7 +2245,8 @@ panfrost_resource_create_front(struct pipe_screen *screen,
 
         if ((template->bind & PIPE_BIND_RENDER_TARGET) || (template->bind & PIPE_BIND_DEPTH_STENCIL)) {
                 if (template->bind & PIPE_BIND_DISPLAY_TARGET ||
-                    template->bind & PIPE_BIND_SCANOUT) {
+                    template->bind & PIPE_BIND_SCANOUT ||
+                    template->bind & PIPE_BIND_SHARED) {
                         struct pipe_resource scanout_templat = *template;
                         struct renderonly_scanout *scanout;
                         struct winsys_handle handle;
@@ -2308,6 +2309,8 @@ panfrost_resource_create_front(struct pipe_screen *screen,
                 }
         }
 
+        printf("Created resource %p with scanout %p\n", so, so->scanout);
+
         return (struct pipe_resource *)so;
 }
 
@@ -2363,12 +2366,14 @@ panfrost_transfer_map(struct pipe_context *pctx,
                 rsrc->mapped_direct = true;
         }
 
-        if (resource->bind & PIPE_BIND_DISPLAY_TARGET) {
+        if (resource->bind & PIPE_BIND_DISPLAY_TARGET ||
+            resource->bind & PIPE_BIND_SCANOUT ||
+            resource->bind & PIPE_BIND_SHARED) {
                 /* Mipmapped readpixels?! */
                 assert(level == 0);
 
                 /* Set the CPU mapping to that of the framebuffer in memory, untiled */
-                rsrc->cpu[level] = ((struct panfrost_resource *) ctx->pipe_framebuffer.cbufs[0]->texture)->cpu[0];
+                rsrc->cpu[level] = rsrc->cpu[0];
 
                 /* Force a flush -- kill the pipeline */
                 panfrost_flush(pctx, NULL, PIPE_FLUSH_END_OF_FRAME);
