@@ -499,7 +499,5 @@ panfrost_make_fixed_blend_mode(const struct pipe_rt_blend_state *blend, struct m
         /* Gallium and Mali represent colour masks identically. XXX: Static assert for future proof */
         out->color_mask = colormask;
 
-        panfrost_print_blend_equation(*out);
-
         return true;
 }

@@ -3237,7 +3237,7 @@ midgard_compile_shader_nir(nir_shader *nir, midgard_program *program, bool is_bl
         compiler_context *ctx = &ictx;
 
         /* TODO: Decide this at runtime */
-        ctx->uniform_cutoff = 12;
+        ctx->uniform_cutoff = 8;
 
         switch (ctx->stage) {
         case MESA_SHADER_VERTEX:

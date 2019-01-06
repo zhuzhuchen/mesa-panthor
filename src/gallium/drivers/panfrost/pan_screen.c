@@ -782,7 +782,7 @@ panfrost_resource_get_handle(struct pipe_screen *pscreen,
 
                         return TRUE;
                 } else {
-                        printf("Missed nonrenderonly KMS handle\n");
+                        printf("Missed nonscanout FD handle\n");
                         assert(0);
                         return FALSE;
                 }
