@@ -51,12 +51,12 @@ struct bifrost_alu_inst {
 };
 
 struct bifrost_regs {
-        uint64_t uniform_const : 8;
-        uint64_t reg2 : 6;
-        uint64_t reg3 : 6;
-        uint64_t reg0 : 5;
-        uint64_t reg1 : 6;
-        uint64_t ctrl : 4;
+        uint32_t uniform_const : 8;
+        uint32_t reg2 : 6;
+        uint32_t reg3 : 6;
+        uint32_t reg0 : 5;
+        uint32_t reg1 : 6;
+        uint32_t ctrl : 4;
 };
 
 static unsigned get_reg0(struct bifrost_regs regs)
@@ -251,9 +251,9 @@ struct bifrost_header {
         uint64_t datareg : 6;
         uint64_t scoreboard_deps: 8;
         uint64_t scoreboard_index: 3;
-        uint64_t clause_type: 4;
+        uint32_t clause_type: 4;
         uint64_t unk3 : 1; // part of clauseType?
-        uint64_t next_clause_type: 4;
+        uint32_t next_clause_type: 4;
         uint64_t unk4 : 1; // part of nextClauseType?
 };
 
@@ -264,7 +264,7 @@ void dump_clause(uint32_t *words, unsigned *size, unsigned offset);
 
 void dump_header(struct bifrost_header header) {
         if (header.clause_type != 0) {
-                printf("id(%" PRId64 "u) ", header.scoreboard_index);
+                printf("id(%du) ", header.scoreboard_index);
         }
 
         if (header.scoreboard_deps != 0) {
@@ -317,7 +317,7 @@ void dump_header(struct bifrost_header header) {
 
         printf("\n");
 
-        printf("# clause type %" PRId64 ", next clause type %" PRId64 "\n",
+        printf("# clause type %d, next clause type %d\n",
                         header.clause_type, header.next_clause_type);
 }
 
@@ -404,16 +404,16 @@ static void dump_regs(struct bifrost_regs srcs)
                 printf("port 1: R%d ", get_reg1(srcs));
 
         if (ctrl.fma_write_unit == REG_WRITE_TWO)
-                printf("port 2: R%" PRId64 " (write FMA) ", srcs.reg2);
+                printf("port 2: R%d (write FMA) ", srcs.reg2);
         else if (ctrl.add_write_unit == REG_WRITE_TWO)
-                printf("port 2: R%" PRId64 " (write ADD) ", srcs.reg2);
+                printf("port 2: R%d (write ADD) ", srcs.reg2);
 
         if (ctrl.fma_write_unit == REG_WRITE_THREE)
-                printf("port 3: R%" PRId64 " (write FMA) ", srcs.reg3);
+                printf("port 3: R%d (write FMA) ", srcs.reg3);
         else if (ctrl.add_write_unit == REG_WRITE_THREE)
-                printf("port 3: R%" PRId64 " (write ADD) ", srcs.reg3);
+                printf("port 3: R%d (write ADD) ", srcs.reg3);
         else if (ctrl.read_reg3)
-                printf("port 3: R%" PRId64 " (read) ", srcs.reg3);
+                printf("port 3: R%d (read) ", srcs.reg3);
 
         if (srcs.uniform_const) {
                 if (srcs.uniform_const & 0x80) {
@@ -492,7 +492,7 @@ static void dump_src(unsigned src, struct bifrost_regs srcs, uint64_t *consts, b
         switch (src) {
                 case 0: printf("R%d", get_reg0(srcs)); break;
                 case 1: printf("R%d", get_reg1(srcs)); break;
-                case 2: printf("R%" PRId64, srcs.reg3); break;
+                case 2: printf("R%d", srcs.reg3); break;
                 case 3:
                         if (isFMA)
                                 printf("0");
@@ -812,7 +812,7 @@ static const struct fma_op_info FMAOpInfos[] = {
 static struct fma_op_info find_fma_op_info(unsigned op)
 {
         for (unsigned i = 0; i < ARRAY_SIZE(FMAOpInfos); i++) {
-                unsigned opCmp;
+                unsigned opCmp = ~0;
                 switch (FMAOpInfos[i].src_type) {
                         case FMA_ONE_SRC:
                                 opCmp = op;
@@ -843,6 +843,9 @@ static struct fma_op_info find_fma_op_info(unsigned op)
                                 break;
                         case FMA_FMA_MSCALE:
                                 opCmp = op & ~0x7fff;
+                                break;
+                        default:
+                                opCmp = ~0;
                                 break;
                 }
                 if (FMAOpInfos[i].op == opCmp)
@@ -1385,7 +1388,7 @@ static const struct add_op_info add_op_infos[] = {
 static struct add_op_info find_add_op_info(unsigned op)
 {
         for (unsigned i = 0; i < ARRAY_SIZE(add_op_infos); i++) {
-                unsigned opCmp;
+                unsigned opCmp = ~0;
                 switch (add_op_infos[i].src_type) {
                         case ADD_ONE_SRC:
                         case ADD_BLENDING:
@@ -1427,6 +1430,9 @@ static struct add_op_info find_add_op_info(unsigned op)
                                 break;
                         case ADD_BRANCH:
                                 opCmp = op & ~0xfff;
+                                break;
+                        default:
+                                opCmp = ~0;
                                 break;
                 }
                 if (add_op_infos[i].op == opCmp)
