@@ -390,6 +390,11 @@ panfrost_clear(
 {
         struct panfrost_context *ctx = panfrost_context(pipe);
 
+        if (!color) {
+                printf("Warning: clear color null?\n");
+                return;
+        }
+
         /* Save settings for FBO switch */
         ctx->last_clear.buffers = buffers;
         ctx->last_clear.color = color;
@@ -562,9 +567,13 @@ panfrost_viewport(struct panfrost_context *ctx,
 /* Reset per-frame context, called on context initialisation as well as after
  * flushing a frame */
 
+static int last_persistent_stack = 0;
 static void
 panfrost_invalidate_frame(struct panfrost_context *ctx)
 {
+	printf("Uploaded transient %d bytes and persistent %d bytes, \n", ctx->transient_pools[ctx->cmdstream_i].entry_index*ctx->transient_pools[0].entry_size + ctx->transient_pools[ctx->cmdstream_i].entry_offset, ctx->cmdstream_persistent.stack_bottom - last_persistent_stack);
+        last_persistent_stack = ctx->cmdstream_persistent.stack_bottom;
+
         /* Rotate cmdstream */
         if ((++ctx->cmdstream_i) == (sizeof(ctx->transient_pools) / sizeof(ctx->transient_pools[0])))
                 ctx->cmdstream_i = 0;
@@ -948,9 +957,9 @@ panfrost_fragment_job(struct panfrost_context *ctx)
 
                 if (rsrc->has_checksum) {
                         //ctx->fragment_fbd.unk3 |= 0xa00000;
-                        ctx->fragment_fbd.unk3 = 0xa02100;
+                        //ctx->fragment_fbd.unk3 = 0xa02100;
                         ctx->fragment_fbd.unk3 |= MALI_MFBD_EXTRA;
-                        ctx->fragment_extra.unk = 0x420;
+                        ctx->fragment_extra.unk |= 0x420;
                         ctx->fragment_extra.checksum_stride = rsrc->checksum_stride;
                         ctx->fragment_extra.checksum = rsrc->gpu[0] + stride * rsrc->base.height0;
                 }
@@ -1017,13 +1026,23 @@ panfrost_emit_vertex_data(struct panfrost_context *ctx)
 
                 /* Offset vertex count by draw_start to make sure we upload enough */
                 attrs[i].stride = buf->stride;
-                //attrs[i].size = buf->stride * (ctx->payload_vertex.draw_start + ctx->vertex_count);
+                attrs[i].size = buf->stride * (ctx->payload_vertex.draw_start + ctx->vertex_count);
 
                 /* TODO: The above calculation is wrong. Do it better. For now, force resources */
                 assert(!buf->is_user_buffer);
-                attrs[i].size = buf->buffer.resource->width0 - buf->buffer_offset;
+                //attrs[i].size = buf->buffer.resource->width0 - buf->buffer_offset;
 
-                attrs[i].elements = panfrost_upload_transient(ctx, rsrc->cpu[0] + buf->buffer_offset, attrs[i].size) | 1;
+                /* Vertex elements are -already- GPU-visible, at
+                 * rsrc->gpu. However, attribute buffers must be 64 aligned. If
+                 * it is not, for now we have to duplicate the buffer. */
+
+                mali_ptr effective_address = (rsrc->gpu[0] + buf->buffer_offset);
+
+                if (effective_address & 0x3F) {
+                        attrs[i].elements = panfrost_upload_transient(ctx, rsrc->cpu[0] + buf->buffer_offset, attrs[i].size) | 1;
+                } else {
+                        attrs[i].elements = effective_address | 1;
+                }
         }
 
         for (int i = 0; i < ctx->vs->varyings.varying_buffer_count; ++i) {
@@ -1198,6 +1217,8 @@ panfrost_emit_for_draw(struct panfrost_context *ctx, bool with_vertex_data)
                 /* Upload samplers back to back, no padding */
 
                 for (int t = 0; t <= PIPE_SHADER_FRAGMENT; ++t) {
+                        if (!ctx->sampler_count[t]) continue;
+
                         struct panfrost_transfer transfer = panfrost_allocate_transient(ctx, sizeof(struct mali_sampler_descriptor) * ctx->sampler_count[t]);
                         struct mali_sampler_descriptor *desc = (struct mali_sampler_descriptor *) transfer.cpu;
 
@@ -1250,7 +1271,10 @@ panfrost_emit_for_draw(struct panfrost_context *ctx, bool with_vertex_data)
 
                                 /* Restore */
                                 ctx->sampler_views[t][i]->hw.nr_mipmap_levels = s;
+
+#ifdef T6XX
                                 ctx->sampler_views[t][i]->hw.unknown3A = 0;
+#endif
                         }
 
                         mali_ptr trampoline = panfrost_upload_transient(ctx, trampolines, sizeof(uint64_t) * ctx->sampler_view_count[t]);
@@ -1480,8 +1504,9 @@ panfrost_submit_frame(struct panfrost_context *ctx, bool flush_immediate)
 #ifndef DRY_RUN
         /* XXX: flush_immediate was causing lock-ups wrt readpixels in dEQP. Investigate. */
 
+        struct pipe_surface *surf = ctx->pipe_framebuffer.cbufs[0];
         base_external_resource framebuffer[] = {
-                {.ext_resource = ((struct panfrost_resource *) ctx->pipe_framebuffer.cbufs[0]->texture)->gpu[0] | (BASE_EXT_RES_ACCESS_EXCLUSIVE & LOCAL_PAGE_LSB)},
+                {.ext_resource = surf ? (((struct panfrost_resource *) surf->texture)->gpu[0] | (BASE_EXT_RES_ACCESS_EXCLUSIVE & LOCAL_PAGE_LSB)) : 0},
         };
 
         int vt_atom = allocate_atom();
@@ -1529,14 +1554,14 @@ panfrost_submit_frame(struct panfrost_context *ctx, bool flush_immediate)
 
         /* If visual, we can stall a frame */
 
-        if (!flush_immediate)
+        if (panfrost_is_scanout(ctx) && !flush_immediate)
                 force_flush_fragment(ctx);
 
         last_fragment_id = atoms[1].atom_number;
         last_fragment_flushed = false;
 
         /* If readback, flush now (hurts the pipelined performance) */
-        if (flush_immediate)
+        if (panfrost_is_scanout(ctx) && flush_immediate)
                 force_flush_fragment(ctx);
 
 #endif
@@ -2286,7 +2311,7 @@ panfrost_resource_create_front(struct pipe_screen *screen,
                  * zero-copy operation */
 
                 /* Tiling textures is almost always faster, unless we only use it once */
-                so->tiled = (template->usage != PIPE_USAGE_STREAM);
+                so->tiled = (template->usage != PIPE_USAGE_STREAM) && (template->bind & PIPE_BIND_SAMPLER_VIEW);
 
                 if (so->tiled) {
                         /* For tiled, we don't map directly, so just malloc any old buffer */
@@ -2356,14 +2381,9 @@ panfrost_transfer_map(struct pipe_context *pctx,
         /* If non-zero level, it's a mipmapped resource and needs to be treated as such */
         rsrc->is_mipmap |= transfer->level;
 
-        if (transfer->usage & PIPE_TRANSFER_MAP_DIRECTLY) {
+        if (transfer->usage & PIPE_TRANSFER_MAP_DIRECTLY && rsrc->tiled) {
                 /* We cannot directly map tiled textures */
-
-                if (rsrc->tiled)
-                        return NULL;
-
-                /* Otherwise, we're good to go! */
-                rsrc->mapped_direct = true;
+                return NULL;
         }
 
         if (resource->bind & PIPE_BIND_DISPLAY_TARGET ||
@@ -2439,7 +2459,7 @@ panfrost_set_framebuffer_state(struct pipe_context *pctx,
                         panfrost_enable_afbc(ctx, tex, false);
                 }
 
-                if (is_scanout && !tex->has_checksum && USE_TRANSACTION_ELIMINATION) {
+                if (!is_scanout && !tex->has_checksum) {
                         /* Enable transaction elimination if we can */
                         panfrost_enable_checksum(ctx, tex);
                 }
@@ -2724,10 +2744,6 @@ panfrost_tile_texture(struct panfrost_context *ctx, struct panfrost_resource *rs
         int bytes_per_pixel = util_format_get_blocksize(rsrc->base.format);
         int stride = bytes_per_pixel * rsrc->base.width0; /* TODO: Alignment? */
 
-        /* If we're direct mapped, we're done; don't do any swizzling / copies / etc */
-        if (rsrc->mapped_direct)
-                return;
-
         int width = rsrc->base.width0 >> level;
         int height = rsrc->base.height0 >> level;
 
@@ -2753,16 +2769,10 @@ panfrost_tile_texture(struct panfrost_context *ctx, struct panfrost_resource *rs
         rsrc->entry[level] = p_entry;
         rsrc->gpu[level] = backing->gpu + p_entry->offset;
 
-        if (rsrc->tiled) {
-                /* Run actual texture swizzle, writing directly to the mapped
-                 * GPU chunk we allocated */
+        /* Run actual texture swizzle, writing directly to the mapped
+         * GPU chunk we allocated */
 
-                panfrost_texture_swizzle(width, height, bytes_per_pixel, stride, rsrc->cpu[level], swizzled);
-        } else {
-                /* If indirect linear, just do a dumb copy */
-
-                memcpy(swizzled, rsrc->cpu[level], stride * height);
-        }
+        panfrost_texture_swizzle(width, height, bytes_per_pixel, stride, rsrc->cpu[level], swizzled);
 }
 
 static void
@@ -2776,8 +2786,11 @@ panfrost_transfer_unmap(struct pipe_context *pctx,
                         struct panfrost_resource *prsrc = (struct panfrost_resource *) transfer->resource;
 
                         /* Gallium thinks writeback happens here; instead, this is our cue to tile */
-                        assert(!prsrc->has_afbc);
-                        panfrost_tile_texture(ctx, prsrc, transfer->level);
+                        if (prsrc->has_afbc) {
+                                printf("Warning: writes to afbc surface can't possibly work out well for you...\n");
+                        } else if (prsrc->tiled) {
+                                panfrost_tile_texture(ctx, prsrc, transfer->level);
+                        }
                 }
         }
 
@@ -2903,13 +2916,13 @@ panfrost_allocate_slab(struct panfrost_context *ctx,
 static void
 panfrost_flush_resource(struct pipe_context *pctx, struct pipe_resource *prsc)
 {
-        fprintf(stderr, "TODO %s\n", __func__);
+        //fprintf(stderr, "TODO %s\n", __func__);
 }
 
 static void
 panfrost_invalidate_resource(struct pipe_context *pctx, struct pipe_resource *prsc)
 {
-        fprintf(stderr, "TODO %s\n", __func__);
+        //fprintf(stderr, "TODO %s\n", __func__);
 }
 
 static void

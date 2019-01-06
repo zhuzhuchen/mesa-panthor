@@ -342,9 +342,8 @@ struct panfrost_resource {
 
         struct sw_displaytarget *dt;
 
-        /* Set for tiled, clear for linear. For linear, set if directly mapped and clear for memcpy */
+        /* Set for tiled, clear for linear. */
         bool tiled;
-        bool mapped_direct;
 
         /* If AFBC is enabled for this resource, we lug around an AFBC
          * metadata buffer as well. The actual AFBC resource is also in
