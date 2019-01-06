@@ -30,6 +30,7 @@ files_panfrost = files(
 
   'bifrost/bifrost_compile.c',
   'bifrost/disassemble.c',
+  'bifrost/ir_printer.c',
 
   'pan_context.c',
 
@@ -93,6 +94,7 @@ files_bifrost = files(
   'bifrost/bifrost_compile.c',
   'bifrost/disassemble.c',
   'bifrost/cmdline.c',
+  'bifrost/ir_printer.c',
 )
 
 midgard_compiler = executable(
