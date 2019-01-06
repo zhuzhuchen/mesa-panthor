@@ -379,7 +379,7 @@ pipe_etna_create_screen(int fd, const struct pipe_screen_config *config)
 
 #endif
 
-#if 0
+#ifdef GALLIUM_PANFROST
 #include "panfrost/drm/panfrost_drm_public.h"
 
 struct pipe_screen *

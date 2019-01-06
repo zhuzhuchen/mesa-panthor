@@ -38,11 +38,18 @@
 #include "draw/draw_context.h"
 #include "state_tracker/winsys_handle.h"
 
+#include <fcntl.h>
+
+#include "drm_fourcc.h"
+
 #include "pan_screen.h"
 #include "pan_public.h"
 
 #include "pan_context.h"
 #include "midgard/midgard_compile.h"
+
+#include <panfrost-mali-base.h>
+#include <mali-kbase-ioctl.h>
 
 static const char *
 panfrost_get_name(struct pipe_screen *screen)
@@ -668,39 +675,95 @@ panfrost_resource_destroy(struct pipe_screen *pscreen,
 }
 
 static struct pipe_resource *
-panfrost_resource_from_handle(struct pipe_screen *screen,
+panfrost_resource_from_handle(struct pipe_screen *pscreen,
                               const struct pipe_resource *templat,
                               struct winsys_handle *whandle,
                               unsigned usage)
 {
-        assert(0);
-        return NULL;
+        struct panfrost_screen *screen = pan_screen(pscreen);
+        struct panfrost_resource *rsc;
+        struct pipe_resource *prsc;
+        int ret;
+
+        assert(whandle->type == WINSYS_HANDLE_TYPE_FD);
+
+        rsc = CALLOC_STRUCT(panfrost_resource);
+        if (!rsc)
+                return NULL;
+
+        prsc = &rsc->base;
+
+        *prsc = *templat;
+
+        pipe_reference_init(&prsc->reference, 1);
+        prsc->screen = pscreen;
+
+        union kbase_ioctl_mem_import framebuffer_import = {
+                .in = {
+                        .phandle = (uint64_t) (uintptr_t) &whandle->handle,
+                        .type = BASE_MEM_IMPORT_TYPE_UMM,
+                        .flags = BASE_MEM_PROT_CPU_RD |
+                                 BASE_MEM_PROT_CPU_WR |
+                                 BASE_MEM_PROT_GPU_RD |
+                                 BASE_MEM_PROT_GPU_WR |
+                                 BASE_MEM_IMPORT_SHARED,
+                }
+        };
+
+        ret = pandev_ioctl(screen->fd, KBASE_IOCTL_MEM_IMPORT, &framebuffer_import);
+
+        rsc->gpu[0] = mmap(NULL, framebuffer_import.out.va_pages * 4096, PROT_READ | PROT_WRITE, MAP_SHARED, screen->fd, framebuffer_import.out.gpu_va);
+        rsc->cpu[0] = mmap(NULL, framebuffer_import.out.va_pages * 4096, PROT_READ | PROT_WRITE, MAP_SHARED, whandle->handle, 0);
+
+        return prsc;
 }
 
-
 static boolean
-panfrost_resource_get_handle(struct pipe_screen *screen,
+panfrost_resource_get_handle(struct pipe_screen *pscreen,
                              struct pipe_context *ctx,
                              struct pipe_resource *pt,
                              struct winsys_handle *handle,
                              unsigned usage)
 {
+        struct panfrost_screen *screen = pan_screen(pscreen);
         struct panfrost_resource *rsrc = (struct panfrost_resource *) pt;
+        struct renderonly_scanout *scanout = rsrc->scanout;
+        int bytes_per_pixel = util_format_get_blocksize(rsrc->base.format);
+        int stride = bytes_per_pixel * rsrc->base.width0; /* TODO: Alignment? */
 
-        handle->stride = rsrc->stride;
-
-        /* TODO */
-        assert (0);
+        handle->stride = stride;
+        handle->modifier = DRM_FORMAT_MOD_INVALID;
 
         if (handle->type == WINSYS_HANDLE_TYPE_SHARED) {
                 printf("Missed shared handle\n");
                 return FALSE;
         } else if (handle->type == WINSYS_HANDLE_TYPE_KMS) {
-                printf("Missed nonrenderonly KMS\n");
-                return FALSE;
+                if (renderonly_get_handle(scanout, handle)) {
+                        return TRUE;
+                } else {
+                        printf("Missed nonrenderonly KMS handle\n");
+                        assert(0);
+                        return FALSE;
+                }
         } else if (handle->type == WINSYS_HANDLE_TYPE_FD) {
-                printf("Missed dmabuf\n");
-                return FALSE;
+                if (scanout) {
+                        struct drm_prime_handle args = {
+                                .handle = scanout->handle,
+                                .flags = DRM_CLOEXEC,
+                        };
+
+                        int ret = pandev_ioctl(screen->ro->kms_fd, DRM_IOCTL_PRIME_HANDLE_TO_FD, &args);
+                        if (ret == -1)
+                                return FALSE;
+
+                        handle->handle = args.fd;
+
+                        return TRUE;
+                } else {
+                        printf("Missed nonrenderonly KMS handle\n");
+                        assert(0);
+                        return FALSE;
+                }
         }
 
         return FALSE;
@@ -713,6 +776,16 @@ panfrost_create_screen(int fd, struct renderonly *ro)
 
         if (!screen)
                 return NULL;
+
+        screen->fd = fd;
+        if (ro) {
+                screen->ro = renderonly_dup(ro);
+                if (!screen->ro) {
+                        fprintf(stderr, "Failed to dup renderonly object\n");
+                        free(screen);
+                        return NULL;
+                }
+        }
 
         screen->base.destroy = panfrost_destroy_screen;
 

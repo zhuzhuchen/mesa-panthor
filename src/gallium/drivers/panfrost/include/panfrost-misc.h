@@ -1,5 +1,5 @@
 /*
- * © Copyright 2018 Alyssa Rosenzweig
+ * © Copyright 2017-2018 The Panfrost Community
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -22,15 +22,26 @@
  *
  */
 
-#ifndef __SLOW_FRAMEBUFFER_H__
-#define __SLOW_FRAMEBUFFER_H__
+#ifndef __PANFROST_MISC_H__
+#define __PANFROST_MISC_H__
 
-struct slowfb_info {
-        uint8_t *framebuffer;
-        int stride;
-};
+#include <inttypes.h>
 
-struct slowfb_info slowfb_init(uint8_t *framebuffer, int width, int height);
-void slowfb_update(uint8_t *framebuffer, int width, int height);
+typedef uint8_t  u8;
+typedef uint16_t u16;
+typedef uint32_t u32;
+typedef uint64_t u64;
 
-#endif /* __SLOW_FRAMEBUFFER_H__ */
+typedef int8_t  s8;
+typedef int16_t s16;
+typedef int32_t s32;
+typedef int64_t s64;
+
+typedef uintptr_t mali_ptr;
+
+#define MALI_PTR_FMT "0x%" PRIx64
+
+/* FIXME: put this somewhere more fitting */
+#define MALI_MEM_MAP_TRACKING_HANDLE (3ull << 12)
+
+#endif

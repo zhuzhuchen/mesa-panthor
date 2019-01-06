@@ -23,6 +23,9 @@
  */
 
 #include <sys/poll.h>
+#include <errno.h>
+#include <panfrost-mali-base.h>
+#include <mali-kbase-ioctl.h>
 
 #include "pan_context.h"
 #include "pan_swizzle.h"
@@ -57,16 +60,12 @@ static void
 panfrost_allocate_slab(struct panfrost_context *ctx,
                        struct panfrost_memory *mem,
                        size_t pages,
-                       bool mapped,
                        bool same_va,
                        int extra_flags,
                        int commit_count,
                        int extent);
 
 static bool USE_TRANSACTION_ELIMINATION = false;
-
-/* Don't use the mesa winsys; use our own X11 window with Xshm */
-#define USE_SLOWFB
 
 /* Do not actually send anything to the GPU; merely generate the cmdstream as fast as possible. Disables framebuffer writes */
 //#define DRY_RUN
@@ -137,13 +136,17 @@ panfrost_enable_afbc(struct panfrost_context *ctx, struct panfrost_resource *rsr
         /* AFBC metadata is 16 bytes per tile */
         int tile_w = (rsrc->base.width0 + (MALI_TILE_LENGTH - 1)) >> MALI_TILE_SHIFT;
         int tile_h = (rsrc->base.height0 + (MALI_TILE_LENGTH - 1)) >> MALI_TILE_SHIFT;
+        int bytes_per_pixel = util_format_get_blocksize(rsrc->base.format);
+        int stride = bytes_per_pixel * rsrc->base.width0; /* TODO: Alignment? */
 
-        rsrc->stride *= 2;
-        int main_size = rsrc->stride * rsrc->base.height0;
+        stride *= 2;  /* TODO: Should this be carried over? */
+        int main_size = stride * rsrc->base.height0;
         rsrc->afbc_metadata_size = tile_w * tile_h * 16;
 
         /* Allocate the AFBC slab itself, large enough to hold the above */
-        panfrost_allocate_slab(ctx, &rsrc->afbc_slab, (rsrc->afbc_metadata_size + main_size + 4095) / 4096, true, true, 0, 0, 0);
+        panfrost_allocate_slab(ctx, &rsrc->afbc_slab,
+                               (rsrc->afbc_metadata_size + main_size + 4095) / 4096,
+                               true, 0, 0, 0);
 
         rsrc->has_afbc = true;
 
@@ -166,7 +169,7 @@ panfrost_enable_checksum(struct panfrost_context *ctx, struct panfrost_resource 
         /* 8 byte checksum per tile */
         rsrc->checksum_stride = tile_w * 8;
         int pages = (((rsrc->checksum_stride * tile_h) + 4095) / 4096);
-        panfrost_allocate_slab(ctx, &rsrc->checksum_slab, pages, false, false, 0, 0, 0);
+        panfrost_allocate_slab(ctx, &rsrc->checksum_slab, pages, false, 0, 0, 0);
 
         rsrc->has_checksum = true;
 }
@@ -313,7 +316,8 @@ panfrost_is_scanout(struct panfrost_context *ctx)
         if (!ctx->pipe_framebuffer.cbufs[0])
                 return true;
 
-        return ctx->pipe_framebuffer.cbufs[0]->texture->bind & PIPE_BIND_DISPLAY_TARGET;
+        return ctx->pipe_framebuffer.cbufs[0]->texture->bind & PIPE_BIND_DISPLAY_TARGET ||
+               ctx->pipe_framebuffer.cbufs[0]->texture->bind & PIPE_BIND_SCANOUT;
 }
 
 /* The above function is for generalised fbd emission, used in both fragment as
@@ -323,21 +327,21 @@ panfrost_is_scanout(struct panfrost_context *ctx)
 static void
 panfrost_new_frag_framebuffer(struct panfrost_context *ctx)
 {
-        mali_ptr framebuffer = ctx->framebuffer.gpu;
+        mali_ptr framebuffer = ((struct panfrost_resource *) ctx->pipe_framebuffer.cbufs[0]->texture)->gpu[0];
         int stride;
 
-        /* The default is upside down from OpenGL's perspective. Plus, for scanout we supply our own framebuffer / stride */
-        if (panfrost_is_scanout(ctx)) {
-                stride = ctx->scanout_stride;
-
-                framebuffer += stride * (ctx->pipe_framebuffer.height - 1);
-                stride = -stride;
-        } else if (ctx->pipe_framebuffer.nr_cbufs > 0) {
+        if (ctx->pipe_framebuffer.nr_cbufs > 0) {
                 stride = util_format_get_stride(ctx->pipe_framebuffer.cbufs[0]->format, ctx->pipe_framebuffer.width);
         } else {
                 /* Depth-only framebuffer -> dummy RT */
                 framebuffer = 0;
                 stride = 0;
+        }
+
+        /* The default is upside down from OpenGL's perspective. */
+        if (panfrost_is_scanout(ctx)) {
+                framebuffer += stride * (ctx->pipe_framebuffer.height - 1);
+                stride = -stride;
         }
 
 #ifdef SFBD
@@ -939,6 +943,7 @@ panfrost_fragment_job(struct panfrost_context *ctx)
 
         if (ctx->pipe_framebuffer.nr_cbufs == 1) {
                 struct panfrost_resource *rsrc = (struct panfrost_resource *) ctx->pipe_framebuffer.cbufs[0]->texture;
+                int stride = util_format_get_stride(rsrc->base.format, rsrc->base.width0);
 
                 if (rsrc->has_checksum) {
                         //ctx->fragment_fbd.unk3 |= 0xa00000;
@@ -946,7 +951,7 @@ panfrost_fragment_job(struct panfrost_context *ctx)
                         ctx->fragment_fbd.unk3 |= MALI_MFBD_EXTRA;
                         ctx->fragment_extra.unk = 0x420;
                         ctx->fragment_extra.checksum_stride = rsrc->checksum_stride;
-                        ctx->fragment_extra.checksum = /*rsrc->checksum_slab.gpu*/ctx->framebuffer.gpu + (ctx->scanout_stride) * rsrc->base.height0;
+                        ctx->fragment_extra.checksum = rsrc->gpu[0] + stride * rsrc->base.height0;
                 }
         }
 
@@ -1426,12 +1431,24 @@ int last_fragment_flushed = true;
 static void
 force_flush_fragment(struct panfrost_context *ctx)
 {
-        if (!last_fragment_flushed) {
-                uint8_t ev[/* 1 */ 4 + 4 + 8 + 8];
+        struct pipe_context *gallium = (struct pipe_context *) ctx;
+        struct panfrost_screen *screen = panfrost_screen(gallium->screen);
+        struct base_jd_event_v2 event;
+        int ret;
 
+        if (!last_fragment_flushed) {
                 do {
-                        read(ctx->fd, ev, sizeof(ev));
-                } while (ev[4] != last_fragment_id);
+                        ret = read(screen->fd, &event, sizeof(event));
+                        if (ret != sizeof(event)) {
+                            fprintf(stderr, "error when reading from mali device: %s\n", strerror(errno));
+                            break;
+                        }
+
+                        if (event.event_code == BASE_JD_EVENT_JOB_INVALID) {
+                            fprintf(stderr, "Job invalid\n");
+                            break;
+                        }
+                } while (event.atom_number != last_fragment_id);
 
                 last_fragment_flushed = true;
         }
@@ -1442,6 +1459,9 @@ force_flush_fragment(struct panfrost_context *ctx)
 static void
 panfrost_submit_frame(struct panfrost_context *ctx, bool flush_immediate)
 {
+        struct pipe_context *gallium = (struct pipe_context *) ctx;
+        struct panfrost_screen *screen = panfrost_screen(gallium->screen);
+
         /* Edge case if screen is cleared and nothing else */
         bool has_draws = ctx->draw_count > 0;
 
@@ -1459,51 +1479,51 @@ panfrost_submit_frame(struct panfrost_context *ctx, bool flush_immediate)
 #ifndef DRY_RUN
         /* XXX: flush_immediate was causing lock-ups wrt readpixels in dEQP. Investigate. */
 
-        mali_external_resource framebuffer[] = {
-                ctx->framebuffer.gpu | MALI_EXT_RES_ACCESS_EXCLUSIVE,
+        base_external_resource framebuffer[] = {
+                {.ext_resource = ((struct panfrost_resource *) ctx->pipe_framebuffer.cbufs[0]->texture)->gpu[0] | (BASE_EXT_RES_ACCESS_EXCLUSIVE & LOCAL_PAGE_LSB)},
         };
 
         int vt_atom = allocate_atom();
 
-        struct mali_jd_atom_v2 atoms[] = {
+        struct base_jd_atom_v2 atoms[] = {
                 {
                         .jc = ctx->set_value_job,
                         .atom_number = vt_atom,
-                        .core_req = MALI_JD_REQ_CS | MALI_JD_REQ_T | MALI_JD_REQ_CF | MALI_JD_REQ_COHERENT_GROUP | MALI_JD_REQ_EVENT_NEVER | MALI_JD_REQ_SKIP_CACHE_END,
+                        .core_req = BASE_JD_REQ_CS | BASE_JD_REQ_T | BASE_JD_REQ_CF | BASE_JD_REQ_COHERENT_GROUP | BASEP_JD_REQ_EVENT_NEVER,
                 },
                 {
                         .jc = panfrost_fragment_job(ctx),
-                        .nr_ext_res = 1,
-                        .ext_res_list = framebuffer,
+                        .nr_extres = 1,
+                        .extres_list = (u64)framebuffer,
                         .atom_number = allocate_atom(),
-                        .core_req = MALI_JD_REQ_FS | MALI_JD_REQ_SKIP_CACHE_START,
+                        .core_req = BASE_JD_REQ_FS,
                 },
         };
 
         if (last_fragment_id != -1) {
                 atoms[0].pre_dep[0].atom_id = last_fragment_id;
-                atoms[0].pre_dep[0].dependency_type = MALI_JD_DEP_TYPE_ORDER;
+                atoms[0].pre_dep[0].dependency_type = BASE_JD_DEP_TYPE_ORDER;
         }
 
         if (has_draws) {
                 atoms[1].pre_dep[0].atom_id = vt_atom;
-                atoms[1].pre_dep[0].dependency_type = MALI_JD_DEP_TYPE_DATA;
+                atoms[1].pre_dep[0].dependency_type = BASE_JD_DEP_TYPE_DATA;
         }
 
-        atoms[1].core_req |= panfrost_is_scanout(ctx) ? MALI_JD_REQ_EXTERNAL_RESOURCES : MALI_JD_REQ_FS_AFBC;
+        atoms[1].core_req |= panfrost_is_scanout(ctx) ? BASE_JD_REQ_EXTERNAL_RESOURCES : BASE_JD_REQ_FS_AFBC;
 
         /* Copy over core reqs for old kernels */
 
         for (int i = 0; i < 2; ++i)
                 atoms[i].compat_core_req = atoms[i].core_req;
 
-        struct mali_ioctl_job_submit submit = {
-                .addr = atoms + (has_draws ? 0 : 1),
+        struct kbase_ioctl_job_submit submit = {
+                .addr = (mali_ptr)(atoms + (has_draws ? 0 : 1)),
                 .nr_atoms = has_draws ? 2 : 1,
-                .stride = sizeof(struct mali_jd_atom_v2),
+                .stride = sizeof(struct base_jd_atom_v2),
         };
 
-        if (pandev_ioctl(ctx->fd, MALI_IOCTL_JOB_SUBMIT, &submit))
+        if (pandev_ioctl(screen->fd, KBASE_IOCTL_JOB_SUBMIT, &submit))
                 printf("Error submitting\n");
 
         /* If visual, we can stall a frame */
@@ -1556,17 +1576,6 @@ panfrost_flush(
 
         /* Prepare for the next frame */
         panfrost_invalidate_frame(ctx);
-
-#ifdef USE_SLOWFB
-#ifndef DRY_RUN
-
-        if (panfrost_is_scanout(ctx) && !dont_scanout) {
-                /* Display the frame in our cute little window */
-                slowfb_update((uint8_t *) ctx->framebuffer.cpu, ctx->pipe_framebuffer.width, ctx->pipe_framebuffer.height);
-        }
-
-#endif
-#endif
 }
 
 #define DEFINE_CASE(c) case PIPE_PRIM_##c: return MALI_GL_##c;
@@ -2099,6 +2108,8 @@ panfrost_create_sampler_view(
         const struct pipe_sampler_view *template)
 {
         struct panfrost_sampler_view *so = CALLOC_STRUCT(panfrost_sampler_view);
+        int bytes_per_pixel = util_format_get_blocksize(texture->format);
+        int stride = bytes_per_pixel * texture->width0; /* TODO: Alignment? */
 
         pipe_reference(NULL, &texture->reference);
 
@@ -2117,7 +2128,7 @@ panfrost_create_sampler_view(
         assert(template->target == PIPE_TEXTURE_2D);
 
         /* Make sure it's something with which we're familiar */
-        assert(prsrc->bytes_per_pixel >= 1 && prsrc->bytes_per_pixel <= 4);
+        assert(bytes_per_pixel >= 1 && bytes_per_pixel <= 4);
 
         /* TODO: Detect from format better */
         const struct util_format_description *desc = util_format_description(prsrc->base.format);
@@ -2149,7 +2160,7 @@ panfrost_create_sampler_view(
                         .bottom = alpha_only ? 0x24 : ((depth ? 0x20 : 0x88)),
                         .unk1 = alpha_only ? 0x1 : (has_alpha ? 0x6 : 0xb),
                         .component_size = depth ? 0x5 : 0x3,
-                        .nr_channels = MALI_POSITIVE((depth ? 2 : prsrc->bytes_per_pixel)),
+                        .nr_channels = MALI_POSITIVE((depth ? 2 : bytes_per_pixel)),
                         .typeA = depth ? 2 : 5,
 
                         .usage1 = 0x0,
@@ -2218,29 +2229,44 @@ panfrost_resource_create_front(struct pipe_screen *screen,
 {
         struct panfrost_resource *so = CALLOC_STRUCT(panfrost_resource);
         struct panfrost_screen *pscreen = (struct panfrost_screen *) screen;
+        int bytes_per_pixel = util_format_get_blocksize(template->format);
+        int stride = bytes_per_pixel * template->width0; /* TODO: Alignment? */
 
         so->base = *template;
         so->base.screen = screen;
 
         pipe_reference_init(&so->base.reference, 1);
 
-        /* Fill out fields based on format itself */
-        so->bytes_per_pixel = util_format_get_blocksize(template->format);
-
-        /* TODO: Alignment? */
-        so->stride = so->bytes_per_pixel * template->width0;
-
-        size_t sz = so->stride;
+        size_t sz = stride;
 
         if (template->height0) sz *= template->height0;
 
         if (template->depth0) sz *= template->depth0;
 
         if ((template->bind & PIPE_BIND_RENDER_TARGET) || (template->bind & PIPE_BIND_DEPTH_STENCIL)) {
-                if (template->bind & PIPE_BIND_DISPLAY_TARGET) {
-                        /* TODO: Allocate display target surface */
-                        so->cpu[0] = pscreen->any_context->framebuffer.cpu;
-                        so->gpu[0] = pscreen->any_context->framebuffer.gpu;
+                if (template->bind & PIPE_BIND_DISPLAY_TARGET ||
+                    template->bind & PIPE_BIND_SCANOUT) {
+                        struct pipe_resource scanout_templat = *template;
+                        struct renderonly_scanout *scanout;
+                        struct winsys_handle handle;
+
+                        /* TODO: align width0 and height0? */
+
+                        scanout = renderonly_scanout_for_resource(&scanout_templat,
+                                                                  pscreen->ro, &handle);
+                        if (!scanout)
+                                return NULL;
+
+                        assert(handle.type == WINSYS_HANDLE_TYPE_FD);
+                        /* TODO: handle modifiers? */
+                        so = pan_resource(screen->resource_from_handle(screen, template,
+                                                                         &handle,
+                                                                         PIPE_HANDLE_USAGE_FRAMEBUFFER_WRITE));
+                        close(handle.handle);
+                        if (!so)
+                                return NULL;
+
+                        so->scanout = scanout;
                         pscreen->display_target = so;
                 } else {
                         /* TODO: Mipmapped RTs */
@@ -2248,7 +2274,7 @@ panfrost_resource_create_front(struct pipe_screen *screen,
 
                         /* Allocate the framebuffer as its own slab of GPU-accessible memory */
                         struct panfrost_memory slab;
-                        panfrost_allocate_slab(pscreen->any_context, &slab, (sz / 4096) + 1, true, false, 0, 0, 0);
+                        panfrost_allocate_slab(pscreen->any_context, &slab, (sz / 4096) + 1, false, 0, 0, 0);
 
                         /* Make the resource out of the slab */
                         so->cpu[0] = slab.cpu;
@@ -2272,7 +2298,9 @@ panfrost_resource_create_front(struct pipe_screen *screen,
                         /* But for linear, we can! */
 
                         struct panfrost_memory slab;
-                        panfrost_allocate_slab(pscreen->any_context, &slab, (sz / 4096) + 1, true, true, 0, 0, 0);
+                        panfrost_allocate_slab(pscreen->any_context,
+                                               &slab, (sz / 4096) + 1,
+                                               true, 0, 0, 0);
 
                         /* Make the resource out of the slab */
                         so->cpu[0] = slab.cpu;
@@ -2308,13 +2336,14 @@ panfrost_transfer_map(struct pipe_context *pctx,
 {
         struct panfrost_context *ctx = panfrost_context(pctx);
         struct panfrost_resource *rsrc = (struct panfrost_resource *) resource;
+        int bytes_per_pixel = util_format_get_blocksize(resource->format);
+        int stride = bytes_per_pixel * resource->width0; /* TODO: Alignment? */
 
         struct pipe_transfer *transfer = CALLOC_STRUCT(pipe_transfer);
-
         transfer->level = level;
         transfer->usage = usage;
         transfer->box = *box;
-        transfer->stride = rsrc->stride;
+        transfer->stride = stride;
         assert(!transfer->box.z);
 
         pipe_resource_reference(&transfer->resource, resource);
@@ -2339,7 +2368,7 @@ panfrost_transfer_map(struct pipe_context *pctx,
                 assert(level == 0);
 
                 /* Set the CPU mapping to that of the framebuffer in memory, untiled */
-                rsrc->cpu[level] = ctx->framebuffer.cpu;
+                rsrc->cpu[level] = ((struct panfrost_resource *) ctx->pipe_framebuffer.cbufs[0]->texture)->cpu[0];
 
                 /* Force a flush -- kill the pipeline */
                 panfrost_flush(pctx, NULL, PIPE_FLUSH_END_OF_FRAME);
@@ -2351,7 +2380,7 @@ panfrost_transfer_map(struct pipe_context *pctx,
                 rsrc->cpu[level] = ctx->depth_stencil_buffer.cpu;
         }
 
-        return rsrc->cpu[level] + transfer->box.x * rsrc->bytes_per_pixel + transfer->box.y * transfer->stride;
+        return rsrc->cpu[level] + transfer->box.x * bytes_per_pixel + transfer->box.y * stride;
 }
 
 static void
@@ -2369,8 +2398,8 @@ panfrost_set_framebuffer_state(struct pipe_context *pctx,
         ctx->pipe_framebuffer.nr_cbufs = fb->nr_cbufs;
         ctx->pipe_framebuffer.samples = fb->samples;
         ctx->pipe_framebuffer.layers = fb->layers;
-        ctx->pipe_framebuffer.width = MIN2(fb->width, 2048);
-        ctx->pipe_framebuffer.height = MIN2(fb->height, 1280);
+        ctx->pipe_framebuffer.width = fb->width;
+        ctx->pipe_framebuffer.height = fb->height;
 
         for (int i = 0; i < PIPE_MAX_COLOR_BUFS; i++) {
                 struct pipe_surface *cb = i < fb->nr_cbufs ? fb->cbufs[i] : NULL;
@@ -2389,21 +2418,13 @@ panfrost_set_framebuffer_state(struct pipe_context *pctx,
                 if (!cb)
                         continue;
 
-                bool is_scanout = panfrost_is_scanout(ctx);
-
-                if (is_scanout) {
-                        /* Lie to use our own */
-                        ((struct panfrost_resource *) ctx->pipe_framebuffer.cbufs[i]->texture)->gpu[0] = ctx->framebuffer.gpu;
-                        ctx->pipe_framebuffer.width = 2048;
-                        ctx->pipe_framebuffer.height = 1280;
-                }
-
                 ctx->vt_framebuffer = panfrost_emit_fbd(ctx);
                 panfrost_attach_vt_framebuffer(ctx);
                 panfrost_new_frag_framebuffer(ctx);
                 panfrost_set_scissor(ctx);
 
                 struct panfrost_resource *tex = ((struct panfrost_resource *) ctx->pipe_framebuffer.cbufs[i]->texture);
+                bool is_scanout = panfrost_is_scanout(ctx);
 
                 if (!is_scanout && !tex->has_afbc) {
                         /* The blob is aggressive about enabling AFBC. As such,
@@ -2695,6 +2716,9 @@ panfrost_destroy(struct pipe_context *pipe)
 static void
 panfrost_tile_texture(struct panfrost_context *ctx, struct panfrost_resource *rsrc, int level)
 {
+        int bytes_per_pixel = util_format_get_blocksize(rsrc->base.format);
+        int stride = bytes_per_pixel * rsrc->base.width0; /* TODO: Alignment? */
+
         /* If we're direct mapped, we're done; don't do any swizzling / copies / etc */
         if (rsrc->mapped_direct)
                 return;
@@ -2705,7 +2729,7 @@ panfrost_tile_texture(struct panfrost_context *ctx, struct panfrost_resource *rs
         /* Estimate swizzled bitmap size. Slight overestimates are fine.
          * Underestimates will result in memory corruption or worse. */
 
-        int swizzled_sz = panfrost_swizzled_size(width, height, rsrc->bytes_per_pixel);
+        int swizzled_sz = panfrost_swizzled_size(width, height, bytes_per_pixel);
 
         /* Allocate the transfer given that known size but do not copy */
         struct pb_slab_entry *entry = pb_slab_alloc(&ctx->slabs, swizzled_sz, HEAP_TEXTURE);
@@ -2728,11 +2752,11 @@ panfrost_tile_texture(struct panfrost_context *ctx, struct panfrost_resource *rs
                 /* Run actual texture swizzle, writing directly to the mapped
                  * GPU chunk we allocated */
 
-                panfrost_texture_swizzle(width, height, rsrc->bytes_per_pixel, rsrc->stride, rsrc->cpu[level], swizzled);
+                panfrost_texture_swizzle(width, height, bytes_per_pixel, stride, rsrc->cpu[level], swizzled);
         } else {
                 /* If indirect linear, just do a dumb copy */
 
-                memcpy(swizzled, rsrc->cpu[level], rsrc->stride * height);
+                memcpy(swizzled, rsrc->cpu[level], stride * height);
         }
 }
 
@@ -2826,90 +2850,72 @@ static void
 panfrost_allocate_slab(struct panfrost_context *ctx,
                        struct panfrost_memory *mem,
                        size_t pages,
-                       bool mapped,
                        bool same_va,
                        int extra_flags,
                        int commit_count,
                        int extent)
 {
-        int flags = MALI_MEM_PROT_CPU_RD | MALI_MEM_PROT_CPU_WR | MALI_MEM_PROT_GPU_RD | MALI_MEM_PROT_GPU_WR;
+        struct pipe_context *gallium = (struct pipe_context *) ctx;
+        struct panfrost_screen *screen = panfrost_screen(gallium->screen);
+        int flags = BASE_MEM_PROT_CPU_RD | BASE_MEM_PROT_CPU_WR |
+                    BASE_MEM_PROT_GPU_RD | BASE_MEM_PROT_GPU_WR;
+        int out_flags;
 
         flags |= extra_flags;
 
         /* w+x are mutually exclusive */
-        if (extra_flags & MALI_MEM_PROT_GPU_EX)
-                flags &= ~MALI_MEM_PROT_GPU_WR;
+        if (extra_flags & BASE_MEM_PROT_GPU_EX)
+                flags &= ~BASE_MEM_PROT_GPU_WR;
 
         if (same_va)
-                flags |= MALI_MEM_SAME_VA;
+                flags |= BASE_MEM_SAME_VA;
 
         if (commit_count || extent)
-                pandev_general_allocate(ctx->fd, pages, commit_count, extent, flags, &mem->gpu);
+                pandev_general_allocate(screen->fd, pages,
+                                        commit_count,
+                                        extent, flags, &mem->gpu, &out_flags);
         else
-                pandev_standard_allocate(ctx->fd, pages, flags, &mem->gpu);
+                pandev_standard_allocate(screen->fd, pages, flags, &mem->gpu,
+                                         &out_flags);
 
         mem->size = pages * 4096;
 
-        /* mmap for 64-bit, mmap64 for 32-bit. ironic, I know */
-        if (mapped) {
-                if ((mem->cpu = mmap(NULL, mem->size, 3, 1, ctx->fd, mem->gpu)) == MAP_FAILED) {
+        /* The kernel can return a "cookie", long story short this means we
+         * mmap
+         */
+        if (mem->gpu == 0x41000) {
+                if ((mem->cpu = mmap(NULL, mem->size, 3, 1,
+                                     screen->fd, mem->gpu)) == MAP_FAILED) {
                         perror("mmap");
                         abort();
                 }
+                mem->gpu = (mali_ptr)mem->cpu;
         }
 
         mem->stack_bottom = 0;
 }
 
-/* Setups a framebuffer, either by itself (with the independent slow-fb
- * interface) or from an existing pointer (for shared memory, from the winsys)
- * */
+static void
+panfrost_flush_resource(struct pipe_context *pctx, struct pipe_resource *prsc)
+{
+        fprintf(stderr, "TODO %s\n", __func__);
+}
 
 static void
-panfrost_setup_framebuffer(struct panfrost_context *ctx, int width, int height)
+panfrost_invalidate_resource(struct pipe_context *pctx, struct pipe_resource *prsc)
 {
-        /* drisw rounds the stride */
-        int rw = 16.0 * (int) ceil((float) width / 16.0);
-
-        size_t framebuffer_sz = rw * height * 4;
-        posix_memalign((void **) &ctx->framebuffer.cpu, CACHE_LINE_SIZE, framebuffer_sz);
-        struct slowfb_info info = slowfb_init((uint8_t *) (ctx->framebuffer.cpu), rw, height);
-
-        /* May not be the same as our original alloc if we're using XShm, etc */
-        ctx->framebuffer.cpu = info.framebuffer;
-
-        struct mali_mem_import_user_buffer framebuffer_handle = { .ptr = (uint64_t) (uintptr_t) ctx->framebuffer.cpu, .length = framebuffer_sz };
-
-        struct mali_ioctl_mem_import framebuffer_import = {
-                .phandle = (uint64_t) (uintptr_t) &framebuffer_handle,
-                .type = MALI_MEM_IMPORT_TYPE_USER_BUFFER,
-                .flags = MALI_MEM_PROT_CPU_RD | MALI_MEM_PROT_CPU_WR | MALI_MEM_PROT_GPU_RD | MALI_MEM_PROT_GPU_WR | MALI_MEM_IMPORT_SHARED,
-        };
-
-        pandev_ioctl(ctx->fd, MALI_IOCTL_MEM_IMPORT, &framebuffer_import);
-
-        /* It feels like this mmap is backwards :p */
-        uint64_t gpu_addr = (uint64_t) mmap(NULL, framebuffer_import.va_pages * 4096, 3, 1, ctx->fd, framebuffer_import.gpu_va);
-
-        ctx->framebuffer.gpu = gpu_addr;
-        ctx->framebuffer.size = info.stride * height;
-        ctx->scanout_stride = info.stride;
-
-        ctx->pipe_framebuffer.nr_cbufs = 1;
-        ctx->pipe_framebuffer.width = width;
-        ctx->pipe_framebuffer.height = height;
+        fprintf(stderr, "TODO %s\n", __func__);
 }
 
 static void
 panfrost_setup_hardware(struct panfrost_context *ctx)
 {
-        ctx->fd = pandev_open();
+        struct pipe_context *gallium = (struct pipe_context *) ctx;
+        struct panfrost_screen *screen = panfrost_screen(gallium->screen);
 
-#ifdef USE_SLOWFB
-        panfrost_setup_framebuffer(ctx, 2048, 1280);
-#endif
+        pandev_open(screen->fd);
 
-        for (int i = 0; i < sizeof(ctx->transient_pools) / sizeof(ctx->transient_pools[0]); ++i) {
+        for (int i = 0; i < ARRAY_SIZE(ctx->transient_pools); ++i) {
                 /* Allocate the beginning of the transient pool */
                 int entry_size = (1 << 22); /* 4MB */
 
@@ -2919,13 +2925,12 @@ panfrost_setup_hardware(struct panfrost_context *ctx)
                 ctx->transient_pools[i].entries[0] = (struct panfrost_memory_entry *) pb_slab_alloc(&ctx->slabs, entry_size, HEAP_TRANSIENT);
         }
 
-        panfrost_allocate_slab(ctx, &ctx->cmdstream_persistent, 8 * 64 * 8 * 2, true, true, 0, 0, 0);
-        panfrost_allocate_slab(ctx, &ctx->scratchpad, 64, true, true, 0, 0, 0);
-        panfrost_allocate_slab(ctx, &ctx->varying_mem, 16384, false, true, 0, 0, 0);
-        panfrost_allocate_slab(ctx, &ctx->shaders, 4096, true, false, MALI_MEM_PROT_GPU_EX, 0, 0);
-        panfrost_allocate_slab(ctx, &ctx->tiler_heap, 32768, false, false, MALI_MEM_GROW_ON_GPF, 1, 128);
-        panfrost_allocate_slab(ctx, &ctx->misc_0, 128, false, false, MALI_MEM_GROW_ON_GPF, 1, 128);
-
+        panfrost_allocate_slab(ctx, &ctx->cmdstream_persistent, 8 * 64 * 8 * 2, true, 0, 0, 0);
+        panfrost_allocate_slab(ctx, &ctx->scratchpad, 64, false, 0, 0, 0);
+        panfrost_allocate_slab(ctx, &ctx->varying_mem, 16384, false, 0, 0, 0);
+        panfrost_allocate_slab(ctx, &ctx->shaders, 4096, true, BASE_MEM_PROT_GPU_EX, 0, 0);
+        panfrost_allocate_slab(ctx, &ctx->tiler_heap, 32768, false, BASE_MEM_GROW_ON_GPF, 1, 128);
+        panfrost_allocate_slab(ctx, &ctx->misc_0, 128, false, BASE_MEM_GROW_ON_GPF, 1, 128);
 }
 
 static const struct u_transfer_vtbl transfer_vtbl = {
@@ -2965,7 +2970,7 @@ panfrost_slab_alloc(void *priv, unsigned heap, unsigned entry_size, unsigned gro
         /* Actually allocate the memory from kernel-space. Mapped, same_va, no
          * special flags */
 
-        panfrost_allocate_slab(ctx, mem, slab_size / 4096, true, true, 0, 0, 0);
+        panfrost_allocate_slab(ctx, mem, slab_size / 4096, true, 0, 0, 0);
 
         return &mem->slab;
 }
@@ -3082,6 +3087,9 @@ panfrost_create_context(struct pipe_screen *screen, void *priv, unsigned flags)
 
         gallium->blit = panfrost_blit;
 
+        gallium->flush_resource = panfrost_flush_resource;
+        gallium->invalidate_resource = panfrost_invalidate_resource;
+
         /* XXX: leaks */
         gallium->stream_uploader = u_upload_create_default(gallium);
         gallium->const_uploader = gallium->stream_uploader;
@@ -3116,10 +3124,8 @@ panfrost_create_context(struct pipe_screen *screen, void *priv, unsigned flags)
         panfrost_emit_tiler_payload(ctx);
         panfrost_invalidate_frame(ctx);
         panfrost_viewport(ctx, 0.0, 1.0, 0, 0, ctx->pipe_framebuffer.width, ctx->pipe_framebuffer.height);
-        panfrost_new_frag_framebuffer(ctx);
         panfrost_default_shader_backend(ctx);
         panfrost_generate_space_filler_indices();
-
 
         return gallium;
 }

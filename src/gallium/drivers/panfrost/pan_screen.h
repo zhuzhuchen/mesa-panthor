@@ -33,11 +33,16 @@
 
 #include "pipe/p_screen.h"
 #include "pipe/p_defines.h"
+#include "renderonly/renderonly.h"
 
 struct panfrost_context;
 
 struct panfrost_screen {
         struct pipe_screen base;
+
+        struct renderonly *ro;
+        int fd;
+
         struct panfrost_context *any_context;
         
         /* TODO: Where? */

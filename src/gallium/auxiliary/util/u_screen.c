@@ -327,6 +327,9 @@ u_pipe_screen_get_param_defaults(struct pipe_screen *pscreen,
    case PIPE_CAP_MAX_VERTEX_ELEMENT_SRC_OFFSET:
       return 2047;
 
+   case PIPE_CAP_BUFFER_AGE:
+      return 1;
+
    case PIPE_CAP_SURFACE_SAMPLE_COUNT:
       return 0;
 

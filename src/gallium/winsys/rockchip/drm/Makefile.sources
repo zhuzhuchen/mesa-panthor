@@ -1,3 +1,3 @@
 C_SOURCES := \
-   pl111_drm_public.h \
-   pl111_drm_winsys.c
+   rockchip_drm_public.h \
+   rockchip_drm_winsys.c

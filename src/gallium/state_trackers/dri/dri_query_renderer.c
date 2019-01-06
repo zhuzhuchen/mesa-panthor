@@ -62,6 +62,11 @@ dri2_query_renderer_integer(__DRIscreen *_screen, int param,
       if (!value[0])
          return -1;
       return 0;
+   case __DRI2_RENDERER_EXPOSE_BUFFER_AGE:
+      value[0] =
+         screen->base.screen->get_param(screen->base.screen,
+                                        PIPE_CAP_BUFFER_AGE);
+      return 0;
    default:
       return driQueryRendererIntegerCommon(_screen, param, value);
    }

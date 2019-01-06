@@ -25,7 +25,7 @@
 #ifndef PANWRAP_DECODER_H
 #define PANWRAP_DECODER_H
 
-#include <panfrost-ioctl.h>
+#include <mali-kbase-ioctl.h>
 #include <panfrost-job.h>
 #include "panwrap.h"
 

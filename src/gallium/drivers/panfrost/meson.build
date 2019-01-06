@@ -36,12 +36,23 @@ files_panfrost = files(
   'pan_nondrm.c',
   'pan_allocate.c',
   'pan_assemble.c',
-  'pan_slowfb.c',
   'pan_swizzle.c',
   'pan_blending.c',
   'pan_blend_shaders.c',
   'pan_wallpaper.c',
 )
+
+inc_panfrost = [
+  inc_common,
+  inc_gallium,
+  inc_gallium_aux,
+  inc_drm_uapi,
+  inc_include,
+  inc_src,
+  include_directories('midgard'),
+  include_directories('bifrost'),
+  include_directories('include')
+]
 
 midgard_nir_algebraic_c = custom_target(
   'midgard_nir_algebraic.c',
@@ -64,16 +75,7 @@ libpanfrost = static_library(
     dep_thread,
     idep_nir
   ],
-  include_directories : [
-    inc_common,
-    inc_gallium_aux,
-    inc_gallium,
-    inc_include,
-    inc_src,
-    include_directories('midgard'),
-    include_directories('bifrost'),
-    include_directories('include')
-  ],
+  include_directories : inc_panfrost,
   c_args : [c_vis_args, c_msvc_compat_args],
 )
 
@@ -98,14 +100,7 @@ files_bifrost = files(
 midgard_compiler = executable(
   'midgard_compiler',
   [files_midgard, midgard_nir_algebraic_c],
-  include_directories : [
-    inc_common,
-    inc_src,
-    inc_include,
-    inc_gallium,
-    inc_gallium_aux,
-    include_directories('midgard')
-    ],
+  include_directories : inc_panfrost,
   dependencies : [
     dep_thread,
     idep_nir
@@ -141,4 +136,5 @@ bifrost_compiler = executable(
   build_by_default : true
 )
 
+subdir('include')
 subdir('panwrap')

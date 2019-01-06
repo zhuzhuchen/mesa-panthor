@@ -28,21 +28,22 @@
 #include <unistd.h>
 #include <sys/mman.h>
 #include <stdbool.h>
-#include <panfrost-ioctl.h>
 #include <panfrost-job.h>
 #include <linux/ioctl.h>
-#include "pan_slowfb.h"
 #include "pipebuffer/pb_slab.h"
 
-int pandev_open(void);
+int pandev_open(int fd);
 
 /* Calls used while replaying */
 int pandev_raw_open(void);
 u8 *pandev_map_mtp(int fd);
 int pandev_ioctl(int fd, unsigned long request, void *args);
 
-int pandev_standard_allocate(int fd, int va_pages, int flags, u64 *out);
-int pandev_general_allocate(int fd, int va_pages, int commit_pages, int extent, int flags, u64 *out);
+int pandev_standard_allocate(int fd, int va_pages, int flags,
+                             u64 *out, int *out_flags);
+int pandev_general_allocate(int fd, int va_pages, int commit_pages,
+                            int extent, int flags,
+                            u64 *out, int *out_flags);
 
 struct panfrost_context;
 struct panfrost_shader_state;
