@@ -21,13 +21,16 @@
  * SOFTWARE.
  */
 
+#ifndef __bifrost_compile_h__
+#define __bifrost_compile_h__
+
 #include "compiler/nir/nir.h"
 
-typedef struct {
-} bifrost_program;
+struct bifrost_program {
+};
 
 int
-bifrost_compile_shader_nir(nir_shader *nir, bifrost_program *program);
+bifrost_compile_shader_nir(nir_shader *nir, struct bifrost_program *program);
 
 static const nir_shader_compiler_options bifrost_nir_options = {
         .lower_ffma = true,
@@ -48,3 +51,5 @@ static const nir_shader_compiler_options bifrost_nir_options = {
 
         .native_integers = true
 };
+
+#endif

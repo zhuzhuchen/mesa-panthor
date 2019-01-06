@@ -43,12 +43,33 @@ compile_shader(char **argv)
         prog = standalone_compile_shader(&options, 2, argv);
         prog->_LinkedShaders[MESA_SHADER_FRAGMENT]->Program->info.stage = MESA_SHADER_FRAGMENT;
 
-        bifrost_program compiled;
+        struct bifrost_program compiled;
         nir = glsl_to_nir(prog, MESA_SHADER_VERTEX, &bifrost_nir_options);
         bifrost_compile_shader_nir(nir, &compiled);
 
         nir = glsl_to_nir(prog, MESA_SHADER_FRAGMENT, &bifrost_nir_options);
         bifrost_compile_shader_nir(nir, &compiled);
+}
+
+static void
+disassemble(const char *filename)
+{
+        FILE *fp = fopen(filename, "rb");
+        assert(fp);
+
+        fseek(fp, 0, SEEK_END);
+        int filesize = ftell(fp);
+        rewind(fp);
+
+        unsigned char *code = malloc(filesize);
+        int res = fread(code, 1, filesize, fp);
+        if (res != filesize) {
+                printf("Couldn't read full file\n");
+        }
+        fclose(fp);
+
+        disassemble_bifrost(code, filesize);
+        free(code);
 }
 
 int
@@ -60,6 +81,8 @@ main(int argc, char **argv)
         }
         if (strcmp(argv[1], "compile") == 0) {
                 compile_shader(&argv[2]);
+        } else if (strcmp(argv[1], "disasm") == 0) {
+                disassemble(argv[2]);
         }
         return 0;
 }
