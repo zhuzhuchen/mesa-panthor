@@ -137,6 +137,8 @@ panfrost_draw_wallpaper(struct pipe_context *pipe)
         /* Disable wallpapering for now */
         return;
 
+#if 0
+
         /* Setup payload for elided quad. TODO: Refactor draw_vbo so this can
          * be a little more DRY */
 
@@ -193,14 +195,12 @@ panfrost_draw_wallpaper(struct pipe_context *pipe)
          * shader epilogue for more context */
 
         float implied_position_varying[] = {
-#if 0
                 /* The following is correct for scissored clears whose scissor deals with cutoff appropriately */
 
-                -1.0, -1.0,        0.0, 1.0,
-                -1.0, 65535.0,     0.0, 1.0,
-                65536.0, 1.0,      0.0, 1.0,
-                65536.0, 65536.0,  0.0, 1.0
-#endif
+//                -1.0, -1.0,        0.0, 1.0,
+//                -1.0, 65535.0,     0.0, 1.0,
+//                65536.0, 1.0,      0.0, 1.0,
+//                65536.0, 65536.0,  0.0, 1.0
 
                 /* The following output is correct for a fullscreen quad with screen size 2048x1600 */
                 0.0, 0.0, 0.0, 1.0,
@@ -221,7 +221,7 @@ panfrost_draw_wallpaper(struct pipe_context *pipe)
                 1.0, 1.0, 0.0, 0.0
         };
 
-        struct mali_attr varyings[1] = {
+        union mali_attr varyings[1] = {
                 {
                         .elements = panfrost_upload_transient(ctx, texture_coordinates, sizeof(texture_coordinates)) | 1,
                         .stride = sizeof(float) * 4,
@@ -268,4 +268,5 @@ panfrost_draw_wallpaper(struct pipe_context *pipe)
         /* Cleanup */
         panfrost_disable_wallpaper_program(pipe);
         ctx->payload_tiler.postfix.varying_meta = saved_varying_meta;
+#endif
 }

@@ -3,6 +3,7 @@ srcs = [
     'panwrap-util.c',
     'panwrap-mmap.c',
     'panwrap-decoder.c',
+    '../pan_pretty_print.c'
 ]
 
 shared_library(
