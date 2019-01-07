@@ -147,6 +147,11 @@ if with_gallium_virgl
 else
   driver_virgl = declare_dependency()
 endif
+if with_gallium_meson
+  subdir('winsys/meson/drm')
+else
+  driver_meson = declare_dependency()
+endif
 if with_gallium_opencl
   # TODO: this isn't really clover specific, but ATM clover is the only
   # consumer

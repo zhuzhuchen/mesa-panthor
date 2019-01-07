@@ -132,7 +132,7 @@ if _drivers.contains('auto')
     elif ['arm', 'aarch64'].contains(host_machine.cpu_family())
       _drivers = [
         'pl111', 'v3d', 'vc4', 'freedreno', 'etnaviv', 'imx', 'nouveau',
-        'tegra', 'virgl', 'swrast', 'panfrost', 'rockchip'
+        'tegra', 'virgl', 'swrast', 'panfrost', 'meson', 'rockchip'
       ]
     else
       error('Unknown architecture @0@. Please pass -Dgallium-drivers to set driver options. Patches gladly accepted to fix this.'.format(
@@ -155,6 +155,7 @@ with_gallium_softpipe = _drivers.contains('swrast')
 with_gallium_vc4 = _drivers.contains('vc4')
 with_gallium_v3d = _drivers.contains('v3d')
 with_gallium_panfrost = _drivers.contains('panfrost')
+with_gallium_meson = _drivers.contains('meson')
 with_gallium_rockchip = _drivers.contains('rockchip')
 with_gallium_etnaviv = _drivers.contains('etnaviv')
 with_gallium_imx = _drivers.contains('imx')
@@ -192,6 +193,9 @@ if _vulkan_drivers.contains('auto')
     error('Unknown OS @0@. Please pass -Dvulkan-drivers to set driver options. Patches gladly accepted to fix this.'.format(
           host_machine.system()))
   endif
+endif
+if (with_gallium_meson or with_gallium_rockchip) and not with_gallium_panfrost
+  error('meson/rockchip driver requires panfrost driver')
 endif
 
 with_intel_vk = _vulkan_drivers.contains('intel')

@@ -151,6 +151,11 @@ static const struct drm_driver_descriptor driver_descriptors[] = {
         .create_screen = pipe_tegra_create_screen,
         .configuration = pipe_default_configuration_query,
     },
+    {
+        .driver_name = "meson",
+        .create_screen = pipe_meson_create_screen,
+        .configuration = pipe_default_configuration_query,
+    },
 };
 #endif
 
