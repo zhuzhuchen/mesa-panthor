@@ -29,6 +29,7 @@
 
 #include "pan_context.h"
 #include "pan_swizzle.h"
+#include "pan_format.h"
 
 #include "util/macros.h"
 #include "util/u_format.h"
@@ -596,11 +597,6 @@ panfrost_invalidate_frame(struct panfrost_context *ctx)
         if (ctx->rasterizer)
                 ctx->dirty |= PAN_DIRTY_RASTERIZER;
 
-        /* Uniforms are all discarded with the above stack discard */
-
-        for (int i = 0; i <= PIPE_SHADER_FRAGMENT; ++i)
-                ctx->constant_buffer[i].dirty = true;
-
         /* XXX */
         ctx->dirty |= PAN_DIRTY_SAMPLERS | PAN_DIRTY_TEXTURES;
 }
@@ -638,34 +634,6 @@ panfrost_emit_tiler_payload(struct panfrost_context *ctx)
         };
 
         memcpy(&ctx->payload_tiler, &payload_1, sizeof(payload_1));
-}
-
-static unsigned
-panfrost_translate_texture_swizzle(enum pipe_swizzle s)
-{
-        switch (s) {
-        case PIPE_SWIZZLE_X:
-                return MALI_CHANNEL_RED;
-
-        case PIPE_SWIZZLE_Y:
-                return MALI_CHANNEL_GREEN;
-
-        case PIPE_SWIZZLE_Z:
-                return MALI_CHANNEL_BLUE;
-
-        case PIPE_SWIZZLE_W:
-                return MALI_CHANNEL_ALPHA;
-
-        case PIPE_SWIZZLE_0:
-                return MALI_CHANNEL_ZERO;
-
-        case PIPE_SWIZZLE_1:
-                return MALI_CHANNEL_ONE;
-
-        default:
-                assert(0);
-                return 0;
-        }
 }
 
 static unsigned
@@ -1017,8 +985,8 @@ static void
 panfrost_emit_vertex_data(struct panfrost_context *ctx)
 {
         /* TODO: Only update the dirtied buffers */
-        struct mali_attr attrs[PIPE_MAX_ATTRIBS];
-        struct mali_attr varyings[PIPE_MAX_ATTRIBS];
+        union mali_attr attrs[PIPE_MAX_ATTRIBS];
+        union mali_attr varyings[PIPE_MAX_ATTRIBS];
 
         for (int i = 0; i < ctx->vertex_buffer_count; ++i) {
                 struct pipe_vertex_buffer *buf = &ctx->vertex_buffers[i];
@@ -1063,9 +1031,9 @@ panfrost_emit_vertex_data(struct panfrost_context *ctx)
                 assert(ctx->varying_height < ctx->varying_mem.size);
         }
 
-        ctx->payload_vertex.postfix.attributes = panfrost_upload_transient(ctx, attrs, ctx->vertex_buffer_count * sizeof(struct mali_attr));
+        ctx->payload_vertex.postfix.attributes = panfrost_upload_transient(ctx, attrs, ctx->vertex_buffer_count * sizeof(union mali_attr));
 
-        mali_ptr varyings_p = panfrost_upload_transient(ctx, &varyings, ctx->vs->varyings.varying_buffer_count * sizeof(struct mali_attr));
+        mali_ptr varyings_p = panfrost_upload_transient(ctx, &varyings, ctx->vs->varyings.varying_buffer_count * sizeof(union mali_attr));
         ctx->payload_vertex.postfix.varyings = varyings_p;
         ctx->payload_tiler.postfix.varyings = varyings_p;
 }
@@ -1302,7 +1270,7 @@ panfrost_emit_for_draw(struct panfrost_context *ctx, bool with_vertex_data)
         for (int i = 0; i < PIPE_SHADER_TYPES; ++i) {
                 struct panfrost_constant_buffer *buf = &ctx->constant_buffer[i];
 
-                if (buf->dirty) {
+                if (i == PIPE_SHADER_VERTEX || i == PIPE_SHADER_FRAGMENT) {
                         /* It doesn't matter if we don't use all the memory;
                          * we'd need a dummy UBO anyway. Compute the max */
 
@@ -1699,7 +1667,8 @@ panfrost_draw_vbo(
         /* Fallback for non-ES draw modes */
 
         if (info->mode >= PIPE_PRIM_QUADS) {
-                mode = PIPE_PRIM_TRIANGLE_STRIP;
+                printf("XXX: Missing non-ES draw mode\n");
+                mode = PIPE_PRIM_TRIANGLE_FAN;
                 /*
                 util_primconvert_save_rasterizer_state(ctx->primconvert, &ctx->rasterizer->base);
                 util_primconvert_draw_vbo(ctx->primconvert, info);
@@ -1852,60 +1821,10 @@ panfrost_create_vertex_elements_state(
 
                 enum pipe_format fmt = elements[i].src_format;
                 const struct util_format_description *desc = util_format_description(fmt);
-                struct util_format_channel_description chan = desc->channel[0];
+                so->hw[i].unknown1 = 0x2;
+                so->hw[i].swizzle = panfrost_get_default_swizzle(desc->nr_channels);
 
-                int type = 0;
-
-                switch (chan.type) {
-                case UTIL_FORMAT_TYPE_UNSIGNED:
-                case UTIL_FORMAT_TYPE_SIGNED:
-                        if (chan.size == 8)
-                                type = MALI_ATYPE_BYTE;
-                        else if (chan.size == 16)
-                                type = MALI_ATYPE_SHORT;
-                        else if (chan.size == 32)
-                                type = MALI_ATYPE_INT;
-                        else {
-                                printf("BAD INT SIZE %d\n", chan.size);
-                                assert(0);
-                        }
-
-                        break;
-
-                case UTIL_FORMAT_TYPE_FLOAT:
-                        type = MALI_ATYPE_FLOAT;
-                        break;
-
-                default:
-                        printf("Unknown atype %d\n", chan.type);
-                        assert(0);
-                }
-
-                so->hw[i].type = type;
-                so->hw[i].not_normalised = !chan.normalized;
-
-                /* Bit used for both signed/unsigned and full/half designation */
-                so->hw[i].is_int_signed =
-                        (chan.type == UTIL_FORMAT_TYPE_SIGNED) ? 1 :
-                        (chan.type == UTIL_FORMAT_TYPE_FLOAT && chan.size != 32) ? 1 :
-                        0;
-
-                so->hw[i].nr_components = MALI_POSITIVE(desc->nr_channels);
-                so->nr_components[i] = desc->nr_channels;
-
-                /* The meaning of these magic values is unclear at the moment,
-                 * but likely has to do with how attributes are padded */
-
-                unsigned unknown1_for_components[4] = {
-                        0x2c82, /* float */
-                        0x2c22, /* vec2 */
-                        0x2a22, /* vec3 */
-                        0x1a22, /* vec4 */
-                };
-
-                so->hw[i].unknown1 = unknown1_for_components[desc->nr_channels - 1];
-
-                so->hw[i].unknown2 = 0x1;
+                so->hw[i].format = panfrost_find_format(desc);
 
                 /* The field itself should probably be shifted over */
                 so->hw[i].src_offset = elements[i].src_offset;
@@ -2096,7 +2015,7 @@ panfrost_set_constant_buffer(
         /* Multiple constant buffers not yet supported */
         assert(index == 0);
 
-        const void *cpu;
+        const uint8_t *cpu;
 
         struct panfrost_resource *rsrc = (struct panfrost_resource *) (buf->buffer);
 
@@ -2112,7 +2031,7 @@ panfrost_set_constant_buffer(
         /* Copy the constant buffer into the driver context for later upload */
 
         pbuf->buffer = malloc(sz);
-        memcpy(pbuf->buffer, cpu, sz);
+        memcpy(pbuf->buffer, cpu + buf->buffer_offset, sz);
 }
 
 static void
@@ -2157,23 +2076,15 @@ panfrost_create_sampler_view(
 
         /* TODO: Detect from format better */
         const struct util_format_description *desc = util_format_description(prsrc->base.format);
-        bool depth = prsrc->base.format == PIPE_FORMAT_Z32_UNORM;
-        bool has_alpha = true;
-        bool alpha_only = prsrc->base.format == PIPE_FORMAT_A8_UNORM;
 
-        /* Compose the format swizzle with the descriptor swizzle to find the
-         * actual swizzle to send to the hardware */
-
-        unsigned char composed_swizzle[4];
-
-        unsigned char desc_swizzle[4] = {
+        unsigned char user_swizzle[4] = {
                 template->swizzle_r,
                 template->swizzle_g,
                 template->swizzle_b,
                 template->swizzle_a
         };
 
-        util_format_compose_swizzles(desc->swizzle, desc_swizzle, composed_swizzle);
+        enum mali_format format = panfrost_find_format(desc);
 
         struct mali_texture_descriptor texture_descriptor = {
                 .width = MALI_POSITIVE(texture->width0),
@@ -2182,11 +2093,8 @@ panfrost_create_sampler_view(
 
                 /* TODO: Decode */
                 .format = {
-                        .bottom = alpha_only ? 0x24 : ((depth ? 0x20 : 0x88)),
-                        .unk1 = alpha_only ? 0x1 : (has_alpha ? 0x6 : 0xb),
-                        .component_size = depth ? 0x5 : 0x3,
-                        .nr_channels = MALI_POSITIVE((depth ? 2 : bytes_per_pixel)),
-                        .typeA = depth ? 2 : 5,
+                        .swizzle = panfrost_translate_swizzle_4(desc->swizzle),
+                        .format = format,
 
                         .usage1 = 0x0,
                         .is_not_cubemap = 1,
@@ -2198,10 +2106,7 @@ panfrost_create_sampler_view(
                         .usage2 = prsrc->has_afbc ? 0x1c : (prsrc->tiled ? 0x11 : 0x12),
                 },
 
-                .swizzle_r = panfrost_translate_texture_swizzle(composed_swizzle[0]),
-                .swizzle_g = panfrost_translate_texture_swizzle(composed_swizzle[1]),
-                .swizzle_b = panfrost_translate_texture_swizzle(composed_swizzle[2]),
-                .swizzle_a = panfrost_translate_texture_swizzle(composed_swizzle[3]),
+                .swizzle = panfrost_translate_swizzle_4(user_swizzle)
         };
 
         /* TODO: Other base levels require adjusting dimensions / level numbers / etc */

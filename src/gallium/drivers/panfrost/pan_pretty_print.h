@@ -1,5 +1,5 @@
 /*
- * © Copyright 2017-2018 The Panfrost Community
+ * © Copyright 2017-2098 The Panfrost Communiy
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -19,18 +19,12 @@
  * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
- * 
  */
 
-#ifndef PANWRAP_DECODER_H
-#define PANWRAP_DECODER_H
+#ifndef __PAN_PRETTY_H
+#define __PAN_PRETTY_H
 
-#include <mali-kbase-ioctl.h>
-#include <panfrost-job.h>
-#include "panwrap.h"
-
-int panwrap_replay_jc(mali_ptr jc_gpu_va, bool bifrost);
-int panwrap_replay_soft_replay(mali_ptr jc_gpu_va);
+#include "panfrost-job.h"
 char *panwrap_format_name(enum mali_format format);
 
-#endif /* !PANWRAP_DECODER_H */
+#endif

@@ -27,6 +27,8 @@
 #include <memory.h>
 #include "panwrap.h"
 
+#include "../pan_pretty_print.h"
+
 #define MEMORY_PROP(obj, p) {\
 	char *a = pointer_as_memory_reference(obj->p); \
 	panwrap_prop("%s = %s", #p, a); \
@@ -211,6 +213,21 @@ panwrap_stencil_op_name(enum mali_stencil_op op)
         default:
                 return "MALI_STENCIL_KEEP /* XXX: Unknown stencil op, check dump */";
         }
+}
+
+#undef DEFINE_CASE
+
+#define DEFINE_CASE(name) case MALI_ATTR_ ## name: return "MALI_ATTR_" #name
+static char *panwrap_attr_mode_name(enum mali_attr_mode mode)
+{
+	switch(mode) {
+	DEFINE_CASE(UNUSED);
+	DEFINE_CASE(LINEAR);
+	DEFINE_CASE(POT_DIVIDE);
+	DEFINE_CASE(MODULO);
+	DEFINE_CASE(NPOT_DIVIDE);
+	default: return "MALI_ATTR_UNUSED /* XXX: Unknown stencil op, check dump */";
+	}
 }
 
 #undef DEFINE_CASE
@@ -624,13 +641,17 @@ panwrap_replay_attributes(const struct panwrap_mapped_memory *mem,
         /* Varyings in particular get duplicated between parts of the job */
         if (panwrap_deduplicate(mem, addr, prefix, job_no)) return;
 
-        struct mali_attr *attr = panwrap_fetch_gpu_mem(mem, addr, sizeof(struct mali_attr) * count);
+        union mali_attr *attr = panwrap_fetch_gpu_mem(mem, addr, sizeof(union mali_attr) * count);
 
         char base[128];
         snprintf(base, sizeof(base), "%s_data_%d%s", prefix, job_no, suffix);
 
         for (int i = 0; i < count; ++i) {
-                mali_ptr raw_elements = attr[i].elements & ~3;
+		enum mali_attr_mode mode = attr[i].elements & 7;
+		if (mode == MALI_ATTR_UNUSED)
+			continue;
+
+		mali_ptr raw_elements = attr[i].elements & ~7;
 
                 /* gl_VertexID and gl_InstanceID do not have elements to
                  * decode; we would crash if we tried */
@@ -679,18 +700,35 @@ panwrap_replay_attributes(const struct panwrap_mapped_memory *mem,
                 }
         }
 
-        panwrap_log("struct mali_attr %s_%d[] = {\n", prefix, job_no);
+        panwrap_log("union mali_attr %s_%d[] = {\n", prefix, job_no);
         panwrap_indent++;
 
         for (int i = 0; i < count; ++i) {
                 panwrap_log("{\n");
                 panwrap_indent++;
 
-                panwrap_prop("elements = (%s_%d_p) | %d", base, i, (int) (attr[i].elements & 3));
+
+		panwrap_prop("elements = (%s_%d_p) | %s", base, i, panwrap_attr_mode_name(attr[i].elements & 7));
+		panwrap_prop("shift = %d", attr[i].shift);
+		panwrap_prop("extra_flags = %d", attr[i].extra_flags);
                 panwrap_prop("stride = 0x%" PRIx32, attr[i].stride);
                 panwrap_prop("size = 0x%" PRIx32, attr[i].size);
                 panwrap_indent--;
                 panwrap_log("}, \n");
+
+		if ((attr[i].elements & 7) == MALI_ATTR_NPOT_DIVIDE) {
+			i++;
+			panwrap_log("{\n");
+			panwrap_indent++;
+			panwrap_prop("unk = 0x%x", attr[i].unk);
+			panwrap_prop("magic_divisor = 0x%08x", attr[i].magic_divisor);
+			if (attr[i].zero != 0)
+				panwrap_prop("zero = 0x%x /* XXX zero tripped */", attr[i].zero);
+			panwrap_prop("divisor = %d", attr[i].divisor);
+			panwrap_indent--;
+			panwrap_log("}, \n");
+		}
+
         }
 
         panwrap_indent--;
@@ -756,10 +794,21 @@ panwrap_replay_blend_equation(const struct mali_blend_equation *blend, const cha
 }
 
 static void
+panwrap_replay_swizzle(unsigned swizzle)
+{
+	panwrap_prop("swizzle = %s | (%s << 3) | (%s << 6) | (%s << 9)",
+			panwrap_channel_name((swizzle >> 0) & 0x7),
+			panwrap_channel_name((swizzle >> 3) & 0x7),
+			panwrap_channel_name((swizzle >> 6) & 0x7),
+			panwrap_channel_name((swizzle >> 9) & 0x7));
+}
+
+static int
 panwrap_replay_attribute_meta(int job_no, int count, const struct mali_vertex_tiler_postfix *v, bool varying, char *suffix)
 {
         char base[128];
         char *prefix = varying ? "varying" : "attribute";
+	unsigned max_index = 0;
         snprintf(base, sizeof(base), "%s_meta", prefix);
 
         panwrap_log("struct mali_attr_meta %s_%d%s[] = {\n", base, job_no, suffix);
@@ -778,15 +827,13 @@ panwrap_replay_attribute_meta(int job_no, int count, const struct mali_vertex_ti
                 panwrap_log("{\n");
                 panwrap_indent++;
                 panwrap_prop("index = %d", attr_meta->index);
-                panwrap_prop("type = %d", attr_meta->type);
-                panwrap_prop("nr_components = MALI_POSITIVE(%d)", MALI_NEGATIVE(attr_meta->nr_components));
 
-                /* TODO: Dissect correctly */
-                panwrap_prop("is_int_signed = %d", attr_meta->is_int_signed);
+		if (attr_meta->index > max_index)
+			max_index = attr_meta->index;
+		panwrap_replay_swizzle(attr_meta->swizzle);
+		panwrap_prop("format = %s", panwrap_format_name(attr_meta->format));
 
-                panwrap_prop("not_normalised = %d", attr_meta->not_normalised);
                 panwrap_prop("unknown1 = 0x%" PRIx64, (u64) attr_meta->unknown1);
-                panwrap_prop("unknown2 = 0x%" PRIx64, (u64) attr_meta->unknown2);
                 panwrap_prop("unknown3 = 0x%" PRIx64, (u64) attr_meta->unknown3);
                 panwrap_prop("src_offset = 0x%" PRIx64, (u64) attr_meta->src_offset);
                 panwrap_indent--;
@@ -798,6 +845,8 @@ panwrap_replay_attribute_meta(int job_no, int count, const struct mali_vertex_ti
         panwrap_log("};\n");
 
         TOUCH_LEN(attr_mem, p_orig, sizeof(struct mali_attr_meta) * count, base, job_no, true);
+
+        return max_index;
 }
 
 static void
@@ -1245,10 +1294,10 @@ panwrap_replay_vertex_tiler_postfix_pre(const struct mali_vertex_tiler_postfix *
         }
 
         if (p->attribute_meta) {
-                panwrap_replay_attribute_meta(job_no, attribute_count, p, false, suffix);
+                unsigned max_attr_index = panwrap_replay_attribute_meta(job_no, attribute_count, p, false, suffix);
 
                 attr_mem = panwrap_find_mapped_gpu_mem_containing(p->attributes);
-                panwrap_replay_attributes(attr_mem, p->attributes, job_no, suffix, attribute_count, false);
+                panwrap_replay_attributes(attr_mem, p->attributes, job_no, suffix, max_attr_index + 1, false);
         }
 
         /* Varyings are encoded like attributes but not actually sent; we just
@@ -1347,12 +1396,8 @@ panwrap_replay_vertex_tiler_postfix_pre(const struct mali_vertex_tiler_postfix *
                                         panwrap_log(".format = {\n");
                                         panwrap_indent++;
 
-                                        panwrap_prop("bottom = 0x%" PRIx32, f.bottom);
-                                        panwrap_prop("unk1 = 0x%" PRIx32, f.unk1);
-                                        panwrap_prop("component_size = 0x%" PRIx32, f.component_size);
-                                        panwrap_prop("nr_channels = MALI_POSITIVE(%" PRId32 ")", f.nr_channels + 1);
-
-                                        panwrap_prop("typeA = %" PRId32, f.typeA);
+                                        panwrap_replay_swizzle(f.swizzle);
+					panwrap_prop("format = %s", panwrap_format_name(f.format));
 
                                         panwrap_prop("usage1 = 0x%" PRIx32, f.usage1);
                                         panwrap_prop("is_not_cubemap = %" PRId32, f.is_not_cubemap);
@@ -1361,10 +1406,7 @@ panwrap_replay_vertex_tiler_postfix_pre(const struct mali_vertex_tiler_postfix *
                                         panwrap_indent--;
                                         panwrap_log("},\n");
 
-                                        panwrap_prop("swizzle_r = %s", panwrap_channel_name(t->swizzle_r));
-                                        panwrap_prop("swizzle_g = %s", panwrap_channel_name(t->swizzle_g));
-                                        panwrap_prop("swizzle_b = %s", panwrap_channel_name(t->swizzle_b));
-                                        panwrap_prop("swizzle_a = %s", panwrap_channel_name(t->swizzle_a));
+					panwrap_replay_swizzle(t->swizzle);
 
                                         if (t->swizzle_zero) {
                                                 /* Shouldn't happen */

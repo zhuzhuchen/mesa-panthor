@@ -127,21 +127,23 @@ panfrost_shader_compile(struct panfrost_context *ctx, struct mali_shader_meta *m
                 varyings->varyings_stride[1] = 4 * sizeof(float);
 
                 /* Setup gl_Position and its weirdo analogue */
+                unsigned default_vec4_swizzle = panfrost_get_default_swizzle(4);
 
                 struct mali_attr_meta position_meta = {
                         .index = 1,
-                        .type = 6, /* gl_Position */
-                        .nr_components = MALI_POSITIVE(4),
-                        .is_int_signed = 1,
-                        .unknown1 = 0x1a22
+                        .format = MALI_VARYING_POS,
+
+                        .swizzle = default_vec4_swizzle,
+                        .unknown1 = 0x2,
                 };
 
                 struct mali_attr_meta position_meta_prime = {
-                        .index = 0,
-                        .type = 7, /* float */
-                        .nr_components = MALI_POSITIVE(4),
-                        .is_int_signed = 1,
-                        .unknown1 = 0x2490
+                        .index = 1,
+                        .format = MALI_RGBA16F,
+
+                        /* TODO: Wat? yyyy swizzle? */
+                        .swizzle = 0x249,
+                        .unknown1 = 0x0,
                 };
 
                 varyings->vertex_only_varyings[0] = position_meta;
@@ -152,20 +154,13 @@ panfrost_shader_compile(struct panfrost_context *ctx, struct mali_shader_meta *m
                 for (int i = 0; i < varying_count; ++i) {
                         struct mali_attr_meta vec4_varying_meta = {
                                 .index = 0,
-                                .type = 7, /* float */
-                                .nr_components = MALI_POSITIVE(4),
-                                .not_normalised = 1,
-                                .unknown1 = 0x1a22,
-
-                                /* mediump => half-floats */
-                                .is_int_signed = 1,
+                                .format = MALI_RGBA16F,
+                                .swizzle = default_vec4_swizzle,
+                                .unknown1 = 0x2,
 
                                 /* Set offset to keep everything back-to-back in
                                  * the same buffer */
                                 .src_offset = 8 * i,
-#ifdef T6XX
-                                .unknown2 = 1,
-#endif
                         };
 
                         varyings->varyings[i] = vec4_varying_meta;

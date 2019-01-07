@@ -236,6 +236,159 @@ struct mali_blend_equation {
 #endif
 } __attribute__((packed));
 
+/* Used with channel swizzling */
+enum mali_channel {
+	MALI_CHANNEL_RED = 0,
+	MALI_CHANNEL_GREEN = 1,
+	MALI_CHANNEL_BLUE = 2,
+	MALI_CHANNEL_ALPHA = 3,
+	MALI_CHANNEL_ZERO = 4,
+	MALI_CHANNEL_ONE = 5,
+	MALI_CHANNEL_RESERVED_0 = 6,
+	MALI_CHANNEL_RESERVED_1 = 7,
+};
+
+struct mali_channel_swizzle {
+	enum mali_channel r : 3;
+	enum mali_channel g : 3;
+	enum mali_channel b : 3;
+	enum mali_channel a : 3;
+} __attribute__((packed));
+
+/* Compressed per-pixel formats. Each of these formats expands to one to four
+ * floating-point or integer numbers, as defined by the OpenGL specification.
+ * There are various places in OpenGL where the user can specify a compressed
+ * format in memory, which all use the same 8-bit enum in the various
+ * descriptors, although different hardware units support different formats.
+ */
+
+/* The top 3 bits specify how the bits of each component are interpreted. */
+
+/* e.g. R11F_G11F_B10F */
+#define MALI_FORMAT_SPECIAL (2 << 5)
+
+/* signed normalized, e.g. RGBA8_SNORM */
+#define MALI_FORMAT_SNORM (3 << 5)
+
+/* e.g. RGBA8UI */
+#define MALI_FORMAT_UINT (4 << 5)
+
+/* e.g. RGBA8 and RGBA32F */
+#define MALI_FORMAT_UNORM (5 << 5)
+
+/* e.g. RGBA8I and RGBA16F */
+#define MALI_FORMAT_SINT (6 << 5)
+
+/* These formats seem to largely duplicate the others. They're used at least
+ * for Bifrost framebuffer output.
+ */
+#define MALI_FORMAT_SPECIAL2 (7 << 5)
+
+/* If the high 3 bits are 3 to 6 these two bits say how many components
+ * there are.
+ */
+#define MALI_NR_CHANNELS(n) ((n - 1) << 3)
+
+/* If the high 3 bits are 3 to 6, then the low 3 bits say how big each
+ * component is, except the special MALI_CHANNEL_FLOAT which overrides what the
+ * bits mean.
+ */
+
+#define MALI_CHANNEL_8 3
+
+#define MALI_CHANNEL_16 4
+
+#define MALI_CHANNEL_32 5
+
+/* For MALI_FORMAT_SINT it means a half-float (e.g. RG16F). For
+ * MALI_FORMAT_UNORM, it means a 32-bit float.
+ */
+#define MALI_CHANNEL_FLOAT 7
+
+enum mali_format {
+	MALI_RGB10_A2_UNORM = MALI_FORMAT_SPECIAL | 0x3,
+	MALI_RGB10_A2_SNORM = MALI_FORMAT_SPECIAL | 0x5,
+	MALI_RGB10_A2UI     = MALI_FORMAT_SPECIAL | 0x7,
+	MALI_RGB10_A2I      = MALI_FORMAT_SPECIAL | 0x9,
+        MALI_Z32_UNORM      = MALI_FORMAT_SPECIAL | 0xD,
+	MALI_R32_FIXED      = MALI_FORMAT_SPECIAL | 0x11,
+	MALI_RG32_FIXED     = MALI_FORMAT_SPECIAL | 0x12,
+	MALI_RGB32_FIXED    = MALI_FORMAT_SPECIAL | 0x13,
+	MALI_RGBA32_FIXED   = MALI_FORMAT_SPECIAL | 0x14,
+	MALI_R11F_G11F_B10F = MALI_FORMAT_SPECIAL | 0x19,
+	/* Only used for varyings, to indicate the transformed gl_Position */
+	MALI_VARYING_POS    = MALI_FORMAT_SPECIAL | 0x1e,
+	/* Only used for varyings, to indicate that the write should be
+	 * discarded.
+	 */
+	MALI_VARYING_DISCARD = MALI_FORMAT_SPECIAL | 0x1f,
+
+	MALI_R8_SNORM     = MALI_FORMAT_SNORM | MALI_NR_CHANNELS(1) | MALI_CHANNEL_8,
+	MALI_R16_SNORM    = MALI_FORMAT_SNORM | MALI_NR_CHANNELS(1) | MALI_CHANNEL_16,
+	MALI_R32_SNORM    = MALI_FORMAT_SNORM | MALI_NR_CHANNELS(1) | MALI_CHANNEL_32,
+	MALI_RG8_SNORM    = MALI_FORMAT_SNORM | MALI_NR_CHANNELS(2) | MALI_CHANNEL_8,
+	MALI_RG16_SNORM   = MALI_FORMAT_SNORM | MALI_NR_CHANNELS(2) | MALI_CHANNEL_16,
+	MALI_RG32_SNORM   = MALI_FORMAT_SNORM | MALI_NR_CHANNELS(2) | MALI_CHANNEL_32,
+	MALI_RGB8_SNORM   = MALI_FORMAT_SNORM | MALI_NR_CHANNELS(3) | MALI_CHANNEL_8,
+	MALI_RGB16_SNORM  = MALI_FORMAT_SNORM | MALI_NR_CHANNELS(3) | MALI_CHANNEL_16,
+	MALI_RGB32_SNORM  = MALI_FORMAT_SNORM | MALI_NR_CHANNELS(3) | MALI_CHANNEL_32,
+	MALI_RGBA8_SNORM  = MALI_FORMAT_SNORM | MALI_NR_CHANNELS(4) | MALI_CHANNEL_8,
+	MALI_RGBA16_SNORM = MALI_FORMAT_SNORM | MALI_NR_CHANNELS(4) | MALI_CHANNEL_16,
+	MALI_RGBA32_SNORM = MALI_FORMAT_SNORM | MALI_NR_CHANNELS(4) | MALI_CHANNEL_32,
+
+	MALI_R8UI     = MALI_FORMAT_UINT | MALI_NR_CHANNELS(1) | MALI_CHANNEL_8,
+	MALI_R16UI    = MALI_FORMAT_UINT | MALI_NR_CHANNELS(1) | MALI_CHANNEL_16,
+	MALI_R32UI    = MALI_FORMAT_UINT | MALI_NR_CHANNELS(1) | MALI_CHANNEL_32,
+	MALI_RG8UI    = MALI_FORMAT_UINT | MALI_NR_CHANNELS(2) | MALI_CHANNEL_8,
+	MALI_RG16UI   = MALI_FORMAT_UINT | MALI_NR_CHANNELS(2) | MALI_CHANNEL_16,
+	MALI_RG32UI   = MALI_FORMAT_UINT | MALI_NR_CHANNELS(2) | MALI_CHANNEL_32,
+	MALI_RGB8UI   = MALI_FORMAT_UINT | MALI_NR_CHANNELS(3) | MALI_CHANNEL_8,
+	MALI_RGB16UI  = MALI_FORMAT_UINT | MALI_NR_CHANNELS(3) | MALI_CHANNEL_16,
+	MALI_RGB32UI  = MALI_FORMAT_UINT | MALI_NR_CHANNELS(3) | MALI_CHANNEL_32,
+	MALI_RGBA8UI  = MALI_FORMAT_UINT | MALI_NR_CHANNELS(4) | MALI_CHANNEL_8,
+	MALI_RGBA16UI = MALI_FORMAT_UINT | MALI_NR_CHANNELS(4) | MALI_CHANNEL_16,
+	MALI_RGBA32UI = MALI_FORMAT_UINT | MALI_NR_CHANNELS(4) | MALI_CHANNEL_32,
+
+	MALI_R8_UNORM = MALI_FORMAT_UNORM | MALI_NR_CHANNELS(1) | MALI_CHANNEL_8,
+	MALI_R16_UNORM = MALI_FORMAT_UNORM | MALI_NR_CHANNELS(1) | MALI_CHANNEL_16,
+	MALI_R32_UNORM = MALI_FORMAT_UNORM | MALI_NR_CHANNELS(1) | MALI_CHANNEL_32,
+	MALI_R32F = MALI_FORMAT_UNORM | MALI_NR_CHANNELS(1) | MALI_CHANNEL_FLOAT,
+	MALI_RG8_UNORM    = MALI_FORMAT_UNORM | MALI_NR_CHANNELS(2) | MALI_CHANNEL_8,
+	MALI_RG16_UNORM   = MALI_FORMAT_UNORM | MALI_NR_CHANNELS(2) | MALI_CHANNEL_16,
+	MALI_RG32_UNORM   = MALI_FORMAT_UNORM | MALI_NR_CHANNELS(2) | MALI_CHANNEL_32,
+	MALI_RG32F = MALI_FORMAT_UNORM | MALI_NR_CHANNELS(2) | MALI_CHANNEL_FLOAT,
+	MALI_RGB8_UNORM   = MALI_FORMAT_UNORM | MALI_NR_CHANNELS(3) | MALI_CHANNEL_8,
+	MALI_RGB16_UNORM  = MALI_FORMAT_UNORM | MALI_NR_CHANNELS(3) | MALI_CHANNEL_16,
+	MALI_RGB32_UNORM  = MALI_FORMAT_UNORM | MALI_NR_CHANNELS(3) | MALI_CHANNEL_32,
+	MALI_RGB32F = MALI_FORMAT_UNORM | MALI_NR_CHANNELS(3) | MALI_CHANNEL_FLOAT,
+	MALI_RGBA8_UNORM  = MALI_FORMAT_UNORM | MALI_NR_CHANNELS(4) | MALI_CHANNEL_8,
+	MALI_RGBA16_UNORM = MALI_FORMAT_UNORM | MALI_NR_CHANNELS(4) | MALI_CHANNEL_16,
+	MALI_RGBA32_UNORM = MALI_FORMAT_UNORM | MALI_NR_CHANNELS(4) | MALI_CHANNEL_32,
+	MALI_RGBA32F = MALI_FORMAT_UNORM | MALI_NR_CHANNELS(4) | MALI_CHANNEL_FLOAT,
+
+	MALI_R8I     = MALI_FORMAT_SINT | MALI_NR_CHANNELS(1) | MALI_CHANNEL_8,
+	MALI_R16I    = MALI_FORMAT_SINT | MALI_NR_CHANNELS(1) | MALI_CHANNEL_16,
+	MALI_R32I    = MALI_FORMAT_SINT | MALI_NR_CHANNELS(1) | MALI_CHANNEL_32,
+	MALI_R16F    = MALI_FORMAT_SINT | MALI_NR_CHANNELS(1) | MALI_CHANNEL_FLOAT,
+	MALI_RG8I    = MALI_FORMAT_SINT | MALI_NR_CHANNELS(2) | MALI_CHANNEL_8,
+	MALI_RG16I   = MALI_FORMAT_SINT | MALI_NR_CHANNELS(2) | MALI_CHANNEL_16,
+	MALI_RG32I   = MALI_FORMAT_SINT | MALI_NR_CHANNELS(2) | MALI_CHANNEL_32,
+	MALI_RG16F   = MALI_FORMAT_SINT | MALI_NR_CHANNELS(2) | MALI_CHANNEL_FLOAT,
+	MALI_RGB8I   = MALI_FORMAT_SINT | MALI_NR_CHANNELS(3) | MALI_CHANNEL_8,
+	MALI_RGB16I  = MALI_FORMAT_SINT | MALI_NR_CHANNELS(3) | MALI_CHANNEL_16,
+	MALI_RGB32I  = MALI_FORMAT_SINT | MALI_NR_CHANNELS(3) | MALI_CHANNEL_32,
+	MALI_RGB16F  = MALI_FORMAT_SINT | MALI_NR_CHANNELS(3) | MALI_CHANNEL_FLOAT,
+	MALI_RGBA8I  = MALI_FORMAT_SINT | MALI_NR_CHANNELS(4) | MALI_CHANNEL_8,
+	MALI_RGBA16I = MALI_FORMAT_SINT | MALI_NR_CHANNELS(4) | MALI_CHANNEL_16,
+	MALI_RGBA32I = MALI_FORMAT_SINT | MALI_NR_CHANNELS(4) | MALI_CHANNEL_32,
+	MALI_RGBA16F = MALI_FORMAT_SINT | MALI_NR_CHANNELS(4) | MALI_CHANNEL_FLOAT,
+
+	MALI_RGBA4      = MALI_FORMAT_SPECIAL2 | 0x8,
+	MALI_RGBA8_2    = MALI_FORMAT_SPECIAL2 | 0xd,
+	MALI_RGB10_A2_2 = MALI_FORMAT_SPECIAL2 | 0xe,
+};
+
+
 /* Alpha coverage is encoded as 4-bits (from a clampf), with inversion
  * literally performing a bitwise invert. This function produces slightly wrong
  * results and I'm not sure why; some rounding issue I suppose... */
@@ -267,11 +420,49 @@ struct mali_blend_meta {
          * - 0x19 normally
          * - 0x3 when this slot is unused (everything else is 0 except the index)
          * - 0x11 when this is the fourth slot (and it's used)
++	 * - 0 when there is a blend shader
          */
         u16 unk2;
         /* increments from 0 to 3 */
         u16 index;
-        u32 unk3; // = 0x10ed688
+
+	union {
+		struct {
+			/* So far, I've only seen:
+			 * - R001 for 1-component formats
+			 * - RG01 for 2-component formats
+			 * - RGB1 for 3-component formats
+			 * - RGBA for 4-component formats
+			 */
+			u32 swizzle : 12;
+			enum mali_format format : 8;
+
+			/* Type of the shader output variable. Note, this can
+			 * be different from the format.
+			 *
+			 * 0: f16 (mediump float)
+			 * 1: f32 (highp float)
+			 * 2: i32 (highp int)
+			 * 3: u32 (highp uint)
+			 * 4: i16 (mediump int)
+			 * 5: u16 (mediump uint)
+			 */
+			u32 shader_type : 3;
+			u32 zero : 9;
+		};
+
+		/* Only the low 32 bits of the blend shader are stored, the
+		 * high 32 bits are implicitly the same as the original shader.
+		 * According to the kernel driver, the program counter for
+		 * shaders is actually only 24 bits, so shaders cannot cross
+		 * the 2^24-byte boundary, and neither can the blend shader.
+		 * The blob handles this by allocating a 2^24 byte pool for
+		 * shaders, and making sure that any blend shaders are stored
+		 * in the same pool as the original shader. The kernel will
+		 * make sure this allocation is aligned to 2^24 bytes.
+		 */
+		u32 blend_shader;
+	};
 #endif
 } __attribute__((packed));
 
@@ -423,55 +614,166 @@ struct mali_payload_set_value {
 #define MALI_VERTEX_ID   (MALI_SPECIAL_ATTRIBUTE_BASE + 0)
 #define MALI_INSTANCE_ID (MALI_SPECIAL_ATTRIBUTE_BASE + 1)
 
-struct mali_attr {
-        mali_ptr elements;
-        u32 stride;
-        u32 size;
-} __attribute__((packed));
+/*
+ * Mali Attributes
+ *
+ * This structure lets the attribute unit compute the address of an attribute
+ * given the vertex and instance ID. Unfortunately, the way this works is
+ * rather complicated when instancing is enabled.
+ *
+ * To explain this, first we need to explain how compute and vertex threads are
+ * dispatched. This is a guess (although a pretty firm guess!) since the
+ * details are mostly hidden from the driver, except for attribute instancing.
+ * When a quad is dispatched, it receives a single, linear index. However, we
+ * need to translate that index into a (vertex id, instance id) pair, or a
+ * (local id x, local id y, local id z) triple for compute shaders (although
+ * vertex shaders and vertex shaders are handled almost identically).
+ * Focusing on vertex shaders, one option would be to do:
+ *
+ * vertex_id = linear_id % num_vertices
+ * instance_id = linear_id / num_vertices
+ *
+ * but this involves a costly division and modulus by an arbitrary number.
+ * Instead, we could pad num_vertices. We dispatch padded_num_vertices *
+ * num_instances threads instead of num_vertices * num_instances, which results
+ * in some "extra" threads with vertex_id >= num_vertices, which we have to
+ * discard.  The more we pad num_vertices, the more "wasted" threads we
+ * dispatch, but the division is potentially easier.
+ *
+ * One straightforward choice is to pad num_vertices to the next power of two,
+ * which means that the division and modulus are just simple bit shifts and
+ * masking. But the actual algorithm is a bit more complicated. The thread
+ * dispatcher has special support for dividing by 3, 5, 7, and 9, in addition
+ * to dividing by a power of two. This is possibly using the technique
+ * described in patent US20170010862A1. As a result, padded_num_vertices can be
+ * 1, 3, 5, 7, or 9 times a power of two. This results in less wasted threads,
+ * since we need less padding.
+ *
+ * padded_num_vertices is picked by the hardware. The driver just specifies the
+ * actual number of vertices. At least for Mali G71, the first few cases are
+ * given by:
+ *
+ * num_vertices	| padded_num_vertices
+ * 3		| 4
+ * 4-7		| 8
+ * 8-11		| 12 (3 * 4)
+ * 12-15	| 16
+ * 16-19	| 20 (5 * 4)
+ *
+ * Note that padded_num_vertices is a multiple of four (presumably because
+ * threads are dispatched in groups of 4). Also, padded_num_vertices is always
+ * at least one more than num_vertices, which seems like a quirk of the
+ * hardware. For larger num_vertices, the hardware uses the following
+ * algorithm: using the binary representation of num_vertices, we look at the
+ * most significant set bit as well as the following 3 bits. Let n be the
+ * number of bits after those 4 bits. Then we set padded_num_vertices according
+ * to the following table:
+ *
+ * high bits	| padded_num_vertices
+ * 1000		| 9 * 2^n
+ * 1001		| 5 * 2^(n+1)
+ * 101x		| 3 * 2^(n+2)
+ * 110x		| 7 * 2^(n+1)
+ * 111x		| 2^(n+4)
+ *
+ * For example, if num_vertices = 70 is passed to glDraw(), its binary
+ * representation is 1000110, so n = 3 and the high bits are 1000, and
+ * therefore padded_num_vertices = 9 * 2^3 = 72.
+ *
+ * The attribute unit works in terms of the original linear_id. if
+ * num_instances = 1, then they are the same, and everything is simple.
+ * However, with instancing things get more complicated. There are four
+ * possible modes, two of them we can group together:
+ *
+ * 1. Use the linear_id directly. Only used when there is no instancing.
+ *
+ * 2. Use the linear_id modulo a constant. This is used for per-vertex
+ * attributes with instancing enabled by making the constant equal
+ * padded_num_vertices. Because the modulus is always padded_num_vertices, this
+ * mode only supports a modulus that is a power of 2 times 1, 3, 5, 7, or 9.
+ * The shift field specifies the power of two, while the extra_flags field
+ * specifies the odd number. If shift = n and extra_flags = m, then the modulus
+ * is (2m + 1) * 2^n. As an example, if num_vertices = 70, then as computed
+ * above, padded_num_vertices = 9 * 2^3, so we should set extra_flags = 4 and
+ * shift = 3. Note that we must exactly follow the hardware algorithm used to
+ * get padded_num_vertices in order to correctly implement per-vertex
+ * attributes.
+ *
+ * 3. Divide the linear_id by a constant. In order to correctly implement
+ * instance divisors, we have to divide linear_id by padded_num_vertices times
+ * to user-specified divisor. So first we compute padded_num_vertices, again
+ * following the exact same algorithm that the hardware uses, then multiply it
+ * by the GL-level divisor to get the hardware-level divisor. This case is
+ * further divided into two more cases. If the hardware-level divisor is a
+ * power of two, then we just need to shift. The shift amount is specified by
+ * the shift field, so that the hardware-level divisor is just 2^shift.
+ *
+ * If it isn't a power of two, then we have to divide by an arbitrary integer.
+ * For that, we use the well-known technique of multiplying by an approximation
+ * of the inverse. The driver must compute the magic multiplier and shift
+ * amount, and then the hardware does the multiplication and shift. The
+ * hardware and driver also use the "round-down" optimization as described in
+ * http://ridiculousfish.com/files/faster_unsigned_division_by_constants.pdf.
+ * The hardware further assumes the multiplier is between 2^31 and 2^32, so the
+ * high bit is implicitly set to 1 even though it is set to 0 by the driver --
+ * presumably this simplifies the hardware multiplier a little. The hardware
+ * first multiplies linear_id by the multiplier and takes the high 32 bits,
+ * then applies the round-down correction if extra_flags = 1, then finally
+ * shifts right by the shift field.
+ *
+ * There are some differences between ridiculousfish's algorithm and the Mali
+ * hardware algorithm, which means that the reference code from ridiculousfish
+ * doesn't always produce the right constants. Mali does not use the pre-shift
+ * optimization, since that would make a hardware implementation slower (it
+ * would have to always do the pre-shift, multiply, and post-shift operations).
+ * It also forces the multplier to be at least 2^31, which means that the
+ * exponent is entirely fixed, so there is no trial-and-error. Altogether,
+ * given the divisor d, the algorithm the driver must follow is:
+ *
+ * 1. Set shift = floor(log2(d)).
+ * 2. Compute m = ceil(2^(shift + 32) / d) and e = 2^(shift + 32) % d.
+ * 3. If e <= 2^shift, then we need to use the round-down algorithm. Set
+ * magic_divisor = m - 1 and extra_flags = 1.
+ * 4. Otherwise, set magic_divisor = m and extra_flags = 0.
+ */
 
-/* TODO: I'm pretty sure this isn't really right in the presence of more
- * complicated metadata, like matrices or varyings */
-
-enum mali_attr_type {
-        MALI_ATYPE_PACKED = 1,
-        MALI_ATYPE_UNK1 = 1,
-        MALI_ATYPE_BYTE = 3,
-        MALI_ATYPE_SHORT = 4,
-        MALI_ATYPE_INT = 5,
-        MALI_ATYPE_GPVARYING = 6,
-        MALI_ATYPE_FLOAT = 7,
+enum mali_attr_mode {
+	MALI_ATTR_UNUSED = 0,
+	MALI_ATTR_LINEAR = 1,
+	MALI_ATTR_POT_DIVIDE = 2,
+	MALI_ATTR_MODULO = 3,
+	MALI_ATTR_NPOT_DIVIDE = 4,
 };
+
+union mali_attr {
+	/* This is used for actual attributes. */
+	struct {
+		/* The bottom 3 bits are the mode */
+		mali_ptr elements : 64 - 8;
+		u32 shift : 5;
+		u32 extra_flags : 3;
+		u32 stride;
+		u32 size;
+	};
+	/* The entry after an NPOT_DIVIDE entry has this format. It stores
+	 * extra information that wouldn't fit in a normal entry.
+	 */
+	struct {
+		u32 unk; /* = 0x20 */
+		u32 magic_divisor;
+		u32 zero;
+		/* This is the original, GL-level divisor. */
+		u32 divisor;
+	};
+} __attribute__((packed));
 
 struct mali_attr_meta {
         /* Vertex buffer index */
         u8 index;
 
-        u64 unknown1 : 14;
-
-        /* Part of the type specifier, anyway:
-         * 1: packed (with other encoding weirdness)
-         * 3: byte
-         * 4: short
-         * 5: int
-         * 6: used for float gl_Position varying?
-         * 7: half, float, packed
-         */
-
-        unsigned type : 3;
-
-        /* After MALI_POSITIVE, 4 for vec4, 1 for scalar, etc */
-        unsigned nr_components : 2;
-
-        /* Somewhat correlated to the opposite of not_normalised, or the opposite of is_half_float? */
-        unsigned unknown2 : 1;
-
-        /* If the type is a signed integer, is_int_signed is set. If the type
-         * is a half-float, it's also set. Otherwise, it is clear. */
-
-        unsigned is_int_signed : 1;
-
-        /* if `normalized` passed to VertexAttribPointer is clear */
-        unsigned not_normalised : 1;
+        unsigned unknown1 : 2;
+        unsigned swizzle : 12;
+        enum mali_format format : 8;
 
         /* Always observed to be zero at the moment */
         unsigned unknown3 : 2;
@@ -742,18 +1044,6 @@ struct bifrost_payload_fused {
 
 #define MALI_NEGATIVE(dim) (dim + 1)
 
-/* Used with channel swizzling */
-enum mali_channel {
-        MALI_CHANNEL_RED = 0,
-        MALI_CHANNEL_GREEN = 1,
-        MALI_CHANNEL_BLUE = 2,
-        MALI_CHANNEL_ALPHA = 3,
-        MALI_CHANNEL_ZERO = 4,
-        MALI_CHANNEL_ONE = 5,
-        MALI_CHANNEL_RESERVED_0 = 6,
-        MALI_CHANNEL_RESERVED_1 = 7,
-};
-
 /* Used with wrapping. Incomplete (this is a 4-bit field...) */
 
 enum mali_wrap_mode {
@@ -772,32 +1062,8 @@ enum mali_wrap_mode {
 /* Corresponds to the type passed to glTexImage2D and so forth */
 
 struct mali_texture_format {
-        unsigned bottom : 8;
-        unsigned unk1 : 4;
-
-        /*
-         * 0: ushort_5_6_5
-         * 2: ushort_4_4_4_4
-         * 3: u8
-         * 4: u16
-         * 5: u32
-         * 7: float
-         */
-
-        unsigned component_size : 3;
-
-        unsigned nr_channels : 2;
-
-        /*
-         * 2: ushort_5_5_5_1, ushort_5_6_5
-         * 3: snorm
-         * 4: unsigned int
-         * 5: (unsigned) int / full-float
-         * 6: signed int / half-float
-         * 7: maybe also snorm related
-         */
-
-        unsigned typeA : 3;
+        unsigned swizzle : 12;
+        enum mali_format format : 8;
 
         unsigned usage1 : 3;
         unsigned is_not_cubemap : 1;
@@ -826,10 +1092,7 @@ struct mali_texture_descriptor {
          * level swizzling, not the internal pixel-level swizzling which is
          * below OpenGL's reach */
 
-        enum mali_channel swizzle_r : 3;
-        enum mali_channel swizzle_g : 3;
-        enum mali_channel swizzle_b : 3;
-        enum mali_channel swizzle_a : 3;
+        unsigned swizzle : 12;
         unsigned swizzle_zero       : 20;
 
         uint32_t unknown5;

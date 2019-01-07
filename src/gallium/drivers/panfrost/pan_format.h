@@ -1,5 +1,5 @@
 /*
- * © Copyright 2017-2018 The Panfrost Community
+ * © Copyright 2018 Alyssa Rosenzweig
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -19,18 +19,24 @@
  * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
- * 
+ *
  */
 
-#ifndef PANWRAP_DECODER_H
-#define PANWRAP_DECODER_H
+#ifndef __PAN_FORMAT_H__
+#define __PAN_FORMAT_H__
 
-#include <mali-kbase-ioctl.h>
-#include <panfrost-job.h>
-#include "panwrap.h"
+#include "pan_context.h"
+#include "util/u_format.h"
 
-int panwrap_replay_jc(mali_ptr jc_gpu_va, bool bifrost);
-int panwrap_replay_soft_replay(mali_ptr jc_gpu_va);
-char *panwrap_format_name(enum mali_format format);
+unsigned
+panfrost_translate_swizzle_4(const unsigned char swizzle[4]);
 
-#endif /* !PANWRAP_DECODER_H */
+unsigned
+panfrost_get_default_swizzle(unsigned components);
+
+enum mali_format
+panfrost_find_format(const struct util_format_description *desc);
+
+#endif
+
+

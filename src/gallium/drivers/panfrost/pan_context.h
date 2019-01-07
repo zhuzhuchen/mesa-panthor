@@ -172,7 +172,7 @@ struct panfrost_context {
 
         unsigned vertex_count;
 
-        struct mali_attr attributes[PIPE_MAX_ATTRIBS];
+        union mali_attr attributes[PIPE_MAX_ATTRIBS];
 
         unsigned varying_height;
 
@@ -390,5 +390,8 @@ panfrost_emit_for_draw(struct panfrost_context *ctx, bool with_vertex_data);
 
 struct panfrost_transfer
 panfrost_vertex_tiler_job(struct panfrost_context *ctx, bool is_tiler, bool is_elided_tiler);
+
+unsigned
+panfrost_get_default_swizzle(unsigned components);
 
 #endif
