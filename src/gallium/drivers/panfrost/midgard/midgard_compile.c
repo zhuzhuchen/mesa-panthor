@@ -3284,7 +3284,13 @@ midgard_compile_shader_nir(nir_shader *nir, midgard_program *program, bool is_bl
         nir_foreach_variable(var, &nir->uniforms) {
                 if (glsl_get_base_type(var->type) == GLSL_TYPE_SAMPLER) continue;
 
-                for (int col = 0; col < glsl_get_matrix_columns(var->type); ++col) {
+                unsigned length = glsl_get_length(var->type);
+
+                if (!length) {
+                        length = glsl_get_matrix_columns(var->type);
+                }
+
+                for (int col = 0; col < length; ++col) {
                         int id = ctx->uniform_count++;
                         _mesa_hash_table_u64_insert(ctx->uniform_nir_to_mdg, var->data.driver_location + col + 1, (void *) ((uintptr_t) (id + 1)));
                 }
@@ -3296,10 +3302,10 @@ midgard_compile_shader_nir(nir_shader *nir, midgard_program *program, bool is_bl
 
                 nir_foreach_variable(var, &nir->outputs) {
                         if (var->data.location < VARYING_SLOT_VAR0) {
-                                if (var->data.location == VARYING_SLOT_POS)
+                                if (var->data.location == VARYING_SLOT_POS) {
                                         _mesa_hash_table_u64_insert(ctx->varying_nir_to_mdg, var->data.driver_location + 1, (void *) ((uintptr_t) (1)));
-
-                                continue;
+                                        continue;
+                                }
                         }
 
                         for (int col = 0; col < glsl_get_matrix_columns(var->type); ++col) {

@@ -2492,7 +2492,7 @@ panfrost_bind_depth_stencil_state(struct pipe_context *pipe,
                 return;
 
         /* Alpha does not exist on ES2... */
-        assert(!depth_stencil->alpha.enabled);
+        //assert(!depth_stencil->alpha.enabled);
 
         /* Stencil state */
         SET_BIT(ctx->fragment_shader_core.unknown2_4, MALI_STENCIL_TEST, depth_stencil->stencil[0].enabled); /* XXX: which one? */
