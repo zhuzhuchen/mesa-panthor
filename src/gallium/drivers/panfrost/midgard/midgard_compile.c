@@ -655,6 +655,12 @@ optimise_nir(nir_shader *nir)
         NIR_PASS(progress, nir, nir_lower_regs_to_ssa);
         NIR_PASS(progress, nir, midgard_nir_lower_fdot2);
 
+        nir_lower_tex_options lower_tex_options = {
+                .lower_rect = true
+        };
+
+        NIR_PASS(progress, nir, nir_lower_tex, &lower_tex_options);
+
         do {
                 progress = false;
 
