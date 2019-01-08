@@ -212,6 +212,9 @@ panfrost_get_param(struct pipe_screen *screen, enum pipe_cap param)
         case PIPE_CAP_TEXTURE_MULTISAMPLE:
                 return 0;
 
+        case PIPE_CAP_MAX_VERTEX_ELEMENT_SRC_OFFSET:
+                return 0xffff;
+
         case PIPE_CAP_MIN_MAP_BUFFER_ALIGNMENT:
                 return 64;
 

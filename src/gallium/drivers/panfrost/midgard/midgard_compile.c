@@ -1418,7 +1418,7 @@ emit_tex(compiler_context *ctx, nir_tex_instr *instr)
 
                 default: {
                         printf("Unknown source type\n");
-                        assert(0);
+                        //assert(0);
                         break;
                 }
                 }
