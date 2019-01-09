@@ -1003,6 +1003,20 @@ emit_alu(compiler_context *ctx, nir_alu_instr *instr)
                 break;
         }
 
+        /* We don't have a native b2f32 instruction. Instead, like many GPUs,
+         * we exploit booleans as 0/~0 for false/true, and correspondingly AND
+         * by 1.0 to do the type conversion. For the moment, prime us to emit:
+         *
+         * iand [whatever], #0
+         *
+         * At the end of emit_alu (as MIR), we'll fix-up the constant */
+
+        case nir_op_b2f32: {
+                op = midgard_alu_op_iand;
+                components = 0;
+                break;
+        }
+
         default:
                 printf("Unhandled ALU op %s\n", nir_op_infos[instr->op].name);
                 assert(0);
@@ -1065,6 +1079,21 @@ emit_alu(compiler_context *ctx, nir_alu_instr *instr)
                 alu.mask &= expand_writemask(instr->dest.write_mask);
 
         ins.alu = alu;
+
+        /* Late fixup for emulated instructions */
+
+
+        if (instr->op == nir_op_b2f32) {
+                /* Presently, our second argument is an inline #0 constant.
+                 * Switch over to an embedded 1.0 constant (that can't fit
+                 * inline, since we're 32-bit, not 16-bit like the inline
+                 * constants) */
+
+                ins.ssa_args.inline_constant = false;
+                ins.ssa_args.src1 = SSA_FIXED_REGISTER(REGISTER_CONSTANT);
+                ins.has_constants = true;
+                ins.constants[0] = 1.0;
+        }
 
         if (_unit == UNIT_VLUT) {
                 /* To avoid duplicating the LUTs (we think?), LUT instructions can only
