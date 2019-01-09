@@ -1082,7 +1082,6 @@ emit_alu(compiler_context *ctx, nir_alu_instr *instr)
 
         /* Late fixup for emulated instructions */
 
-
         if (instr->op == nir_op_b2f32) {
                 /* Presently, our second argument is an inline #0 constant.
                  * Switch over to an embedded 1.0 constant (that can't fit

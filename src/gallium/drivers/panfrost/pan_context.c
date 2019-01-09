@@ -1671,14 +1671,12 @@ panfrost_draw_vbo(
                         mode = PIPE_PRIM_TRIANGLE_FAN;
                 } else {
                         if (info->count < 4) {
-                                /* WTF */
-                                printf("WTF %d %d\n", info->count, info->mode);
+                                /* Degenerate case? */
                                 return;
                         }
-                        printf("Fallback %d %d\n", info->count, info->mode);
+
                         util_primconvert_save_rasterizer_state(ctx->primconvert, &ctx->rasterizer->base);
                         util_primconvert_draw_vbo(ctx->primconvert, info);
-                        printf(":+1\n");
                         return;
                 }
         }
