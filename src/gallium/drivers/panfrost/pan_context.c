@@ -1667,13 +1667,20 @@ panfrost_draw_vbo(
         /* Fallback for non-ES draw modes */
 
         if (info->mode >= PIPE_PRIM_QUADS) {
-                printf("XXX: Missing non-ES draw mode\n");
-                mode = PIPE_PRIM_TRIANGLE_FAN;
-                /*
-                util_primconvert_save_rasterizer_state(ctx->primconvert, &ctx->rasterizer->base);
-                util_primconvert_draw_vbo(ctx->primconvert, info);
-                printf("Fallback\n");
-                return; */
+                if (info->mode == PIPE_PRIM_QUADS && info->count == 4 && ctx->rasterizer && !ctx->rasterizer->base.flatshade) {
+                        mode = PIPE_PRIM_TRIANGLE_FAN;
+                } else {
+                        if (info->count < 4) {
+                                /* WTF */
+                                printf("WTF %d %d\n", info->count, info->mode);
+                                return;
+                        }
+                        printf("Fallback %d %d\n", info->count, info->mode);
+                        util_primconvert_save_rasterizer_state(ctx->primconvert, &ctx->rasterizer->base);
+                        util_primconvert_draw_vbo(ctx->primconvert, info);
+                        printf(":+1\n");
+                        return;
+                }
         }
 
         ctx->payload_tiler.prefix.draw_mode = g2m_draw_mode(mode);
@@ -1788,10 +1795,9 @@ panfrost_bind_rasterizer_state(
         struct panfrost_context *ctx = panfrost_context(pctx);
         struct pipe_rasterizer_state *cso = hwcso;
 
-        if (!hwcso) {
-                /* XXX: How to unbind rasterizer state? */
+        /* TODO: Why can't rasterizer be NULL ever? Other drivers are fine.. */
+        if (!hwcso)
                 return;
-        }
 
         /* If scissor test has changed, we'll need to update that now */
         bool update_scissor = !ctx->rasterizer || ctx->rasterizer->base.scissor != cso->scissor;
