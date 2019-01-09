@@ -1650,6 +1650,13 @@ panfrost_maybe_dummy_draw(struct panfrost_context *ctx, const struct pipe_draw_i
         dont_scanout = false;
 }
 
+#define CALCULATE_MIN_MAX_INDEX(T, buffer, start, count) \
+        for (unsigned _idx = (start); _idx < (start + count); ++_idx) { \
+                T idx = buffer[_idx]; \
+                if (idx > max_index) max_index = idx; \
+                if (idx < min_index) min_index = idx; \
+        }
+
 static void
 panfrost_draw_vbo(
         struct pipe_context *pipe,
@@ -1685,9 +1692,8 @@ panfrost_draw_vbo(
 
         ctx->vertex_count = info->count;
 
-        int invocation_count = info->index_size ? (info->start + ctx->vertex_count) : ctx->vertex_count;
-        ctx->payload_vertex.prefix.invocation_count = MALI_POSITIVE(invocation_count);
-        ctx->payload_tiler.prefix.invocation_count = MALI_POSITIVE(invocation_count);
+        /* For non-indexed draws, they're the same */
+        unsigned invocation_count = ctx->vertex_count;
 
         /* For higher amounts of vertices (greater than what fits in a 16-bit
          * short), the other value is needed, otherwise there will be bizarre
@@ -1697,10 +1703,39 @@ panfrost_draw_vbo(
         ctx->payload_tiler.prefix.unknown_draw |= (ctx->vertex_count > 65535) ? 0x3000 : 0x18000;
 
         if (info->index_size) {
+                /* Calculate the min/max index used so we can figure out how
+                 * many times to invoke the vertex shader */
 
-                ctx->payload_vertex.draw_start = 0;
-                ctx->payload_tiler.draw_start = 0;
-                //ctx->payload_tiler.prefix.negative_start = -info->start;
+
+                const uint8_t *ibuf8 = panfrost_get_index_buffer_raw(info);
+
+
+                int min_index = (1 << 30); /* Sentinel */
+                int max_index = 0;
+
+                if (info->index_size == 1) {
+                        CALCULATE_MIN_MAX_INDEX(uint8_t, ibuf8, info->start, info->count);
+                } else if (info->index_size == 2) {
+                        const uint16_t *ibuf16 = (const uint16_t *) ibuf8;
+                        CALCULATE_MIN_MAX_INDEX(uint16_t, ibuf16, info->start, info->count);
+                } else if (info->index_size == 4) {
+                        const uint32_t *ibuf32 = (const uint32_t *) ibuf8;
+                        CALCULATE_MIN_MAX_INDEX(uint32_t, ibuf32, info->start, info->count);
+                } else {
+                        assert(0);
+                }
+
+                /* Make sure we didn't go crazy */
+                assert(min_index < (1 << 30));
+                assert(max_index > 0);
+                assert(max_index > min_index);
+
+                /* Use the corresponding values */
+                invocation_count = max_index - min_index + 1;
+                ctx->payload_vertex.draw_start = min_index;
+                ctx->payload_tiler.draw_start = min_index;
+
+                ctx->payload_tiler.prefix.negative_start = /*-info->start*/ -min_index;
                 ctx->payload_tiler.prefix.index_count = MALI_POSITIVE(info->count);
 
                 //assert(!info->restart_index); /* TODO: Research */
@@ -1708,8 +1743,6 @@ panfrost_draw_vbo(
                 //assert(!info->min_index); /* TODO: Use value */
 
                 ctx->payload_tiler.prefix.unknown_draw |= panfrost_translate_index_size(info->index_size);
-
-                const uint8_t *ibuf8 = panfrost_get_index_buffer_raw(info);
 
                 ctx->payload_tiler.prefix.indices = panfrost_upload_transient(ctx, ibuf8 + (info->start * info->index_size), info->count * info->index_size);
         } else {
@@ -1723,6 +1756,10 @@ panfrost_draw_vbo(
                 ctx->payload_tiler.prefix.unknown_draw &= ~MALI_DRAW_INDEXED_UINT32;
                 ctx->payload_tiler.prefix.indices = (uintptr_t) NULL;
         }
+
+        ctx->payload_vertex.prefix.invocation_count = MALI_POSITIVE(invocation_count);
+        ctx->payload_tiler.prefix.invocation_count = MALI_POSITIVE(invocation_count);
+
 
         /* Fire off the draw itself */
         panfrost_queue_draw(ctx);

@@ -867,14 +867,17 @@ struct mali_vertex_tiler_prefix {
 
         /* Like many other strictly nonzero quantities, index_count is
          * subtracted by one. For an indexed cube, this is equal to 35 = 6
-         * faces * 2 triangles/per face * 3 vertices/per triangle - 1. For
-         * non-indexed draws, equal to vertex_count. */
+         * faces * 2 triangles/per face * 3 vertices/per triangle - 1. That is,
+         * for an indexed draw, index_count is the number of actual vertices
+         * rendered whereas invocation_count is the number of unique vertices
+         * rendered (the number of times the vertex shader must be invoked).
+         * For non-indexed draws, this is just equal to invocation_count. */
 
         u32 index_count;
 
-        /* No hidden structure; literally just a pointer to an array of
-         * uint32_t indices. Thanks, guys, for not making my life insane for
-         * once! NULL for non-indexed draws. */
+        /* No hidden structure; literally just a pointer to an array of uint
+         * indices (width depends on flags). Thanks, guys, for not making my
+         * life insane for once! NULL for non-indexed draws. */
 
         uintptr_t indices;
 } __attribute__((packed));
