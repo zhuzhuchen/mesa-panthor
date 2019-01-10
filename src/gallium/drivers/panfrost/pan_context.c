@@ -1016,11 +1016,6 @@ panfrost_emit_vertex_data(struct panfrost_context *ctx)
                 attrs[i].stride = buf->stride;
                 attrs[i].size = buf->stride * (ctx->payload_vertex.draw_start + invocation_count) + max_src_offset;
 
-                /* TODO: The above calculation is wrong and breaks, e.g.
-                 * -bideas. Do it better. For now, force resources */
-                assert(!buf->is_user_buffer);
-                //attrs[i].size = buf->buffer.resource->width0 - buf->buffer_offset;
-
                 /* Vertex elements are -already- GPU-visible, at
                  * rsrc->gpu. However, attribute buffers must be 64 aligned. If
                  * it is not, for now we have to duplicate the buffer. */
