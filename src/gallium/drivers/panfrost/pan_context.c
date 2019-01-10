@@ -1212,7 +1212,6 @@ panfrost_emit_for_draw(struct panfrost_context *ctx, bool with_vertex_data)
                         uint64_t trampolines[PIPE_MAX_SHADER_SAMPLER_VIEWS];
 
                         for (int i = 0; i < ctx->sampler_view_count[t]; ++i) {
-                                /* XXX: Why does this work? */
                                 if (!ctx->sampler_views[t][i])
                                         continue;
 
