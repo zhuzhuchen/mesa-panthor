@@ -988,13 +988,15 @@ panfrost_emit_vertex_data(struct panfrost_context *ctx)
         union mali_attr attrs[PIPE_MAX_ATTRIBS];
         union mali_attr varyings[PIPE_MAX_ATTRIBS];
 
+        unsigned invocation_count = MALI_NEGATIVE(ctx->payload_tiler.prefix.invocation_count);
+
         for (int i = 0; i < ctx->vertex_buffer_count; ++i) {
                 struct pipe_vertex_buffer *buf = &ctx->vertex_buffers[i];
                 struct panfrost_resource *rsrc = (struct panfrost_resource *) (buf->buffer.resource);
 
                 /* Offset vertex count by draw_start to make sure we upload enough */
                 attrs[i].stride = buf->stride;
-                attrs[i].size = buf->stride * (ctx->payload_vertex.draw_start + ctx->vertex_count);
+                attrs[i].size = buf->stride * (ctx->payload_vertex.draw_start + invocation_count);
 
                 /* TODO: The above calculation is wrong and breaks, e.g.
                  * -bideas. Do it better. For now, force resources */
@@ -1019,7 +1021,7 @@ panfrost_emit_vertex_data(struct panfrost_context *ctx)
                 varyings[i].stride = ctx->vs->varyings.varyings_stride[i];
 
                 /* XXX: Why does adding an extra ~8000 vertices fix missing triangles in glmark2-es2 -bshadow? */
-                varyings[i].size = ctx->vs->varyings.varyings_stride[i] * MALI_NEGATIVE(ctx->payload_tiler.prefix.invocation_count);
+                varyings[i].size = ctx->vs->varyings.varyings_stride[i] * invocation_count;
 
                 /* gl_Position varying is always last by convention */
                 if ((i + 1) == ctx->vs->varyings.varying_buffer_count)
