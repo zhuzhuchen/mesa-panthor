@@ -3312,7 +3312,11 @@ midgard_compile_shader_nir(nir_shader *nir, midgard_program *program, bool is_bl
         nir_foreach_variable(var, &nir->uniforms) {
                 if (glsl_get_base_type(var->type) == GLSL_TYPE_SAMPLER) continue;
 
-                unsigned length = glsl_get_length(var->type);
+                unsigned length = glsl_get_aoa_size(var->type);
+
+                if (!length) {
+                        length = glsl_get_length(var->type);
+                }
 
                 if (!length) {
                         length = glsl_get_matrix_columns(var->type);

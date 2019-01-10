@@ -996,7 +996,8 @@ panfrost_emit_vertex_data(struct panfrost_context *ctx)
                 attrs[i].stride = buf->stride;
                 attrs[i].size = buf->stride * (ctx->payload_vertex.draw_start + ctx->vertex_count);
 
-                /* TODO: The above calculation is wrong. Do it better. For now, force resources */
+                /* TODO: The above calculation is wrong and breaks, e.g.
+                 * -bideas. Do it better. For now, force resources */
                 assert(!buf->is_user_buffer);
                 //attrs[i].size = buf->buffer.resource->width0 - buf->buffer_offset;
 
