@@ -2547,8 +2547,12 @@ panfrost_bind_depth_stencil_state(struct pipe_context *pipe,
         if (!depth_stencil)
                 return;
 
-        /* Alpha does not exist on ES2... */
-        //assert(!depth_stencil->alpha.enabled);
+        /* Alpha does not exist in the hardware (it's not in ES3), so it's
+         * emulated in the fragment shader */
+
+        if (depth_stencil->alpha.enabled) {
+               /* TODO: Custom shader */ 
+        }
 
         /* Stencil state */
         SET_BIT(ctx->fragment_shader_core.unknown2_4, MALI_STENCIL_TEST, depth_stencil->stencil[0].enabled); /* XXX: which one? */
