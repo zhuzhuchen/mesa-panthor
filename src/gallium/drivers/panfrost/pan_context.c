@@ -2551,6 +2551,7 @@ panfrost_bind_depth_stencil_state(struct pipe_context *pipe,
          * emulated in the fragment shader */
 
         if (depth_stencil->alpha.enabled) {
+                printf("%f with %d\n", depth_stencil->alpha.ref_value, depth_stencil->alpha.func);
                /* TODO: Custom shader */ 
         }
 
