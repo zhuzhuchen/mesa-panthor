@@ -994,9 +994,27 @@ panfrost_emit_vertex_data(struct panfrost_context *ctx)
                 struct pipe_vertex_buffer *buf = &ctx->vertex_buffers[i];
                 struct panfrost_resource *rsrc = (struct panfrost_resource *) (buf->buffer.resource);
 
+                /* Let's figure out the layout of the attributes in memory so
+                 * we can be smart about size computation. The idea is to
+                 * figure out the maximum src_offset, which tells us the latest
+                 * spot a vertex could start. Meanwhile, we figure out the size
+                 * of the attribute memory (assuming interleaved
+                 * representation) and tack on the max src_offset for a
+                 * reasonably good upper bound on the size.
+                 *
+                 * Proving correctness is left as an exercise to the reader.
+                 */
+
+                unsigned max_src_offset = 0;
+
+                for (unsigned j = 0; j < ctx->vertex->num_elements; ++j) {
+                        if (ctx->vertex->pipe[j].vertex_buffer_index != i) continue;
+                        max_src_offset = MAX2(max_src_offset, ctx->vertex->pipe[j].src_offset);
+                }
+
                 /* Offset vertex count by draw_start to make sure we upload enough */
                 attrs[i].stride = buf->stride;
-                attrs[i].size = buf->stride * (ctx->payload_vertex.draw_start + invocation_count);
+                attrs[i].size = buf->stride * (ctx->payload_vertex.draw_start + invocation_count) + max_src_offset;
 
                 /* TODO: The above calculation is wrong and breaks, e.g.
                  * -bideas. Do it better. For now, force resources */
