@@ -137,7 +137,16 @@ panfrost_translate_channel_type(unsigned type, unsigned size, bool norm) {
 enum mali_format
 panfrost_find_format(const struct util_format_description *desc)
 {
+        /* Find first non-VOID channel */
         struct util_format_channel_description chan = desc->channel[0];
+
+        for (unsigned c = 0; c < 4; ++c) {
+                if (desc->channel[c].type == UTIL_FORMAT_TYPE_VOID)
+                        continue;
+
+                chan = desc->channel[c];
+                break;
+        }
 
         /* Check for special formats */
         switch (desc->format) {
@@ -172,6 +181,7 @@ panfrost_find_format(const struct util_format_description *desc)
         switch (chan.type) {
                 case UTIL_FORMAT_TYPE_UNSIGNED:
                 case UTIL_FORMAT_TYPE_SIGNED:
+                case UTIL_FORMAT_TYPE_FIXED:
                         /* Channel width */
                         format |= panfrost_translate_channel_width(chan.size);
 
