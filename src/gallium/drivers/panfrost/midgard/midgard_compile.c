@@ -414,6 +414,9 @@ typedef struct compiler_context {
 
         /* Count of instructions emitted from NIR overall, across all blocks */
         int instruction_count;
+
+        /* Alpha ref value passed in */
+        float alpha_ref;
 } compiler_context;
 
 /* Append instruction to end of current block */
@@ -1380,6 +1383,18 @@ emit_intrinsic(compiler_context *ctx, nir_intrinsic_instr *instr)
                 }
 
                 break;
+
+        case nir_intrinsic_load_alpha_ref_float:
+                assert(instr->dest.is_ssa);
+
+                float ref_value = ctx->alpha_ref;
+                printf("Ref %f\n", ref_value);
+
+                float *v = ralloc_array(NULL, float, 4);
+                memcpy(v, &ref_value, sizeof(float));
+                _mesa_hash_table_u64_insert(ctx->ssa_constants, instr->dest.ssa.index + 1, v);
+                break;
+
 
         default:
                 printf ("Unhandled intrinsic\n");
@@ -3267,6 +3282,8 @@ midgard_compile_shader_nir(nir_shader *nir, midgard_program *program, bool is_bl
 
                 .is_blend = is_blend,
                 .blend_constant_offset = -1,
+
+                .alpha_ref = program->alpha_ref
         };
 
         compiler_context *ctx = &ictx;

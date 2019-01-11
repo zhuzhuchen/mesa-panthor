@@ -54,9 +54,20 @@ panfrost_shader_compile(struct panfrost_context *ctx, struct mali_shader_meta *m
 
         s->info.stage = type == JOB_TYPE_VERTEX ? MESA_SHADER_VERTEX : MESA_SHADER_FRAGMENT;
 
+        if (s->info.stage == MESA_SHADER_FRAGMENT) {
+                /* Inject the alpha test now if we need to */
+
+                if (state->alpha_state.enabled) {
+                        NIR_PASS_V(s, nir_lower_alpha_test, state->alpha_state.func, false);
+                }
+        }
+
         /* Call out to Midgard compiler given the above NIR */
 
-        midgard_program program;
+        midgard_program program = {
+                .alpha_ref = state->alpha_state.ref_value
+        };
+
         midgard_compile_shader_nir(s, &program, false);
 
         /* Prepare the compiled binary for upload */

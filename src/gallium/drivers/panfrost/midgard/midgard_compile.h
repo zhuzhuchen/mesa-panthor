@@ -45,6 +45,9 @@ typedef struct {
          * negative, there's no constant. */
 
         int blend_patch_offset;
+
+        /* IN: For a fragment shader with a lowered alpha test, the ref value */
+        float alpha_ref;
 } midgard_program;
 
 int
