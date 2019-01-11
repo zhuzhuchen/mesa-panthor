@@ -198,6 +198,7 @@ panfrost_find_format(const struct util_format_description *desc)
                         break;
 
                 default:
+                        fprintf(stderr, "Unknown format type in %s\n", desc->name);
                         assert(0);
                         break;
         }
