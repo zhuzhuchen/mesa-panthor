@@ -1393,6 +1393,7 @@ midgard_tex_format(enum glsl_sampler_dim dim)
 {
         switch (dim) {
         case GLSL_SAMPLER_DIM_2D:
+        case GLSL_SAMPLER_DIM_EXTERNAL:
                 return TEXTURE_2D;
 
         case GLSL_SAMPLER_DIM_3D:
