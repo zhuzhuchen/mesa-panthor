@@ -280,6 +280,7 @@ struct panfrost_shader_state {
         struct panfrost_varyings varyings;
 
         /* Information on this particular shader variant */
+        struct pipe_alpha_state alpha_state;
 };
 
 /* A collection of varyings (the CSO) */

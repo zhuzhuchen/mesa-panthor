@@ -1989,7 +1989,23 @@ panfrost_bind_sampler_states(
 static bool
 panfrost_variant_matches(struct panfrost_context *ctx, struct panfrost_shader_state *variant)
 {
-        /* STUB */
+        struct pipe_alpha_state *alpha = &ctx->depth_stencil->alpha;
+
+        if (alpha->enabled || variant->alpha_state.enabled) {
+                /* Make sure enable state is at least the same */
+                if (alpha->enabled != variant->alpha_state.enabled) {
+                        return false;
+                }
+
+                /* Check that the contents of the test are the same */
+                bool same_func = alpha->func == variant->alpha_state.func;
+                bool same_ref = alpha->ref_value == variant->alpha_state.ref_value;
+
+                if (!(same_func && same_ref)) {
+                        return false;
+                }
+        }
+        /* Otherwise, we're good to go */
         return true;
 }
 
@@ -2022,6 +2038,7 @@ panfrost_bind_fs_state(
                         assert(variants->variant_count < MAX_SHADER_VARIANTS);
 
                         variants->variants[variant].base = hwcso;
+                        variants->variants[variant].alpha_state = ctx->depth_stencil->alpha;
                 }
 
                 /* Select this variant */
@@ -2597,7 +2614,9 @@ panfrost_bind_depth_stencil_state(struct pipe_context *pipe,
 
         if (depth_stencil->alpha.enabled) {
                 printf("%f with %d\n", depth_stencil->alpha.ref_value, depth_stencil->alpha.func);
-               /* TODO: Custom shader */ 
+
+                /* We need to trigger a new shader (maybe) */
+                ctx->base.bind_fs_state(&ctx->base, ctx->fs);
         }
 
         /* Stencil state */
