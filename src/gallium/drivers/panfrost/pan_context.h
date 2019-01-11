@@ -186,8 +186,8 @@ struct panfrost_context {
         /* CSOs */
         struct panfrost_rasterizer *rasterizer;
 
-        struct panfrost_shader_state *vs;
-        struct panfrost_shader_state *fs;
+        struct panfrost_shader_variants *vs;
+        struct panfrost_shader_variants *fs;
 
         struct panfrost_vertex_state *vertex;
 
@@ -259,8 +259,14 @@ struct panfrost_varyings {
         int fragment_only_varying_count;
 };
 
+/* Variants bundle together to form the backing CSO, bundling multiple
+ * shaders with varying emulated features baked in (alpha test
+ * parameters, etc) */
+#define MAX_SHADER_VARIANTS 8
+
+/* A shader state corresponds to the actual, current variant of the shader */
 struct panfrost_shader_state {
-        struct pipe_shader_state base;
+        struct pipe_shader_state *base;
 
         /* Compiled descriptor, ready for the hardware */
         bool compiled;
@@ -272,6 +278,19 @@ struct panfrost_shader_state {
 
         /* Valid for vertex shaders only due to when this is calculated */
         struct panfrost_varyings varyings;
+
+        /* Information on this particular shader variant */
+};
+
+/* A collection of varyings (the CSO) */
+struct panfrost_shader_variants {
+        struct pipe_shader_state base;
+
+        struct panfrost_shader_state variants[MAX_SHADER_VARIANTS];
+        unsigned variant_count;
+
+        /* The current active variant */
+        unsigned active_variant;
 };
 
 struct panfrost_vertex_state {

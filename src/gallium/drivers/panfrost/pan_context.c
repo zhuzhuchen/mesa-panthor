@@ -86,17 +86,19 @@ static bool FORCE_MSAA = true;
 static void
 panfrost_upload_varyings_descriptor(struct panfrost_context *ctx)
 {
+        struct panfrost_varyings *varyings = &ctx->vs->variants[ctx->vs->active_variant].varyings;
+
         /* First, upload gl_Position varyings */
-        mali_ptr gl_Position = panfrost_upload(&ctx->cmdstream_persistent, ctx->vs->varyings.vertex_only_varyings, sizeof(ctx->vs->varyings.vertex_only_varyings), true);
+        mali_ptr gl_Position = panfrost_upload(&ctx->cmdstream_persistent, varyings->vertex_only_varyings, sizeof(varyings->vertex_only_varyings), true);
 
         /* Then, upload normal varyings for vertex shaders */
-        panfrost_upload_sequential(&ctx->cmdstream_persistent, ctx->vs->varyings.varyings, sizeof(ctx->vs->varyings.varyings[0]) * ctx->vs->varyings.varying_count);
+        panfrost_upload_sequential(&ctx->cmdstream_persistent, varyings->varyings, sizeof(varyings->varyings[0]) * varyings->varying_count);
 
         /* Then, upload normal varyings for fragment shaders (duplicating) */
-        mali_ptr varyings_fragment = panfrost_upload_sequential(&ctx->cmdstream_persistent, ctx->vs->varyings.varyings, sizeof(ctx->vs->varyings.varyings[0]) * ctx->vs->varyings.varying_count);
+        mali_ptr varyings_fragment = panfrost_upload_sequential(&ctx->cmdstream_persistent, varyings->varyings, sizeof(varyings->varyings[0]) * varyings->varying_count);
 
         /* Finally, upload gl_FragCoord varying */
-        panfrost_upload_sequential(&ctx->cmdstream_persistent, ctx->vs->varyings.fragment_only_varyings, sizeof(ctx->vs->varyings.fragment_only_varyings[0]) * ctx->vs->varyings.fragment_only_varying_count);
+        panfrost_upload_sequential(&ctx->cmdstream_persistent, varyings->fragment_only_varyings, sizeof(varyings->fragment_only_varyings[0]) * varyings->fragment_only_varying_count);
 
         ctx->payload_vertex.postfix.varying_meta = gl_Position;
         ctx->payload_tiler.postfix.varying_meta = varyings_fragment;
@@ -1029,15 +1031,17 @@ panfrost_emit_vertex_data(struct panfrost_context *ctx)
                 }
         }
 
-        for (int i = 0; i < ctx->vs->varyings.varying_buffer_count; ++i) {
+        struct panfrost_varyings *vars = &ctx->vs->variants[ctx->vs->active_variant].varyings;
+
+        for (int i = 0; i < vars->varying_buffer_count; ++i) {
                 varyings[i].elements = (ctx->varying_mem.gpu + ctx->varying_height) | 1;
-                varyings[i].stride = ctx->vs->varyings.varyings_stride[i];
+                varyings[i].stride = vars->varyings_stride[i];
 
                 /* XXX: Why does adding an extra ~8000 vertices fix missing triangles in glmark2-es2 -bshadow? */
-                varyings[i].size = ctx->vs->varyings.varyings_stride[i] * invocation_count;
+                varyings[i].size = vars->varyings_stride[i] * invocation_count;
 
                 /* gl_Position varying is always last by convention */
-                if ((i + 1) == ctx->vs->varyings.varying_buffer_count)
+                if ((i + 1) == vars->varying_buffer_count)
                         ctx->payload_tiler.postfix.position_varying = ctx->varying_mem.gpu + ctx->varying_height;
 
                 /* Varyings appear to need 64-byte alignment */
@@ -1049,7 +1053,7 @@ panfrost_emit_vertex_data(struct panfrost_context *ctx)
 
         ctx->payload_vertex.postfix.attributes = panfrost_upload_transient(ctx, attrs, ctx->vertex_buffer_count * sizeof(union mali_attr));
 
-        mali_ptr varyings_p = panfrost_upload_transient(ctx, &varyings, ctx->vs->varyings.varying_buffer_count * sizeof(union mali_attr));
+        mali_ptr varyings_p = panfrost_upload_transient(ctx, &varyings, vars->varying_buffer_count * sizeof(union mali_attr));
         ctx->payload_vertex.postfix.varyings = varyings_p;
         ctx->payload_tiler.postfix.varyings = varyings_p;
 }
@@ -1074,14 +1078,16 @@ panfrost_emit_for_draw(struct panfrost_context *ctx, bool with_vertex_data)
         if (ctx->dirty & PAN_DIRTY_VS) {
                 assert(ctx->vs);
 
+                struct panfrost_shader_state *vs = &ctx->vs->variants[ctx->vs->active_variant];
+
                 /* Late shader descriptor assignments */
-                ctx->vs->tripipe.texture_count = ctx->sampler_view_count[PIPE_SHADER_VERTEX];
-                ctx->vs->tripipe.sampler_count = ctx->sampler_count[PIPE_SHADER_VERTEX];
+                vs->tripipe.texture_count = ctx->sampler_view_count[PIPE_SHADER_VERTEX];
+                vs->tripipe.sampler_count = ctx->sampler_count[PIPE_SHADER_VERTEX];
 
                 /* Who knows */
-                ctx->vs->tripipe.midgard1.unknown1 = 0x2201;
+                vs->tripipe.midgard1.unknown1 = 0x2201;
 
-                ctx->payload_vertex.postfix._shader_upper = panfrost_upload(&ctx->cmdstream_persistent, &ctx->vs->tripipe, sizeof(struct mali_shader_meta), true) >> 4;
+                ctx->payload_vertex.postfix._shader_upper = panfrost_upload(&ctx->cmdstream_persistent, &vs->tripipe, sizeof(struct mali_shader_meta), true) >> 4;
 
                 /* Varying descriptor is tied to the vertex shader. Also the
                  * fragment shader, I suppose, but it's generated with the
@@ -1092,7 +1098,9 @@ panfrost_emit_for_draw(struct panfrost_context *ctx, bool with_vertex_data)
 
         if (ctx->dirty & PAN_DIRTY_FS) {
                 assert(ctx->fs);
-#define COPY(name) ctx->fragment_shader_core.name = ctx->fs->tripipe.name
+                struct panfrost_shader_state *variant = &ctx->fs->variants[ctx->fs->active_variant];
+
+#define COPY(name) ctx->fragment_shader_core.name = variant->tripipe.name
 
                 COPY(shader);
                 COPY(attribute_count);
@@ -1126,7 +1134,7 @@ panfrost_emit_for_draw(struct panfrost_context *ctx, bool with_vertex_data)
                  * Is EGL_BUFFER_PRESERVED a good thing?" by Peter Harris
                  */
 
-                if (ctx->fs->can_discard) {
+                if (variant->can_discard) {
                         ctx->fragment_shader_core.unknown2_3 |= MALI_CAN_DISCARD;
                         ctx->fragment_shader_core.midgard1.unknown1 &= ~MALI_NO_ALPHA_TO_COVERAGE;
                         ctx->fragment_shader_core.midgard1.unknown1 |= 0x4000;
@@ -1310,12 +1318,12 @@ panfrost_emit_for_draw(struct panfrost_context *ctx, bool with_vertex_data)
 
                         switch (i) {
                         case PIPE_SHADER_VERTEX:
-                                uniform_count = ctx->vs->uniform_count;
+                                uniform_count = ctx->vs->variants[ctx->vs->active_variant].uniform_count;
                                 postfix = &ctx->payload_vertex.postfix;
                                 break;
 
                         case PIPE_SHADER_FRAGMENT:
-                                uniform_count = ctx->fs->uniform_count;
+                                uniform_count = ctx->fs->variants[ctx->fs->active_variant].uniform_count;
                                 postfix = &ctx->payload_tiler.postfix;
                                 break;
 
@@ -1905,7 +1913,7 @@ panfrost_create_shader_state(
         struct pipe_context *pctx,
         const struct pipe_shader_state *cso)
 {
-        struct panfrost_shader_state *so = CALLOC_STRUCT(panfrost_shader_state);
+        struct panfrost_shader_variants *so = CALLOC_STRUCT(panfrost_shader_variants);
         so->base = *cso;
 
         /* Token deep copy to prevent memory corruption */
@@ -1978,6 +1986,13 @@ panfrost_bind_sampler_states(
         ctx->dirty |= PAN_DIRTY_SAMPLERS;
 }
 
+static bool
+panfrost_variant_matches(struct panfrost_context *ctx, struct panfrost_shader_state *variant)
+{
+        /* STUB */
+        return true;
+}
+
 static void
 panfrost_bind_fs_state(
         struct pipe_context *pctx,
@@ -1988,9 +2003,38 @@ panfrost_bind_fs_state(
         ctx->fs = hwcso;
 
         if (hwcso) {
-                if (!ctx->fs->compiled) {
-                        panfrost_shader_compile(ctx, &ctx->fs->tripipe, NULL, JOB_TYPE_TILER, hwcso);
-                        ctx->fs->compiled = true;
+                /* Match the appropriate variant */
+
+                signed variant = -1;
+
+                struct panfrost_shader_variants *variants = (struct panfrost_shader_variants *) hwcso;
+
+                for (unsigned i = 0; i < variants->variant_count; ++i) {
+                        if (panfrost_variant_matches(ctx, &variants->variants[i])) {
+                                variant = i;
+                                break;
+                        }
+                }
+
+                if (variant == -1) {
+                        /* No variant matched, so create a new one */
+                        variant = variants->variant_count++;
+                        assert(variants->variant_count < MAX_SHADER_VARIANTS);
+
+                        variants->variants[variant].base = hwcso;
+                }
+
+                /* Select this variant */
+                variants->active_variant = variant;
+
+                struct panfrost_shader_state *shader_state = &variants->variants[variant];
+                assert(panfrost_variant_matches(ctx, shader_state));
+
+                /* Now we have a variant selected, so compile and go */
+
+                if (!shader_state->compiled) {
+                        panfrost_shader_compile(ctx, &shader_state->tripipe, NULL, JOB_TYPE_TILER, shader_state);
+                        shader_state->compiled = true;
                 }
         }
 
@@ -2007,9 +2051,10 @@ panfrost_bind_vs_state(
         ctx->vs = hwcso;
 
         if (hwcso) {
-                if (!ctx->vs->compiled) {
-                        panfrost_shader_compile(ctx, &ctx->vs->tripipe, NULL, JOB_TYPE_VERTEX, hwcso);
-                        ctx->vs->compiled = true;
+                if (!ctx->vs->variants[0].compiled) {
+                        ctx->vs->variants[0].base = hwcso;
+                        panfrost_shader_compile(ctx, &ctx->vs->variants[0].tripipe, NULL, JOB_TYPE_VERTEX, &ctx->vs->variants[0]);
+                        ctx->vs->variants[0].compiled = true;
                 }
         }
 

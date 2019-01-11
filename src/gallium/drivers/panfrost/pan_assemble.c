@@ -42,7 +42,7 @@ panfrost_shader_compile(struct panfrost_context *ctx, struct mali_shader_meta *m
 
         nir_shader *s;
 
-        struct pipe_shader_state *cso = &state->base;
+        struct pipe_shader_state *cso = state->base;
 
         if (cso->type == PIPE_SHADER_IR_NIR) {
                 s = cso->ir.nir;
