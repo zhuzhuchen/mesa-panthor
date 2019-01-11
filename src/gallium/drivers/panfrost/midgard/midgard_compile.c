@@ -2582,7 +2582,7 @@ inline_alu_constants(compiler_context *ctx)
                                 alu->ssa_args.src1 = 4096 + alu->ssa_args.src1;
 
                                 /* Inject us -before- the last instruction which set r31 */
-                                mir_insert_instruction_before(mir_prev_op(alu), ins);
+                                //mir_insert_instruction_before(mir_prev_op(alu), ins);
                         }
                 }
         }

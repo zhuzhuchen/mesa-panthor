@@ -45,7 +45,7 @@ panfrost_shader_compile(struct panfrost_context *ctx, struct mali_shader_meta *m
         struct pipe_shader_state *cso = state->base;
 
         if (cso->type == PIPE_SHADER_IR_NIR) {
-                s = cso->ir.nir;
+                s = nir_shader_clone(NULL, cso->ir.nir);
         } else {
                 assert (cso->type == PIPE_SHADER_IR_TGSI);
                 //tgsi_dump(cso->tokens, 0);

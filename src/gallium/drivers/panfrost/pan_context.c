@@ -2046,10 +2046,12 @@ panfrost_bind_fs_state(
 
                 struct panfrost_shader_state *shader_state = &variants->variants[variant];
                 assert(panfrost_variant_matches(ctx, shader_state));
+                printf("Okay.. %d\n", variants->active_variant);
 
                 /* Now we have a variant selected, so compile and go */
 
                 if (!shader_state->compiled) {
+                        printf("Compiling more?!\n");
                         panfrost_shader_compile(ctx, &shader_state->tripipe, NULL, JOB_TYPE_TILER, shader_state);
                         shader_state->compiled = true;
                 }
