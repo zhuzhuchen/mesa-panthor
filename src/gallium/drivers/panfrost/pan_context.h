@@ -253,10 +253,10 @@ struct panfrost_varyings {
         unsigned varying_count;
         unsigned varying_buffer_count;
 
-        struct mali_attr_meta vertex_only_varyings[2];
-        struct mali_attr_meta varyings[PIPE_MAX_ATTRIBS];
-        struct mali_attr_meta fragment_only_varyings[1];
-        int fragment_only_varying_count;
+        /* Map of the actual varyings buffer */
+        uint8_t *varyings_buffer_cpu;
+        mali_ptr varyings_descriptor;
+        mali_ptr varyings_descriptor_fragment;
 };
 
 /* Variants bundle together to form the backing CSO, bundling multiple

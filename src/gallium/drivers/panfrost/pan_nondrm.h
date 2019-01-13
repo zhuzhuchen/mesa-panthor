@@ -127,6 +127,9 @@ panfrost_reserve(struct panfrost_memory *mem, size_t sz)
         return mem->gpu + (mem->stack_bottom - sz);
 }
 
+struct panfrost_transfer
+panfrost_allocate_chunk(struct panfrost_context *ctx, size_t size, unsigned heap_id);
+
 #include <math.h>
 #define inff INFINITY
 

@@ -48,21 +48,6 @@
 #include "pan_blend_shaders.h"
 #include "pan_wallpaper.h"
 
-static struct panfrost_transfer
-panfrost_allocate_chunk(struct panfrost_context *ctx, size_t size, unsigned heap_id)
-{
-        struct pb_slab_entry *entry = pb_slab_alloc(&ctx->slabs, size, heap_id);
-        struct panfrost_memory_entry *p_entry = (struct panfrost_memory_entry *) entry;
-        struct panfrost_memory *backing = (struct panfrost_memory *) entry->slab;
-
-        struct panfrost_transfer transfer = {
-                .cpu = backing->cpu + p_entry->offset,
-                .gpu = backing->gpu + p_entry->offset
-        };
-
-        return transfer;
-}
-
 static void
 panfrost_flush(
         struct pipe_context *pipe,
@@ -92,29 +77,6 @@ static bool USE_TRANSACTION_ELIMINATION = false;
 /* MSAA is not supported in sw_winsys but it does make for nicer demos ;) so we
  * can force it regardless of gallium saying we don't have it */
 static bool FORCE_MSAA = true;
-
-/* Descriptor is generated along with the shader compiler */
-
-static void
-panfrost_upload_varyings_descriptor(struct panfrost_context *ctx)
-{
-        struct panfrost_varyings *varyings = &ctx->vs->variants[ctx->vs->active_variant].varyings;
-
-        /* First, upload gl_Position varyings */
-        mali_ptr gl_Position = panfrost_upload(&ctx->cmdstream_persistent, varyings->vertex_only_varyings, sizeof(varyings->vertex_only_varyings), true);
-
-        /* Then, upload normal varyings for vertex shaders */
-        panfrost_upload_sequential(&ctx->cmdstream_persistent, varyings->varyings, sizeof(varyings->varyings[0]) * varyings->varying_count);
-
-        /* Then, upload normal varyings for fragment shaders (duplicating) */
-        mali_ptr varyings_fragment = panfrost_upload_sequential(&ctx->cmdstream_persistent, varyings->varyings, sizeof(varyings->varyings[0]) * varyings->varying_count);
-
-        /* Finally, upload gl_FragCoord varying */
-        panfrost_upload_sequential(&ctx->cmdstream_persistent, varyings->fragment_only_varyings, sizeof(varyings->fragment_only_varyings[0]) * varyings->fragment_only_varying_count);
-
-        ctx->payload_vertex.postfix.varying_meta = gl_Position;
-        ctx->payload_tiler.postfix.varying_meta = varyings_fragment;
-}
 
 /* TODO: Sample size, etc */
 
@@ -1105,7 +1067,10 @@ panfrost_emit_for_draw(struct panfrost_context *ctx, bool with_vertex_data)
                  * fragment shader, I suppose, but it's generated with the
                  * vertex shader so */
 
-                panfrost_upload_varyings_descriptor(ctx);
+                struct panfrost_varyings *varyings = &ctx->vs->variants[ctx->vs->active_variant].varyings;
+
+                ctx->payload_vertex.postfix.varying_meta = varyings->varyings_descriptor;
+                ctx->payload_tiler.postfix.varying_meta = varyings->varyings_descriptor_fragment;
         }
 
         if (ctx->dirty & PAN_DIRTY_FS) {
