@@ -37,7 +37,7 @@ typedef int16_t s16;
 typedef int32_t s32;
 typedef int64_t s64;
 
-typedef uintptr_t mali_ptr;
+typedef uint64_t mali_ptr;
 
 #define MALI_PTR_FMT "0x%" PRIx64
 
