@@ -39,6 +39,8 @@
 struct panfrost_transfer
 panfrost_allocate_chunk(struct panfrost_context *ctx, size_t size, unsigned heap_id)
 {
+        size = ALIGN(size, ALIGNMENT);
+
         struct pb_slab_entry *entry = pb_slab_alloc(&ctx->slabs, size, heap_id);
         struct panfrost_memory_entry *p_entry = (struct panfrost_memory_entry *) entry;
         struct panfrost_memory *backing = (struct panfrost_memory *) entry->slab;

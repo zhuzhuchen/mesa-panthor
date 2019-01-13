@@ -1073,6 +1073,10 @@ panfrost_emit_for_draw(struct panfrost_context *ctx, bool with_vertex_data)
                 ctx->payload_tiler.postfix.varying_meta = varyings->varyings_descriptor_fragment;
         }
 
+        /* TODO: Maybe dirty track FS, maybe not. For now, it's transient. */
+        if (ctx->fs)
+                ctx->dirty |= PAN_DIRTY_FS;
+
         if (ctx->dirty & PAN_DIRTY_FS) {
                 assert(ctx->fs);
                 struct panfrost_shader_state *variant = &ctx->fs->variants[ctx->fs->active_variant];
@@ -1121,7 +1125,11 @@ panfrost_emit_for_draw(struct panfrost_context *ctx, bool with_vertex_data)
                 if (ctx->blend->has_blend_shader)
                         ctx->fragment_shader_core.blend_shader = ctx->blend->blend_shader;
 
-                ctx->payload_tiler.postfix._shader_upper = panfrost_upload(&ctx->cmdstream_persistent, &ctx->fragment_shader_core, sizeof(struct mali_shader_meta), true) >> 4;
+                size_t size = sizeof(struct mali_shader_meta) + sizeof(struct mali_blend_meta);
+                struct panfrost_transfer transfer = panfrost_allocate_transient(ctx, size);
+                memcpy(transfer.cpu, &ctx->fragment_shader_core, sizeof(struct mali_shader_meta));
+
+                ctx->payload_tiler.postfix._shader_upper = (transfer.gpu) >> 4;
 
 #ifdef T8XX
                 /* Additional blend descriptor tacked on for newer systems */
@@ -1166,7 +1174,7 @@ panfrost_emit_for_draw(struct panfrost_context *ctx, bool with_vertex_data)
                 if (ctx->blend->has_blend_shader)
                         memcpy(&blend_meta[0].blend_equation_1, &ctx->blend->blend_shader, sizeof(ctx->blend->blend_shader));
 
-                panfrost_upload_sequential(&ctx->cmdstream_persistent, blend_meta, sizeof(blend_meta));
+                memcpy(transfer.cpu + sizeof(struct mali_shader_meta), blend_meta, sizeof(blend_meta));
 #endif
         }
 
