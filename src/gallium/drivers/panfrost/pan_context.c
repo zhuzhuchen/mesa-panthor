@@ -1733,7 +1733,7 @@ panfrost_draw_vbo(
                 const uint8_t *ibuf8 = panfrost_get_index_buffer_raw(info);
 
 
-                int min_index = (1 << 30); /* Sentinel */
+                int min_index = INT_MAX;
                 int max_index = 0;
 
                 if (info->index_size == 1) {
@@ -1749,7 +1749,7 @@ panfrost_draw_vbo(
                 }
 
                 /* Make sure we didn't go crazy */
-                assert(min_index < (1 << 30));
+                assert(min_index < INT_MAX);
                 assert(max_index > 0);
                 assert(max_index > min_index);
 
@@ -2046,12 +2046,10 @@ panfrost_bind_fs_state(
 
                 struct panfrost_shader_state *shader_state = &variants->variants[variant];
                 assert(panfrost_variant_matches(ctx, shader_state));
-                printf("Okay.. %d\n", variants->active_variant);
 
                 /* Now we have a variant selected, so compile and go */
 
                 if (!shader_state->compiled) {
-                        printf("Compiling more?!\n");
                         panfrost_shader_compile(ctx, &shader_state->tripipe, NULL, JOB_TYPE_TILER, shader_state);
                         shader_state->compiled = true;
                 }
@@ -2615,8 +2613,6 @@ panfrost_bind_depth_stencil_state(struct pipe_context *pipe,
          * emulated in the fragment shader */
 
         if (depth_stencil->alpha.enabled) {
-                printf("%f with %d\n", depth_stencil->alpha.ref_value, depth_stencil->alpha.func);
-
                 /* We need to trigger a new shader (maybe) */
                 ctx->base.bind_fs_state(&ctx->base, ctx->fs);
         }

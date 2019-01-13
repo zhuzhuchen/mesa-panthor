@@ -1388,7 +1388,6 @@ emit_intrinsic(compiler_context *ctx, nir_intrinsic_instr *instr)
                 assert(instr->dest.is_ssa);
 
                 float ref_value = ctx->alpha_ref;
-                printf("Ref %f\n", ref_value);
 
                 float *v = ralloc_array(NULL, float, 4);
                 memcpy(v, &ref_value, sizeof(float));
