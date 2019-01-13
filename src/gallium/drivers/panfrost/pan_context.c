@@ -1055,13 +1055,13 @@ panfrost_emit_for_draw(struct panfrost_context *ctx, bool with_vertex_data)
                 struct panfrost_shader_state *vs = &ctx->vs->variants[ctx->vs->active_variant];
 
                 /* Late shader descriptor assignments */
-                vs->tripipe.texture_count = ctx->sampler_view_count[PIPE_SHADER_VERTEX];
-                vs->tripipe.sampler_count = ctx->sampler_count[PIPE_SHADER_VERTEX];
+                vs->tripipe->texture_count = ctx->sampler_view_count[PIPE_SHADER_VERTEX];
+                vs->tripipe->sampler_count = ctx->sampler_count[PIPE_SHADER_VERTEX];
 
                 /* Who knows */
-                vs->tripipe.midgard1.unknown1 = 0x2201;
+                vs->tripipe->midgard1.unknown1 = 0x2201;
 
-                ctx->payload_vertex.postfix._shader_upper = panfrost_upload(&ctx->cmdstream_persistent, &vs->tripipe, sizeof(struct mali_shader_meta), true) >> 4;
+                ctx->payload_vertex.postfix._shader_upper = vs->tripipe_gpu >> 4;
 
                 /* Varying descriptor is tied to the vertex shader. Also the
                  * fragment shader, I suppose, but it's generated with the
@@ -1081,7 +1081,7 @@ panfrost_emit_for_draw(struct panfrost_context *ctx, bool with_vertex_data)
                 assert(ctx->fs);
                 struct panfrost_shader_state *variant = &ctx->fs->variants[ctx->fs->active_variant];
 
-#define COPY(name) ctx->fragment_shader_core.name = variant->tripipe.name
+#define COPY(name) ctx->fragment_shader_core.name = variant->tripipe->name
 
                 COPY(shader);
                 COPY(attribute_count);
@@ -2029,6 +2029,15 @@ panfrost_bind_fs_state(
 
                         variants->variants[variant].base = hwcso;
                         variants->variants[variant].alpha_state = ctx->depth_stencil->alpha;
+
+                        /* Allocate the mapped descriptor ahead-of-time. TODO: Use for FS as well as VS */
+                        struct panfrost_context *ctx = panfrost_context(pctx);
+                        struct panfrost_transfer transfer = panfrost_allocate_chunk(ctx, sizeof(struct mali_shader_meta), HEAP_DESCRIPTOR);
+
+                        variants->variants[variant].tripipe = (struct mali_shader_meta *) transfer.cpu;
+                        variants->variants[variant].tripipe_gpu = transfer.gpu;
+
+
                 }
 
                 /* Select this variant */
@@ -2040,7 +2049,7 @@ panfrost_bind_fs_state(
                 /* Now we have a variant selected, so compile and go */
 
                 if (!shader_state->compiled) {
-                        panfrost_shader_compile(ctx, &shader_state->tripipe, NULL, JOB_TYPE_TILER, shader_state);
+                        panfrost_shader_compile(ctx, shader_state->tripipe, NULL, JOB_TYPE_TILER, shader_state);
                         shader_state->compiled = true;
                 }
         }
@@ -2060,7 +2069,13 @@ panfrost_bind_vs_state(
         if (hwcso) {
                 if (!ctx->vs->variants[0].compiled) {
                         ctx->vs->variants[0].base = hwcso;
-                        panfrost_shader_compile(ctx, &ctx->vs->variants[0].tripipe, NULL, JOB_TYPE_VERTEX, &ctx->vs->variants[0]);
+
+                        /* TODO DRY from above */
+                        struct panfrost_transfer transfer = panfrost_allocate_chunk(ctx, sizeof(struct mali_shader_meta), HEAP_DESCRIPTOR);
+                        ctx->vs->variants[0].tripipe = (struct mali_shader_meta *) transfer.cpu;
+                        ctx->vs->variants[0].tripipe_gpu = transfer.gpu;
+
+                        panfrost_shader_compile(ctx, ctx->vs->variants[0].tripipe, NULL, JOB_TYPE_VERTEX, &ctx->vs->variants[0]);
                         ctx->vs->variants[0].compiled = true;
                 }
         }

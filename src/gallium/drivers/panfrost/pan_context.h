@@ -268,9 +268,10 @@ struct panfrost_varyings {
 struct panfrost_shader_state {
         struct pipe_shader_state *base;
 
-        /* Compiled descriptor, ready for the hardware */
+        /* Compiled, mapped descriptor, ready for the hardware */
         bool compiled;
-        struct mali_shader_meta tripipe;
+        struct mali_shader_meta *tripipe;
+        mali_ptr tripipe_gpu;
 
         /* Non-descript information */
         int uniform_count;
