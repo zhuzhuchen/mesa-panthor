@@ -2388,8 +2388,28 @@ static void
 panfrost_resource_destroy(struct pipe_screen *screen,
                           struct pipe_resource *pt)
 {
-        printf("--resource destroy--\n");
-        /* TODO */
+        struct panfrost_resource *rsrc = (struct panfrost_resource *) pt;
+
+        if (rsrc->tiled) {
+                /* CPU is all malloc'ed, so just plain ol' free needed */
+
+                for (int l = 0; l < (rsrc->base.last_level + 1); ++l) {
+                        free(rsrc->cpu[l]);
+                }
+        } else {
+                /* TODO */
+                printf("--leaking slab--\n");
+        }
+
+        if (rsrc->has_afbc) {
+                /* TODO */
+                printf("--leaking afbc--\n");
+        }
+
+        if (rsrc->has_checksum) {
+                /* TODO */
+                printf("--leaking afbc--\n");
+        }
 }
 
 static void *
