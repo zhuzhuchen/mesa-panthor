@@ -48,8 +48,20 @@
 #include "pan_blend_shaders.h"
 #include "pan_wallpaper.h"
 
-/* Texture memory */
-#define HEAP_TEXTURE 0
+static struct panfrost_transfer
+panfrost_allocate_chunk(struct panfrost_context *ctx, size_t size, unsigned heap_id)
+{
+        struct pb_slab_entry *entry = pb_slab_alloc(&ctx->slabs, size, heap_id);
+        struct panfrost_memory_entry *p_entry = (struct panfrost_memory_entry *) entry;
+        struct panfrost_memory *backing = (struct panfrost_memory *) entry->slab;
+
+        struct panfrost_transfer transfer = {
+                .cpu = backing->cpu + p_entry->offset,
+                .gpu = backing->gpu + p_entry->offset
+        };
+
+        return transfer;
+}
 
 static void
 panfrost_flush(
@@ -1194,9 +1206,7 @@ panfrost_emit_for_draw(struct panfrost_context *ctx, bool with_vertex_data)
         }
 
         if (ctx->dirty & PAN_DIRTY_VERTEX) {
-                ctx->payload_vertex.postfix.attribute_meta = panfrost_upload(&
-                                ctx->cmdstream_persistent, &ctx->vertex->hw,
-                                sizeof(struct mali_attr_meta) * ctx->vertex->num_elements, false);
+                ctx->payload_vertex.postfix.attribute_meta = ctx->vertex->descriptor_ptr;
         }
 
         ctx->dirty |= PAN_DIRTY_VIEWPORT; /* TODO: Viewport dirty track */
@@ -1875,10 +1885,17 @@ panfrost_create_vertex_elements_state(
         unsigned num_elements,
         const struct pipe_vertex_element *elements)
 {
+        struct panfrost_context *ctx = panfrost_context(pctx);
         struct panfrost_vertex_state *so = CALLOC_STRUCT(panfrost_vertex_state);
 
         so->num_elements = num_elements;
         memcpy(so->pipe, elements, sizeof(*elements) * num_elements);
+
+        struct panfrost_transfer transfer = panfrost_allocate_chunk(ctx, sizeof(struct mali_attr_meta) * num_elements, HEAP_DESCRIPTOR);
+        so->hw = (struct mali_attr_meta *) transfer.cpu;
+        so->descriptor_ptr = transfer.gpu;
+
+        /* Allocate memory for the descriptor state */
 
         for (int i = 0; i < num_elements; ++i) {
                 so->hw[i].index = elements[i].vertex_buffer_index;
@@ -2965,43 +2982,6 @@ panfrost_invalidate_resource(struct pipe_context *pctx, struct pipe_resource *pr
         //fprintf(stderr, "TODO %s\n", __func__);
 }
 
-static void
-panfrost_setup_hardware(struct panfrost_context *ctx)
-{
-        struct pipe_context *gallium = (struct pipe_context *) ctx;
-        struct panfrost_screen *screen = panfrost_screen(gallium->screen);
-
-        pandev_open(screen->fd);
-
-        for (int i = 0; i < ARRAY_SIZE(ctx->transient_pools); ++i) {
-                /* Allocate the beginning of the transient pool */
-                int entry_size = (1 << 22); /* 4MB */
-
-                ctx->transient_pools[i].entry_size = entry_size;
-                ctx->transient_pools[i].entry_count = 1;
-
-                ctx->transient_pools[i].entries[0] = (struct panfrost_memory_entry *) pb_slab_alloc(&ctx->slabs, entry_size, HEAP_TRANSIENT);
-        }
-
-        panfrost_allocate_slab(ctx, &ctx->cmdstream_persistent, 8 * 64 * 8 * 2, true, 0, 0, 0);
-        panfrost_allocate_slab(ctx, &ctx->scratchpad, 64, false, 0, 0, 0);
-        panfrost_allocate_slab(ctx, &ctx->varying_mem, 16384, false, 0, 0, 0);
-        panfrost_allocate_slab(ctx, &ctx->shaders, 4096, true, BASE_MEM_PROT_GPU_EX, 0, 0);
-        panfrost_allocate_slab(ctx, &ctx->tiler_heap, 32768, false, BASE_MEM_GROW_ON_GPF, 1, 128);
-        panfrost_allocate_slab(ctx, &ctx->misc_0, 128, false, BASE_MEM_GROW_ON_GPF, 1, 128);
-}
-
-static const struct u_transfer_vtbl transfer_vtbl = {
-        .resource_create          = panfrost_resource_create,
-        .resource_destroy         = panfrost_resource_destroy,
-        .transfer_map             = panfrost_transfer_map,
-        .transfer_unmap           = panfrost_transfer_unmap,
-        .transfer_flush_region    = u_default_transfer_flush_region,
-        //.get_internal_format      = panfrost_resource_get_internal_format,
-        //.set_stencil              = panfrost_resource_set_stencil,
-        //.get_stencil              = panfrost_resource_get_stencil,
-};
-
 static struct pb_slab *
 panfrost_slab_alloc(void *priv, unsigned heap, unsigned entry_size, unsigned group_index)
 {
@@ -3047,6 +3027,55 @@ panfrost_slab_free(void *priv, struct pb_slab *slab)
         //struct panfrost_memory *mem = (struct panfrost_memory *) slab;
         printf("stub: Tried to free slab\n");
 }
+
+static void
+panfrost_setup_hardware(struct panfrost_context *ctx)
+{
+        struct pipe_context *gallium = (struct pipe_context *) ctx;
+        struct panfrost_screen *screen = panfrost_screen(gallium->screen);
+
+        pandev_open(screen->fd);
+
+        pb_slabs_init(&ctx->slabs,
+                        MIN_SLAB_ENTRY_SIZE,
+                        MAX_SLAB_ENTRY_SIZE,
+
+                        3, /* Number of heaps */
+
+                        ctx,
+
+                        panfrost_slab_can_reclaim,
+                        panfrost_slab_alloc,
+                        panfrost_slab_free);
+
+        for (int i = 0; i < ARRAY_SIZE(ctx->transient_pools); ++i) {
+                /* Allocate the beginning of the transient pool */
+                int entry_size = (1 << 22); /* 4MB */
+
+                ctx->transient_pools[i].entry_size = entry_size;
+                ctx->transient_pools[i].entry_count = 1;
+
+                ctx->transient_pools[i].entries[0] = (struct panfrost_memory_entry *) pb_slab_alloc(&ctx->slabs, entry_size, HEAP_TRANSIENT);
+        }
+
+        panfrost_allocate_slab(ctx, &ctx->cmdstream_persistent, 8 * 64 * 8 * 2, true, 0, 0, 0);
+        panfrost_allocate_slab(ctx, &ctx->scratchpad, 64, false, 0, 0, 0);
+        panfrost_allocate_slab(ctx, &ctx->varying_mem, 16384, false, 0, 0, 0);
+        panfrost_allocate_slab(ctx, &ctx->shaders, 4096, true, BASE_MEM_PROT_GPU_EX, 0, 0);
+        panfrost_allocate_slab(ctx, &ctx->tiler_heap, 32768, false, BASE_MEM_GROW_ON_GPF, 1, 128);
+        panfrost_allocate_slab(ctx, &ctx->misc_0, 128, false, BASE_MEM_GROW_ON_GPF, 1, 128);
+}
+
+static const struct u_transfer_vtbl transfer_vtbl = {
+        .resource_create          = panfrost_resource_create,
+        .resource_destroy         = panfrost_resource_destroy,
+        .transfer_map             = panfrost_transfer_map,
+        .transfer_unmap           = panfrost_transfer_unmap,
+        .transfer_flush_region    = u_default_transfer_flush_region,
+        //.get_internal_format      = panfrost_resource_get_internal_format,
+        //.set_stencil              = panfrost_resource_set_stencil,
+        //.get_stencil              = panfrost_resource_get_stencil,
+};
 
 /* New context creation, which also does hardware initialisation since I don't
  * know the better way to structure this :smirk: */
@@ -3142,11 +3171,12 @@ panfrost_create_context(struct pipe_screen *screen, void *priv, unsigned flags)
         gallium->end_query = panfrost_end_query;
         gallium->get_query_result = panfrost_get_query_result;
 
-
         gallium->blit = panfrost_blit;
 
         gallium->flush_resource = panfrost_flush_resource;
         gallium->invalidate_resource = panfrost_invalidate_resource;
+
+        panfrost_setup_hardware(ctx);
 
         /* XXX: leaks */
         gallium->stream_uploader = u_upload_create_default(gallium);
@@ -3160,20 +3190,7 @@ panfrost_create_context(struct pipe_screen *screen, void *priv, unsigned flags)
         ctx->blitter = util_blitter_create(gallium);
         assert(ctx->blitter);
 
-        pb_slabs_init(&ctx->slabs,
-                        MIN_SLAB_ENTRY_SIZE,
-                        MAX_SLAB_ENTRY_SIZE,
-
-                        2, /* Number of heaps */
-
-                        ctx,
-
-                        panfrost_slab_can_reclaim,
-                        panfrost_slab_alloc,
-                        panfrost_slab_free);
-
         /* Prepare for render! */
-        panfrost_setup_hardware(ctx);
 
         /* TODO: XXX */
         ctx->vt_framebuffer = panfrost_emit_fbd(ctx);

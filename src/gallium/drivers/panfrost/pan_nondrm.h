@@ -61,6 +61,11 @@ panfrost_shader_compile(struct panfrost_context *ctx, struct mali_shader_meta *m
 
 #define HEAP_TRANSIENT 1
 
+/* Multi-frame descriptor memory (replaces what used to be
+ * cmdstream_persistent), for long-living small allocations */
+
+#define HEAP_DESCRIPTOR 2
+
 /* Represents a fat pointer for GPU-mapped memory, returned from the transient
  * allocator and not used for much else */
 
