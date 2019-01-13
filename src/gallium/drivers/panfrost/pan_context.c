@@ -544,12 +544,10 @@ panfrost_viewport(struct panfrost_context *ctx,
 /* Reset per-frame context, called on context initialisation as well as after
  * flushing a frame */
 
-static int last_persistent_stack = 0;
 static void
 panfrost_invalidate_frame(struct panfrost_context *ctx)
 {
-	printf("Uploaded transient %d bytes and persistent %d bytes, \n", ctx->transient_pools[ctx->cmdstream_i].entry_index*ctx->transient_pools[0].entry_size + ctx->transient_pools[ctx->cmdstream_i].entry_offset, ctx->cmdstream_persistent.stack_bottom - last_persistent_stack);
-        last_persistent_stack = ctx->cmdstream_persistent.stack_bottom;
+	printf("Uploaded transient %d bytes \n", ctx->transient_pools[ctx->cmdstream_i].entry_index*ctx->transient_pools[0].entry_size + ctx->transient_pools[ctx->cmdstream_i].entry_offset);
 
         /* Rotate cmdstream */
         if ((++ctx->cmdstream_i) == (sizeof(ctx->transient_pools) / sizeof(ctx->transient_pools[0])))
@@ -3046,7 +3044,6 @@ panfrost_setup_hardware(struct panfrost_context *ctx)
                 ctx->transient_pools[i].entries[0] = (struct panfrost_memory_entry *) pb_slab_alloc(&ctx->slabs, entry_size, HEAP_TRANSIENT);
         }
 
-        panfrost_allocate_slab(ctx, &ctx->cmdstream_persistent, 8 * 64 * 8 * 2, true, 0, 0, 0);
         panfrost_allocate_slab(ctx, &ctx->scratchpad, 64, false, 0, 0, 0);
         panfrost_allocate_slab(ctx, &ctx->varying_mem, 16384, false, 0, 0, 0);
         panfrost_allocate_slab(ctx, &ctx->shaders, 4096, true, BASE_MEM_PROT_GPU_EX, 0, 0);
