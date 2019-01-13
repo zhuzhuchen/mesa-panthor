@@ -2555,9 +2555,8 @@ inline_alu_constants(compiler_context *ctx)
                 CONDITIONAL_ATTACH(src0);
 
                 if (!alu->has_constants) {
-                        if (!alu->ssa_args.inline_constant)
-                                CONDITIONAL_ATTACH(src1)
-                        } else if (!alu->ssa_args.inline_constant) {
+                        CONDITIONAL_ATTACH(src1)
+                } else {
                         /* Corner case: _two_ vec4 constants, for instance with a
                          * csel. For this case, we can only use a constant
                          * register for one, we'll have to emit a move for the
@@ -2581,7 +2580,7 @@ inline_alu_constants(compiler_context *ctx)
                                 alu->ssa_args.src1 = 4096 + alu->ssa_args.src1;
 
                                 /* Inject us -before- the last instruction which set r31 */
-                                //mir_insert_instruction_before(mir_prev_op(alu), ins);
+                                mir_insert_instruction_before(mir_prev_op(alu), ins);
                         }
                 }
         }
