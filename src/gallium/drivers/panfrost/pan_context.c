@@ -2291,6 +2291,18 @@ panfrost_resource_create_front(struct pipe_screen *screen,
 
         if (template->depth0) sz *= template->depth0;
 
+        /* Make sure we're familiar */
+        switch (template->target) {
+                case PIPE_BUFFER:
+                case PIPE_TEXTURE_1D:
+                case PIPE_TEXTURE_2D:
+                case PIPE_TEXTURE_RECT:
+                        break;
+                default:
+                        fprintf(stderr, "Unknown texture target %d\n", template->target);
+                        assert(0);
+        }
+
         if ((template->bind & PIPE_BIND_RENDER_TARGET) || (template->bind & PIPE_BIND_DEPTH_STENCIL)) {
                 if (template->bind & PIPE_BIND_DISPLAY_TARGET ||
                     template->bind & PIPE_BIND_SCANOUT ||
