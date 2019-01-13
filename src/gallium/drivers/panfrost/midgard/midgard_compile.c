@@ -2556,7 +2556,7 @@ inline_alu_constants(compiler_context *ctx)
 
                 if (!alu->has_constants) {
                         CONDITIONAL_ATTACH(src1)
-                } else {
+                } else if (!alu->inline_constant) {
                         /* Corner case: _two_ vec4 constants, for instance with a
                          * csel. For this case, we can only use a constant
                          * register for one, we'll have to emit a move for the
@@ -2568,16 +2568,17 @@ inline_alu_constants(compiler_context *ctx)
                          */
 
                         void *entry = _mesa_hash_table_u64_search(ctx->ssa_constants, alu->ssa_args.src1 + 1);
+                        unsigned scratch = alu->ssa_args.dest;
 
                         if (entry) {
-                                midgard_instruction ins = v_fmov(SSA_FIXED_REGISTER(REGISTER_CONSTANT), blank_alu_src, 4096 + alu->ssa_args.src1);
+                                midgard_instruction ins = v_fmov(SSA_FIXED_REGISTER(REGISTER_CONSTANT), blank_alu_src, scratch);
                                 attach_constants(ctx, &ins, entry, alu->ssa_args.src1 + 1);
 
                                 /* Force a break XXX Defer r31 writes */
                                 ins.unit = UNIT_VLUT;
 
                                 /* Set the source */
-                                alu->ssa_args.src1 = 4096 + alu->ssa_args.src1;
+                                alu->ssa_args.src1 = scratch;
 
                                 /* Inject us -before- the last instruction which set r31 */
                                 mir_insert_instruction_before(mir_prev_op(alu), ins);
