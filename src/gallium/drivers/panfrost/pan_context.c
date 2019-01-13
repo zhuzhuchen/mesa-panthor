@@ -2361,6 +2361,8 @@ panfrost_resource_create_front(struct pipe_screen *screen,
                 } else {
                         /* But for linear, we can! */
 
+#if 0
+
                         struct panfrost_memory slab;
                         panfrost_allocate_slab(pscreen->any_context,
                                                &slab, (sz / 4096) + 1,
@@ -2369,6 +2371,15 @@ panfrost_resource_create_front(struct pipe_screen *screen,
                         /* Make the resource out of the slab */
                         so->cpu[0] = slab.cpu;
                         so->gpu[0] = slab.gpu;
+#endif
+
+                        struct pb_slab_entry *entry = pb_slab_alloc(&pscreen->any_context->slabs, sz, HEAP_TEXTURE);
+                        struct panfrost_memory_entry *p_entry = (struct panfrost_memory_entry *) entry;
+                        struct panfrost_memory *backing = (struct panfrost_memory *) entry->slab;
+                        so->cpu[0] = backing->cpu + p_entry->offset;
+                        so->gpu[0] = backing->gpu + p_entry->offset;
+
+                        /* TODO: Mipmap */
                 }
         }
 
@@ -2388,6 +2399,8 @@ static void
 panfrost_resource_destroy(struct pipe_screen *screen,
                           struct pipe_resource *pt)
 {
+        struct panfrost_screen *pscreen = panfrost_screen(screen);
+        struct panfrost_context *ctx = pscreen->any_context;
         struct panfrost_resource *rsrc = (struct panfrost_resource *) pt;
 
         if (rsrc->tiled) {
@@ -2396,9 +2409,11 @@ panfrost_resource_destroy(struct pipe_screen *screen,
                 for (int l = 0; l < (rsrc->base.last_level + 1); ++l) {
                         free(rsrc->cpu[l]);
                 }
+        } else if (rsrc->entry[0] != NULL) {
+                rsrc->entry[0]->freed = true;
+                pb_slab_free(&ctx->slabs, &rsrc->entry[0]->base);
         } else {
                 /* TODO */
-                printf("--leaking slab--\n");
         }
 
         if (rsrc->has_afbc) {
