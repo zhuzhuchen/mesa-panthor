@@ -1753,7 +1753,7 @@ panfrost_draw_vbo(
                 ctx->payload_vertex.draw_start = min_index;
                 ctx->payload_tiler.draw_start = min_index;
 
-                ctx->payload_tiler.prefix.negative_start = /*-info->start*/ -min_index;
+                ctx->payload_tiler.prefix.negative_start = -min_index;
                 ctx->payload_tiler.prefix.index_count = MALI_POSITIVE(info->count);
 
                 //assert(!info->restart_index); /* TODO: Research */
