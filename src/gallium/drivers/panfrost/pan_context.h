@@ -65,7 +65,7 @@ struct prim_convert_context;
 #define PAN_DIRTY_VS	     (1 << 4)
 #define PAN_DIRTY_VERTEX     (1 << 5)
 #define PAN_DIRTY_VERT_BUF   (1 << 6)
-#define PAN_DIRTY_VIEWPORT   (1 << 7)
+//#define PAN_DIRTY_VIEWPORT   (1 << 7)
 #define PAN_DIRTY_SAMPLERS   (1 << 8)
 #define PAN_DIRTY_TEXTURES   (1 << 9)
 

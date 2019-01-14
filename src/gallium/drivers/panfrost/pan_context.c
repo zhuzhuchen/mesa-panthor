@@ -608,7 +608,7 @@ panfrost_emit_tiler_payload(struct panfrost_context *ctx)
 
         /* Reserve the viewport */
         struct panfrost_transfer t = panfrost_allocate_chunk(ctx, sizeof(struct mali_viewport), HEAP_DESCRIPTOR);
-        ctx->viewport = t.cpu;
+        ctx->viewport = (struct mali_viewport *) t.cpu;
         payload.postfix.viewport = t.gpu;
 
         memcpy(&ctx->payload_tiler, &payload, sizeof(payload));
@@ -1628,6 +1628,26 @@ panfrost_get_index_buffer_raw(const struct pipe_draw_info *info)
         }
 }
 
+/* Gets a GPU address for the associated index buffer. Only gauranteed to be
+ * good for the duration of the draw (transient), could last longer */
+
+static mali_ptr
+panfrost_get_index_buffer_mapped(struct panfrost_context *ctx, const struct pipe_draw_info *info)
+{
+        struct panfrost_resource *rsrc = (struct panfrost_resource *) (info->index.resource);
+
+        off_t offset = info->start * info->index_size;
+
+        if (!info->has_user_indices) {
+                /* Only resources can be directly mapped */
+                return rsrc->gpu[0] + offset;
+        } else {
+                /* Otherwise, we need to upload to transient memory */
+                const uint8_t *ibuf8 = panfrost_get_index_buffer_raw(info);
+                return panfrost_upload_transient(ctx, ibuf8 + offset, info->count * info->index_size);
+        }
+}
+
 bool needs_dummy_draw = true;
 
 static void
@@ -1745,8 +1765,7 @@ panfrost_draw_vbo(
                 //assert(!info->min_index); /* TODO: Use value */
 
                 ctx->payload_tiler.prefix.unknown_draw |= panfrost_translate_index_size(info->index_size);
-
-                ctx->payload_tiler.prefix.indices = panfrost_upload_transient(ctx, ibuf8 + (info->start * info->index_size), info->count * info->index_size);
+                ctx->payload_tiler.prefix.indices = panfrost_get_index_buffer_mapped(ctx, info);
         } else {
                 /* Index count == vertex count, if no indexing is applied, as
                  * if it is internally indexed in the expected order */
