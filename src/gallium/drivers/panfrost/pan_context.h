@@ -176,7 +176,7 @@ struct panfrost_context {
 
         unsigned varying_height;
 
-        struct mali_viewport viewport;
+        struct mali_viewport *viewport;
         PANFROST_FRAMEBUFFER vt_framebuffer;
 
         /* TODO: Multiple uniform buffers (index =/= 0), finer updates? */

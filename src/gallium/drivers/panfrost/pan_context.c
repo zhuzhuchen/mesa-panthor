@@ -537,8 +537,7 @@ panfrost_viewport(struct panfrost_context *ctx,
                 .viewport1 = { MALI_POSITIVE(viewport_x1), MALI_POSITIVE(viewport_y1) },
         };
 
-        memcpy(&ctx->viewport, &ret, sizeof(ret));
-        ctx->dirty |= PAN_DIRTY_VIEWPORT;
+        memcpy(ctx->viewport, &ret, sizeof(ret));
 }
 
 /* Reset per-frame context, called on context initialisation as well as after
@@ -597,7 +596,7 @@ panfrost_emit_vertex_payload(struct panfrost_context *ctx)
 static void
 panfrost_emit_tiler_payload(struct panfrost_context *ctx)
 {
-        struct midgard_payload_vertex_tiler payload_1 = {
+        struct midgard_payload_vertex_tiler payload = {
                 .prefix = {
                         .workgroups_z_shift = 32,
                         .workgroups_x_shift_2 = 0x2,
@@ -607,7 +606,12 @@ panfrost_emit_tiler_payload(struct panfrost_context *ctx)
                 },
         };
 
-        memcpy(&ctx->payload_tiler, &payload_1, sizeof(payload_1));
+        /* Reserve the viewport */
+        struct panfrost_transfer t = panfrost_allocate_chunk(ctx, sizeof(struct mali_viewport), HEAP_DESCRIPTOR);
+        ctx->viewport = t.cpu;
+        payload.postfix.viewport = t.gpu;
+
+        memcpy(&ctx->payload_tiler, &payload, sizeof(payload));
 }
 
 static unsigned
@@ -1178,12 +1182,6 @@ panfrost_emit_for_draw(struct panfrost_context *ctx, bool with_vertex_data)
 
         if (ctx->dirty & PAN_DIRTY_VERTEX) {
                 ctx->payload_vertex.postfix.attribute_meta = ctx->vertex->descriptor_ptr;
-        }
-
-        ctx->dirty |= PAN_DIRTY_VIEWPORT; /* TODO: Viewport dirty track */
-
-        if (ctx->dirty & PAN_DIRTY_VIEWPORT) {
-                ctx->payload_tiler.postfix.viewport = panfrost_upload_transient(ctx, &ctx->viewport, sizeof(struct mali_viewport));
         }
 
         if (ctx->dirty & PAN_DIRTY_SAMPLERS) {
@@ -1783,19 +1781,16 @@ panfrost_set_scissor(struct panfrost_context *ctx)
         const struct pipe_scissor_state *ss = &ctx->scissor;
 
         if (ss && ctx->rasterizer && ctx->rasterizer->base.scissor && 0) {
-                ctx->viewport.viewport0[0] = ss->minx;
-                ctx->viewport.viewport0[1] = ss->miny;
-                ctx->viewport.viewport1[0] = MALI_POSITIVE(ss->maxx);
-                ctx->viewport.viewport1[1] = MALI_POSITIVE(ss->maxy);
+                ctx->viewport->viewport0[0] = ss->minx;
+                ctx->viewport->viewport0[1] = ss->miny;
+                ctx->viewport->viewport1[0] = MALI_POSITIVE(ss->maxx);
+                ctx->viewport->viewport1[1] = MALI_POSITIVE(ss->maxy);
         } else {
-                ctx->viewport.viewport0[0] = 0;
-                ctx->viewport.viewport0[1] = 0;
-                ctx->viewport.viewport1[0] = MALI_POSITIVE(ctx->pipe_framebuffer.width);
-                ctx->viewport.viewport1[1] = MALI_POSITIVE(ctx->pipe_framebuffer.height);
-
+                ctx->viewport->viewport0[0] = 0;
+                ctx->viewport->viewport0[1] = 0;
+                ctx->viewport->viewport1[0] = MALI_POSITIVE(ctx->pipe_framebuffer.width);
+                ctx->viewport->viewport1[1] = MALI_POSITIVE(ctx->pipe_framebuffer.height);
         }
-
-        ctx->dirty |= PAN_DIRTY_VIEWPORT;
 }
 
 static void *
