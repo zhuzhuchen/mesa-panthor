@@ -1313,7 +1313,6 @@ panfrost_emit_for_draw(struct panfrost_context *ctx, bool with_vertex_data)
 
                         /* Also attach the same buffer as a UBO for extended access */
 
-
                         struct mali_uniform_buffer_meta uniform_buffers[] = {
                                 {
                                         .size = MALI_POSITIVE((2 + uniform_count)),
@@ -1328,7 +1327,6 @@ panfrost_emit_for_draw(struct panfrost_context *ctx, bool with_vertex_data)
                         buf->dirty = 0;
                 }
         }
-
 
         ctx->dirty = 0;
 }
@@ -1728,9 +1726,7 @@ panfrost_draw_vbo(
                 /* Calculate the min/max index used so we can figure out how
                  * many times to invoke the vertex shader */
 
-
                 const uint8_t *ibuf8 = panfrost_get_index_buffer_raw(info);
-
 
                 int min_index = INT_MAX;
                 int max_index = 0;
@@ -1780,7 +1776,6 @@ panfrost_draw_vbo(
 
         ctx->payload_vertex.prefix.invocation_count = MALI_POSITIVE(invocation_count);
         ctx->payload_tiler.prefix.invocation_count = MALI_POSITIVE(invocation_count);
-
 
         /* Fire off the draw itself */
         panfrost_queue_draw(ctx);
@@ -2048,7 +2043,6 @@ panfrost_bind_fs_state(
 
                         variants->variants[variant].tripipe = (struct mali_shader_meta *) transfer.cpu;
                         variants->variants[variant].tripipe_gpu = transfer.gpu;
-
 
                 }
 
