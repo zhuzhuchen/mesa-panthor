@@ -2376,6 +2376,7 @@ panfrost_resource_create_front(struct pipe_screen *screen,
                         struct pb_slab_entry *entry = pb_slab_alloc(&pscreen->any_context->slabs, sz, HEAP_TEXTURE);
                         struct panfrost_memory_entry *p_entry = (struct panfrost_memory_entry *) entry;
                         struct panfrost_memory *backing = (struct panfrost_memory *) entry->slab;
+                        so->entry[0] = p_entry;
                         so->cpu[0] = backing->cpu + p_entry->offset;
                         so->gpu[0] = backing->gpu + p_entry->offset;
 
@@ -2413,7 +2414,7 @@ panfrost_resource_destroy(struct pipe_screen *screen,
                 rsrc->entry[0]->freed = true;
                 pb_slab_free(&ctx->slabs, &rsrc->entry[0]->base);
         } else {
-                /* TODO */
+                printf("--leaking main allocation--\n");
         }
 
         if (rsrc->has_afbc) {
