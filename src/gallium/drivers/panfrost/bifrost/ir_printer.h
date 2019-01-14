@@ -21,35 +21,12 @@
  * SOFTWARE.
  */
 
-#ifndef __bifrost_compile_h__
-#define __bifrost_compile_h__
+#ifndef __ir_printer_h__
+#define __ir_printer_h__
+struct bifrost_instruction;
+struct bifrost_block;
 
-#include "compiler/nir/nir.h"
-
-struct bifrost_program {
-};
-
-int
-bifrost_compile_shader_nir(nir_shader *nir, struct bifrost_program *program);
-
-static const nir_shader_compiler_options bifrost_nir_options = {
-        .lower_ffma = true,
-        .lower_sub = true,
-        .lower_fpow = true,
-        .lower_scmp = true,
-        .lower_flrp32 = true,
-        .lower_flrp64 = true,
-        .lower_ffract = true,
-        .lower_fmod32 = true,
-        .lower_fmod64 = true,
-        .lower_fdiv = true,
-        .lower_idiv = true,
-
-        .vertex_id_zero_based = true,
-        .lower_extract_byte = true,
-        .lower_extract_word = true,
-
-        .native_integers = true
-};
+void print_mir_instruction(struct bifrost_instruction *ins);
+void print_mir_block(struct bifrost_block *block);
 
 #endif

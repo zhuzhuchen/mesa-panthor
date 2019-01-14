@@ -30,6 +30,7 @@
 #include <inttypes.h>
 #include <string.h>
 
+#include "bifrost.h"
 #include "disassemble.h"
 #include "util/macros.h"
 
@@ -45,18 +46,18 @@ static uint64_t bits(uint32_t word, unsigned lo, unsigned high)
 // cycle. Note that these instructions are packed in funny ways within the
 // clause, hence the need for a separate struct.
 struct bifrost_alu_inst {
+        uint32_t fma_bits;
+        uint32_t add_bits;
         uint64_t reg_bits;
-        uint64_t fma_bits;
-        uint64_t add_bits;
 };
 
 struct bifrost_regs {
-        uint32_t uniform_const : 8;
-        uint32_t reg2 : 6;
-        uint32_t reg3 : 6;
-        uint32_t reg0 : 5;
-        uint32_t reg1 : 6;
-        uint32_t ctrl : 4;
+        unsigned uniform_const : 8;
+        unsigned reg2 : 6;
+        unsigned reg3 : 6;
+        unsigned reg0 : 5;
+        unsigned reg1 : 6;
+        unsigned ctrl : 4;
 };
 
 static unsigned get_reg0(struct bifrost_regs regs)
@@ -88,11 +89,6 @@ struct bifrost_reg_ctrl{
         bool clause_start;
 };
 
-struct fma_inst {
-        uint64_t src0 : 3;
-        uint64_t op : 20;
-};
-
 enum fma_src_type {
         FMA_ONE_SRC,
         FMA_TWO_SRC,
@@ -114,11 +110,6 @@ struct fma_op_info {
         unsigned op;
         char name[30];
         enum fma_src_type src_type;
-};
-
-struct bifrost_add_inst {
-        uint64_t src0 : 3;
-        uint64_t op : 17;
 };
 
 enum add_src_type {
@@ -214,53 +205,10 @@ enum branch_code {
         BR_ALWAYS = 63,
 };
 
-struct bifrost_header {
-        uint64_t unk0 : 7;
-        // If true, convert any infinite result of any floating-point operation to
-        // the biggest representable number.
-        uint64_t suppress_inf: 1;
-        // Convert any NaN results to 0.
-        uint64_t suppress_nan : 1;
-        uint64_t unk1 : 2;
-        // true if the execution mask of the next clause is the same as the mask of
-        // the current clause.
-        uint64_t back_to_back : 1;
-        uint64_t no_end_of_shader: 1;
-        uint64_t unk2 : 2;
-        // Set to true for fragment shaders, to implement this bit of spec text
-        // from section 7.1.5 of the GLSL ES spec:
-        //
-        // "Stores to image and buffer variables performed by helper invocations
-        // have no effect on the underlying image or buffer memory."
-        //
-        // Helper invocations are threads (invocations) corresponding to pixels in
-        // a quad that aren't actually part of the triangle, but are included to
-        // make derivatives work correctly. They're usually turned on, but they
-        // need to be masked off for GLSL-level stores. This bit seems to be the
-        // only bit that's actually different between fragment shaders and other
-        // shaders, so this is probably what it's doing.
-        uint64_t elide_writes : 1;
-        // If backToBack is off:
-        // - true for conditional branches and fallthrough
-        // - false for unconditional branches
-        // The blob seems to always set it to true if back-to-back is on.
-        uint64_t branch_cond : 1;
-        // This bit is set when the next clause writes to the data register of some
-        // previous clause.
-        uint64_t datareg_writebarrier: 1;
-        uint64_t datareg : 6;
-        uint64_t scoreboard_deps: 8;
-        uint64_t scoreboard_index: 3;
-        uint32_t clause_type: 4;
-        uint64_t unk3 : 1; // part of clauseType?
-        uint32_t next_clause_type: 4;
-        uint64_t unk4 : 1; // part of nextClauseType?
-};
-
 void dump_header(struct bifrost_header header);
 void dump_instr(const struct bifrost_alu_inst *instr, struct bifrost_regs next_regs, uint64_t *consts,
                 unsigned data_reg, unsigned offset);
-void dump_clause(uint32_t *words, unsigned *size, unsigned offset);
+bool dump_clause(uint32_t *words, unsigned *size, unsigned offset);
 
 void dump_header(struct bifrost_header header) {
         if (header.clause_type != 0) {
@@ -940,8 +888,8 @@ static void dump_fma_expand_src1(unsigned ctrl)
 static void dump_fma(uint64_t word, struct bifrost_regs regs, struct bifrost_regs next_regs, uint64_t *consts)
 {
         printf("# FMA: %016" PRIx64 "\n", word);
-        struct fma_inst FMA;
-        memcpy((char *) &FMA, (char *) &word, sizeof(struct fma_inst));
+        struct bifrost_fma_inst FMA;
+        memcpy((char *) &FMA, (char *) &word, sizeof(struct bifrost_fma_inst));
         struct fma_op_info info = find_fma_op_info(FMA.op);
 
         printf("%s", info.name);
@@ -2034,13 +1982,14 @@ void dump_instr(const struct bifrost_alu_inst *instr, struct bifrost_regs next_r
         dump_add(instr->add_bits, regs, next_regs, consts, data_reg, offset);
 }
 
-void dump_clause(uint32_t *words, unsigned *size, unsigned offset) {
+bool dump_clause(uint32_t *words, unsigned *size, unsigned offset) {
         // State for a decoded clause
         struct bifrost_alu_inst instrs[8] = {};
         uint64_t consts[6] = {};
         unsigned num_instrs = 0;
         unsigned num_consts = 0;
         uint64_t header_bits = 0;
+        bool stopbit = false;
 
         unsigned i;
         for (i = 0; ; i++, words += 4) {
@@ -2121,19 +2070,6 @@ void dump_clause(uint32_t *words, unsigned *size, unsigned offset) {
                                                         printf("unknown tag bits 0x%02x\n", tag);
                                         }
                                         break;
-                                case 0x1:
-                                        header_bits = bits(words[2], 19, 32) | ((uint64_t) words[3] << (32 - 19));
-                                        main_instr.add_bits |= (tag & 0x7) << 17;
-                                        instrs[0] = main_instr;
-                                        num_instrs = 1;
-                                        done = stop;
-                                        // only constants can come after this
-                                        break;
-                                case 0x5:
-                                        header_bits = bits(words[2], 19, 32) | ((uint64_t) words[3] << (32 - 19));
-                                        main_instr.add_bits |= (tag & 0x7) << 17;
-                                        instrs[0] = main_instr;
-                                        break;
                                 case 0x2:
                                 case 0x3: {
                                                   unsigned idx = ((tag >> 3) & 0x7) == 2 ? 4 : 7;
@@ -2153,6 +2089,15 @@ void dump_clause(uint32_t *words, unsigned *size, unsigned offset) {
                                                   instrs[idx + 1].reg_bits = bits(words[2], 19, 32) | (bits(words[3], 0, 22) << (32 - 19));
                                                   break;
                                           }
+                                case 0x1:
+                                        // only constants can come after this
+                                        num_instrs = 1;
+                                        done = stop;
+                                case 0x5:
+                                        header_bits = bits(words[2], 19, 32) | ((uint64_t) words[3] << (32 - 19));
+                                        main_instr.add_bits |= (tag & 0x7) << 17;
+                                        instrs[0] = main_instr;
+                                        break;
                                 case 0x6:
                                 case 0x7: {
                                                   unsigned pos = tag & 0xf;
@@ -2213,6 +2158,8 @@ void dump_clause(uint32_t *words, unsigned *size, unsigned offset) {
         struct bifrost_header header;
         memcpy((char *) &header, (char *) &header_bits, sizeof(struct bifrost_header));
         dump_header(header);
+        if (!header.no_end_of_shader)
+                stopbit = true;
 
         printf("{\n");
         for (i = 0; i < num_instrs; i++) {
@@ -2233,6 +2180,7 @@ void dump_clause(uint32_t *words, unsigned *size, unsigned offset) {
                 printf("# const%d: %08lx\n", 2 * i, consts[i] & 0xffffffff);
                 printf("# const%d: %08" PRIx64 "\n", 2 * i + 1, consts[i] >> 32);
         }
+        return stopbit;
 }
 
 void disassemble_bifrost(uint8_t *code, size_t size)
@@ -2250,8 +2198,11 @@ void disassemble_bifrost(uint8_t *code, size_t size)
                         break;
                 printf("clause_%d:\n", offset);
                 unsigned size;
-                dump_clause(words, &size, offset);
+                if (dump_clause(words, &size, offset) == true) {
+                        break;
+                }
                 words += size * 4;
                 offset += size;
         }
 }
+
