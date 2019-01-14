@@ -1905,6 +1905,13 @@ panfrost_bind_vertex_elements_state(
         ctx->dirty |= PAN_DIRTY_VERTEX;
 }
 
+static void
+panfrost_delete_vertex_elements_state(struct pipe_context *pctx, void *hwcso)
+{
+        printf("Vertex elements delete leaks descriptor\n");
+        free(hwcso);
+}
+
 static void *
 panfrost_create_shader_state(
         struct pipe_context *pctx,
@@ -1926,6 +1933,7 @@ panfrost_delete_shader_state(
         struct pipe_context *pctx,
         void *so)
 {
+        printf("Deleting shader state maybe leaks tokens, per-variant compiled shaders, per-variant  descriptors\n");
         free(so);
 }
 
@@ -2628,6 +2636,7 @@ static void
 panfrost_delete_blend_state(struct pipe_context *pipe,
                             void *blend)
 {
+        printf("Deleting blend state may leak blend shader\n");
         free(blend);
 }
 
@@ -3162,7 +3171,7 @@ panfrost_create_context(struct pipe_screen *screen, void *priv, unsigned flags)
 
         gallium->create_vertex_elements_state = panfrost_create_vertex_elements_state;
         gallium->bind_vertex_elements_state = panfrost_bind_vertex_elements_state;
-        gallium->delete_vertex_elements_state = panfrost_generic_cso_delete;
+        gallium->delete_vertex_elements_state = panfrost_delete_vertex_elements_state;
 
         gallium->create_fs_state = panfrost_create_shader_state;
         gallium->delete_fs_state = panfrost_delete_shader_state;
