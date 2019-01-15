@@ -42,6 +42,7 @@ struct panfrost_screen {
 
         struct renderonly *ro;
         int fd;
+        bool is_drm;
 
         struct panfrost_context *any_context;
         

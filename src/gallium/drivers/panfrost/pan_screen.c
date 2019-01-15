@@ -806,7 +806,7 @@ panfrost_resource_get_handle(struct pipe_screen *pscreen,
 }
 
 struct pipe_screen *
-panfrost_create_screen(int fd, struct renderonly *ro)
+panfrost_create_screen(int fd, struct renderonly *ro, bool is_drm)
 {
         struct panfrost_screen *screen = CALLOC_STRUCT(panfrost_screen);
 
@@ -822,6 +822,8 @@ panfrost_create_screen(int fd, struct renderonly *ro)
                         return NULL;
                 }
         }
+
+        screen->is_drm = is_drm;
 
         screen->base.destroy = panfrost_destroy_screen;
 

@@ -24,10 +24,12 @@
 #ifndef __PAN_DRM_PUBLIC_H__
 #define __PAN_DRM_PUBLIC_H__
 
+#include <stdbool.h>
+
 struct pipe_screen;
 struct renderonly;
 
 struct pipe_screen *panfrost_drm_screen_create(int drmFD);
-struct pipe_screen *panfrost_drm_screen_create_renderonly(struct renderonly *ro);
+struct pipe_screen *panfrost_drm_screen_create_renderonly(struct renderonly *ro, bool is_drm);
 
 #endif /* __PAN_DRM_PUBLIC_H__ */
