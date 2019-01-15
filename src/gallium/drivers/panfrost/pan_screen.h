@@ -36,6 +36,7 @@
 #include "renderonly/renderonly.h"
 
 struct panfrost_context;
+struct panfrost_resource;
 
 struct panfrost_screen {
         struct pipe_screen base;
