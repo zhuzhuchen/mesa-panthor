@@ -114,6 +114,7 @@ struct panfrost_context {
         struct panfrost_memory misc_0;
         struct panfrost_memory misc_1;
         struct panfrost_memory depth_stencil_buffer;
+        struct panfrost_memory perf_counters;
 
         struct {
                 unsigned buffers;

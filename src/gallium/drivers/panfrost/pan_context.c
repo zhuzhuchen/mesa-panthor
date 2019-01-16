@@ -65,6 +65,12 @@ panfrost_allocate_slab(struct panfrost_context *ctx,
 
 static bool USE_TRANSACTION_ELIMINATION = false;
 
+#define DUMP_PERFORMANCE_COUNTERS
+
+#ifdef DUMP_PERFORMANCE_COUNTERS
+static int performance_counter_number = 0;
+#endif
+
 /* Do not actually send anything to the GPU; merely generate the cmdstream as fast as possible. Disables framebuffer writes */
 //#define DRY_RUN
 
@@ -1445,6 +1451,14 @@ force_flush_fragment(struct panfrost_context *ctx)
 
                 last_fragment_flushed = true;
         }
+
+#ifdef DUMP_PERFORMANCE_COUNTERS
+        char filename[128];
+        snprintf(filename, sizeof(filename), "/dev/shm/frame%d.mdgprf", ++performance_counter_number);
+        FILE *fp = fopen(filename, "wb");
+        fwrite(ctx->perf_counters.cpu,  256, sizeof(uint32_t), fp);
+        fclose(fp);
+#endif
 }
 
 /* The entire frame is in memory -- send it off to the kernel! */
@@ -1506,6 +1520,11 @@ panfrost_submit_frame(struct panfrost_context *ctx, bool flush_immediate)
 
         atoms[1].core_req |= panfrost_is_scanout(ctx) ? BASE_JD_REQ_EXTERNAL_RESOURCES : BASE_JD_REQ_FS_AFBC;
 
+#ifdef DUMP_PERFORMANCE_COUNTERS
+        atoms[0].core_req |= BASE_JD_REQ_PERMON;
+        atoms[1].core_req |= BASE_JD_REQ_PERMON;
+#endif
+
         /* Copy over core reqs for old kernels */
 
         for (int i = 0; i < 2; ++i)
@@ -1519,6 +1538,14 @@ panfrost_submit_frame(struct panfrost_context *ctx, bool flush_immediate)
 
         if (pandev_ioctl(screen->fd, KBASE_IOCTL_JOB_SUBMIT, &submit))
                 printf("Error submitting\n");
+
+#ifdef DUMP_PERFORMANCE_COUNTERS
+        /* Dump the performance counters */
+        if (pandev_ioctl(screen->fd, KBASE_IOCTL_HWCNT_DUMP, NULL)) {
+                fprintf(stderr, "Error dumping counters\n");
+                return;
+        }
+#endif
 
         /* If visual, we can stall a frame */
 
@@ -3102,6 +3129,23 @@ panfrost_setup_hardware(struct panfrost_context *ctx)
         panfrost_allocate_slab(ctx, &ctx->shaders, 4096, true, BASE_MEM_PROT_GPU_EX, 0, 0);
         panfrost_allocate_slab(ctx, &ctx->tiler_heap, 32768, false, BASE_MEM_GROW_ON_GPF, 1, 128);
         panfrost_allocate_slab(ctx, &ctx->misc_0, 128, false, BASE_MEM_GROW_ON_GPF, 1, 128);
+
+#ifdef DUMP_PERFORMANCE_COUNTERS
+        panfrost_allocate_slab(ctx, &ctx->perf_counters, 64, true, 0, 0, 0);
+
+        struct kbase_ioctl_hwcnt_enable enable_flags = {
+                .dump_buffer = ctx->perf_counters.gpu,
+                .jm_bm = ~0,
+                .shader_bm = ~0,
+                .tiler_bm = ~0,
+                .mmu_l2_bm = ~0
+        };
+
+        if (pandev_ioctl(screen->fd, KBASE_IOCTL_HWCNT_ENABLE, &enable_flags)) {
+                fprintf(stderr, "Error enabling performance counters\n");
+                return;
+        }
+#endif
 }
 
 static const struct u_transfer_vtbl transfer_vtbl = {
