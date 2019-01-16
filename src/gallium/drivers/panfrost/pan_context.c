@@ -65,7 +65,7 @@ panfrost_allocate_slab(struct panfrost_context *ctx,
 
 static bool USE_TRANSACTION_ELIMINATION = false;
 
-#define DUMP_PERFORMANCE_COUNTERS
+//#define DUMP_PERFORMANCE_COUNTERS
 
 #ifdef DUMP_PERFORMANCE_COUNTERS
 static int performance_counter_number = 0;
@@ -1612,6 +1612,8 @@ g2m_draw_mode(enum pipe_prim_type mode)
                 DEFINE_CASE(TRIANGLES);
                 DEFINE_CASE(TRIANGLE_STRIP);
                 DEFINE_CASE(TRIANGLE_FAN);
+                DEFINE_CASE(QUADS);
+                DEFINE_CASE(QUAD_STRIP);
 
         default:
                 printf("Illegal draw mode %d\n", mode);
@@ -1720,6 +1722,7 @@ panfrost_draw_vbo(
 
         /* Fallback for non-ES draw modes */
 
+#if 0
         if (info->mode >= PIPE_PRIM_QUADS) {
                 if (info->mode == PIPE_PRIM_QUADS && info->count == 4 && ctx->rasterizer && !ctx->rasterizer->base.flatshade) {
                         mode = PIPE_PRIM_TRIANGLE_FAN;
@@ -1734,6 +1737,7 @@ panfrost_draw_vbo(
                         return;
                 }
         }
+#endif
 
         ctx->payload_tiler.prefix.draw_mode = g2m_draw_mode(mode);
 
