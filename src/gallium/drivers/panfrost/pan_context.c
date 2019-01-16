@@ -65,7 +65,7 @@ panfrost_allocate_slab(struct panfrost_context *ctx,
 
 static bool USE_TRANSACTION_ELIMINATION = false;
 
-//#define DUMP_PERFORMANCE_COUNTERS
+#define DUMP_PERFORMANCE_COUNTERS
 
 #ifdef DUMP_PERFORMANCE_COUNTERS
 static int performance_counter_number = 0;
