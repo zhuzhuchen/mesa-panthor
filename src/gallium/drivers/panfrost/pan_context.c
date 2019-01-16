@@ -1456,7 +1456,7 @@ force_flush_fragment(struct panfrost_context *ctx)
         char filename[128];
         snprintf(filename, sizeof(filename), "/dev/shm/frame%d.mdgprf", ++performance_counter_number);
         FILE *fp = fopen(filename, "wb");
-        fwrite(screen->perf_counters.cpu,  256, sizeof(uint32_t), fp);
+        fwrite(screen->perf_counters.cpu,  4096, sizeof(uint32_t), fp);
         fclose(fp);
 #endif
 }
@@ -1521,8 +1521,8 @@ panfrost_submit_frame(struct panfrost_context *ctx, bool flush_immediate)
         atoms[1].core_req |= panfrost_is_scanout(ctx) ? BASE_JD_REQ_EXTERNAL_RESOURCES : BASE_JD_REQ_FS_AFBC;
 
 #ifdef DUMP_PERFORMANCE_COUNTERS
-        atoms[0].core_req |= BASE_JD_REQ_PERMON;
-        atoms[1].core_req |= BASE_JD_REQ_PERMON;
+        //atoms[0].core_req |= BASE_JD_REQ_PERMON;
+        //atoms[1].core_req |= BASE_JD_REQ_PERMON;
 #endif
 
         /* Copy over core reqs for old kernels */
