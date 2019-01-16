@@ -34,6 +34,7 @@
 #include "pipe/p_screen.h"
 #include "pipe/p_defines.h"
 #include "renderonly/renderonly.h"
+#include "pan_nondrm.h"
 
 struct panfrost_context;
 
@@ -44,6 +45,8 @@ struct panfrost_screen {
         int fd;
 
         struct panfrost_context *any_context;
+
+        struct panfrost_memory perf_counters;
         
         /* TODO: Where? */
         struct panfrost_resource *display_target;

@@ -77,20 +77,9 @@ pandev_standard_allocate(int fd, int va_pages, int flags,
                                        out_flags);
 }
 
-/* XXX: This is kind of a hack, but pandev_open can be called more than
- * once (e.g. in glmark2-es2-drm), which messes up the kernel. So, do some
- * basic state tracking */
-
-bool fd_already_opened = false;
-
 int
 pandev_open(int fd)
 {
-	if (fd_already_opened) {
-		/* Spurious */
-		return fd;
-	}
-
 #ifdef USE_LEGACY_KERNEL
         struct kbase_ioctl_version_check version = { .major = 11, .minor = 11 };
         struct kbase_ioctl_set_flags set_flags = {};
@@ -115,7 +104,6 @@ pandev_open(int fd)
         }
 
 #endif
-	fd_already_opened = true;
 
         return fd;
 }

@@ -1456,7 +1456,7 @@ force_flush_fragment(struct panfrost_context *ctx)
         char filename[128];
         snprintf(filename, sizeof(filename), "/dev/shm/frame%d.mdgprf", ++performance_counter_number);
         FILE *fp = fopen(filename, "wb");
-        fwrite(ctx->perf_counters.cpu,  256, sizeof(uint32_t), fp);
+        fwrite(screen->perf_counters.cpu,  256, sizeof(uint32_t), fp);
         fclose(fp);
 #endif
 }
@@ -3094,13 +3094,20 @@ panfrost_slab_free(void *priv, struct pb_slab *slab)
         printf("stub: Tried to free slab\n");
 }
 
+/* While Gallium allows multiple contexts, the kernel does not. So do
+ * some basic state tracking */
+
+bool kernel_already_opened = false;
+
 static void
 panfrost_setup_hardware(struct panfrost_context *ctx)
 {
         struct pipe_context *gallium = (struct pipe_context *) ctx;
         struct panfrost_screen *screen = panfrost_screen(gallium->screen);
 
-        pandev_open(screen->fd);
+        if (!kernel_already_opened) {
+                pandev_open(screen->fd);
+        }
 
         pb_slabs_init(&ctx->slabs,
                         MIN_SLAB_ENTRY_SIZE,
@@ -3131,21 +3138,25 @@ panfrost_setup_hardware(struct panfrost_context *ctx)
         panfrost_allocate_slab(ctx, &ctx->misc_0, 128, false, BASE_MEM_GROW_ON_GPF, 1, 128);
 
 #ifdef DUMP_PERFORMANCE_COUNTERS
-        panfrost_allocate_slab(ctx, &ctx->perf_counters, 64, true, 0, 0, 0);
+        if (!kernel_already_opened) {
+                panfrost_allocate_slab(ctx, &screen->perf_counters, 64, true, 0, 0, 0);
 
-        struct kbase_ioctl_hwcnt_enable enable_flags = {
-                .dump_buffer = ctx->perf_counters.gpu,
-                .jm_bm = ~0,
-                .shader_bm = ~0,
-                .tiler_bm = ~0,
-                .mmu_l2_bm = ~0
-        };
+                struct kbase_ioctl_hwcnt_enable enable_flags = {
+                        .dump_buffer = screen->perf_counters.gpu,
+                        .jm_bm = ~0,
+                        .shader_bm = ~0,
+                        .tiler_bm = ~0,
+                        .mmu_l2_bm = ~0
+                };
 
-        if (pandev_ioctl(screen->fd, KBASE_IOCTL_HWCNT_ENABLE, &enable_flags)) {
-                fprintf(stderr, "Error enabling performance counters\n");
-                return;
+                if (pandev_ioctl(screen->fd, KBASE_IOCTL_HWCNT_ENABLE, &enable_flags)) {
+                        fprintf(stderr, "Error enabling performance counters\n");
+                        return;
+                }
         }
 #endif
+
+        kernel_already_opened = true;
 }
 
 static const struct u_transfer_vtbl transfer_vtbl = {
