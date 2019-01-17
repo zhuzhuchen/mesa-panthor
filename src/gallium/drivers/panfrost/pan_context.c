@@ -86,17 +86,19 @@ static bool FORCE_MSAA = true;
 static void
 panfrost_upload_varyings_descriptor(struct panfrost_context *ctx)
 {
+        struct panfrost_varyings *varyings = &ctx->vs->variants[ctx->vs->active_variant].varyings;
+
         /* First, upload gl_Position varyings */
-        mali_ptr gl_Position = panfrost_upload(&ctx->cmdstream_persistent, ctx->vs->varyings.vertex_only_varyings, sizeof(ctx->vs->varyings.vertex_only_varyings), true);
+        mali_ptr gl_Position = panfrost_upload(&ctx->cmdstream_persistent, varyings->vertex_only_varyings, sizeof(varyings->vertex_only_varyings), true);
 
         /* Then, upload normal varyings for vertex shaders */
-        panfrost_upload_sequential(&ctx->cmdstream_persistent, ctx->vs->varyings.varyings, sizeof(ctx->vs->varyings.varyings[0]) * ctx->vs->varyings.varying_count);
+        panfrost_upload_sequential(&ctx->cmdstream_persistent, varyings->varyings, sizeof(varyings->varyings[0]) * varyings->varying_count);
 
         /* Then, upload normal varyings for fragment shaders (duplicating) */
-        mali_ptr varyings_fragment = panfrost_upload_sequential(&ctx->cmdstream_persistent, ctx->vs->varyings.varyings, sizeof(ctx->vs->varyings.varyings[0]) * ctx->vs->varyings.varying_count);
+        mali_ptr varyings_fragment = panfrost_upload_sequential(&ctx->cmdstream_persistent, varyings->varyings, sizeof(varyings->varyings[0]) * varyings->varying_count);
 
         /* Finally, upload gl_FragCoord varying */
-        panfrost_upload_sequential(&ctx->cmdstream_persistent, ctx->vs->varyings.fragment_only_varyings, sizeof(ctx->vs->varyings.fragment_only_varyings[0]) * ctx->vs->varyings.fragment_only_varying_count);
+        panfrost_upload_sequential(&ctx->cmdstream_persistent, varyings->fragment_only_varyings, sizeof(varyings->fragment_only_varyings[0]) * varyings->fragment_only_varying_count);
 
         ctx->payload_vertex.postfix.varying_meta = gl_Position;
         ctx->payload_tiler.postfix.varying_meta = varyings_fragment;
@@ -988,17 +990,33 @@ panfrost_emit_vertex_data(struct panfrost_context *ctx)
         union mali_attr attrs[PIPE_MAX_ATTRIBS];
         union mali_attr varyings[PIPE_MAX_ATTRIBS];
 
+        unsigned invocation_count = MALI_NEGATIVE(ctx->payload_tiler.prefix.invocation_count);
+
         for (int i = 0; i < ctx->vertex_buffer_count; ++i) {
                 struct pipe_vertex_buffer *buf = &ctx->vertex_buffers[i];
                 struct panfrost_resource *rsrc = (struct panfrost_resource *) (buf->buffer.resource);
 
+                /* Let's figure out the layout of the attributes in memory so
+                 * we can be smart about size computation. The idea is to
+                 * figure out the maximum src_offset, which tells us the latest
+                 * spot a vertex could start. Meanwhile, we figure out the size
+                 * of the attribute memory (assuming interleaved
+                 * representation) and tack on the max src_offset for a
+                 * reasonably good upper bound on the size.
+                 *
+                 * Proving correctness is left as an exercise to the reader.
+                 */
+
+                unsigned max_src_offset = 0;
+
+                for (unsigned j = 0; j < ctx->vertex->num_elements; ++j) {
+                        if (ctx->vertex->pipe[j].vertex_buffer_index != i) continue;
+                        max_src_offset = MAX2(max_src_offset, ctx->vertex->pipe[j].src_offset);
+                }
+
                 /* Offset vertex count by draw_start to make sure we upload enough */
                 attrs[i].stride = buf->stride;
-                attrs[i].size = buf->stride * (ctx->payload_vertex.draw_start + ctx->vertex_count);
-
-                /* TODO: The above calculation is wrong. Do it better. For now, force resources */
-                assert(!buf->is_user_buffer);
-                //attrs[i].size = buf->buffer.resource->width0 - buf->buffer_offset;
+                attrs[i].size = buf->stride * (ctx->payload_vertex.draw_start + invocation_count) + max_src_offset;
 
                 /* Vertex elements are -already- GPU-visible, at
                  * rsrc->gpu. However, attribute buffers must be 64 aligned. If
@@ -1013,15 +1031,17 @@ panfrost_emit_vertex_data(struct panfrost_context *ctx)
                 }
         }
 
-        for (int i = 0; i < ctx->vs->varyings.varying_buffer_count; ++i) {
+        struct panfrost_varyings *vars = &ctx->vs->variants[ctx->vs->active_variant].varyings;
+
+        for (int i = 0; i < vars->varying_buffer_count; ++i) {
                 varyings[i].elements = (ctx->varying_mem.gpu + ctx->varying_height) | 1;
-                varyings[i].stride = ctx->vs->varyings.varyings_stride[i];
+                varyings[i].stride = vars->varyings_stride[i];
 
                 /* XXX: Why does adding an extra ~8000 vertices fix missing triangles in glmark2-es2 -bshadow? */
-                varyings[i].size = ctx->vs->varyings.varyings_stride[i] * MALI_NEGATIVE(ctx->payload_tiler.prefix.invocation_count);
+                varyings[i].size = vars->varyings_stride[i] * invocation_count;
 
                 /* gl_Position varying is always last by convention */
-                if ((i + 1) == ctx->vs->varyings.varying_buffer_count)
+                if ((i + 1) == vars->varying_buffer_count)
                         ctx->payload_tiler.postfix.position_varying = ctx->varying_mem.gpu + ctx->varying_height;
 
                 /* Varyings appear to need 64-byte alignment */
@@ -1033,7 +1053,7 @@ panfrost_emit_vertex_data(struct panfrost_context *ctx)
 
         ctx->payload_vertex.postfix.attributes = panfrost_upload_transient(ctx, attrs, ctx->vertex_buffer_count * sizeof(union mali_attr));
 
-        mali_ptr varyings_p = panfrost_upload_transient(ctx, &varyings, ctx->vs->varyings.varying_buffer_count * sizeof(union mali_attr));
+        mali_ptr varyings_p = panfrost_upload_transient(ctx, &varyings, vars->varying_buffer_count * sizeof(union mali_attr));
         ctx->payload_vertex.postfix.varyings = varyings_p;
         ctx->payload_tiler.postfix.varyings = varyings_p;
 }
@@ -1058,14 +1078,16 @@ panfrost_emit_for_draw(struct panfrost_context *ctx, bool with_vertex_data)
         if (ctx->dirty & PAN_DIRTY_VS) {
                 assert(ctx->vs);
 
+                struct panfrost_shader_state *vs = &ctx->vs->variants[ctx->vs->active_variant];
+
                 /* Late shader descriptor assignments */
-                ctx->vs->tripipe.texture_count = ctx->sampler_view_count[PIPE_SHADER_VERTEX];
-                ctx->vs->tripipe.sampler_count = ctx->sampler_count[PIPE_SHADER_VERTEX];
+                vs->tripipe.texture_count = ctx->sampler_view_count[PIPE_SHADER_VERTEX];
+                vs->tripipe.sampler_count = ctx->sampler_count[PIPE_SHADER_VERTEX];
 
                 /* Who knows */
-                ctx->vs->tripipe.midgard1.unknown1 = 0x2201;
+                vs->tripipe.midgard1.unknown1 = 0x2201;
 
-                ctx->payload_vertex.postfix._shader_upper = panfrost_upload(&ctx->cmdstream_persistent, &ctx->vs->tripipe, sizeof(struct mali_shader_meta), true) >> 4;
+                ctx->payload_vertex.postfix._shader_upper = panfrost_upload(&ctx->cmdstream_persistent, &vs->tripipe, sizeof(struct mali_shader_meta), true) >> 4;
 
                 /* Varying descriptor is tied to the vertex shader. Also the
                  * fragment shader, I suppose, but it's generated with the
@@ -1076,7 +1098,9 @@ panfrost_emit_for_draw(struct panfrost_context *ctx, bool with_vertex_data)
 
         if (ctx->dirty & PAN_DIRTY_FS) {
                 assert(ctx->fs);
-#define COPY(name) ctx->fragment_shader_core.name = ctx->fs->tripipe.name
+                struct panfrost_shader_state *variant = &ctx->fs->variants[ctx->fs->active_variant];
+
+#define COPY(name) ctx->fragment_shader_core.name = variant->tripipe.name
 
                 COPY(shader);
                 COPY(attribute_count);
@@ -1110,7 +1134,7 @@ panfrost_emit_for_draw(struct panfrost_context *ctx, bool with_vertex_data)
                  * Is EGL_BUFFER_PRESERVED a good thing?" by Peter Harris
                  */
 
-                if (ctx->fs->can_discard) {
+                if (variant->can_discard) {
                         ctx->fragment_shader_core.unknown2_3 |= MALI_CAN_DISCARD;
                         ctx->fragment_shader_core.midgard1.unknown1 &= ~MALI_NO_ALPHA_TO_COVERAGE;
                         ctx->fragment_shader_core.midgard1.unknown1 |= 0x4000;
@@ -1211,7 +1235,6 @@ panfrost_emit_for_draw(struct panfrost_context *ctx, bool with_vertex_data)
                         uint64_t trampolines[PIPE_MAX_SHADER_SAMPLER_VIEWS];
 
                         for (int i = 0; i < ctx->sampler_view_count[t]; ++i) {
-                                /* XXX: Why does this work? */
                                 if (!ctx->sampler_views[t][i])
                                         continue;
 
@@ -1295,12 +1318,12 @@ panfrost_emit_for_draw(struct panfrost_context *ctx, bool with_vertex_data)
 
                         switch (i) {
                         case PIPE_SHADER_VERTEX:
-                                uniform_count = ctx->vs->uniform_count;
+                                uniform_count = ctx->vs->variants[ctx->vs->active_variant].uniform_count;
                                 postfix = &ctx->payload_vertex.postfix;
                                 break;
 
                         case PIPE_SHADER_FRAGMENT:
-                                uniform_count = ctx->fs->uniform_count;
+                                uniform_count = ctx->fs->variants[ctx->fs->active_variant].uniform_count;
                                 postfix = &ctx->payload_tiler.postfix;
                                 break;
 
@@ -1650,6 +1673,13 @@ panfrost_maybe_dummy_draw(struct panfrost_context *ctx, const struct pipe_draw_i
         dont_scanout = false;
 }
 
+#define CALCULATE_MIN_MAX_INDEX(T, buffer, start, count) \
+        for (unsigned _idx = (start); _idx < (start + count); ++_idx) { \
+                T idx = buffer[_idx]; \
+                if (idx > max_index) max_index = idx; \
+                if (idx < min_index) min_index = idx; \
+        }
+
 static void
 panfrost_draw_vbo(
         struct pipe_context *pipe,
@@ -1667,22 +1697,26 @@ panfrost_draw_vbo(
         /* Fallback for non-ES draw modes */
 
         if (info->mode >= PIPE_PRIM_QUADS) {
-                printf("XXX: Missing non-ES draw mode\n");
-                mode = PIPE_PRIM_TRIANGLE_FAN;
-                /*
-                util_primconvert_save_rasterizer_state(ctx->primconvert, &ctx->rasterizer->base);
-                util_primconvert_draw_vbo(ctx->primconvert, info);
-                printf("Fallback\n");
-                return; */
+                if (info->mode == PIPE_PRIM_QUADS && info->count == 4 && ctx->rasterizer && !ctx->rasterizer->base.flatshade) {
+                        mode = PIPE_PRIM_TRIANGLE_FAN;
+                } else {
+                        if (info->count < 4) {
+                                /* Degenerate case? */
+                                return;
+                        }
+
+                        util_primconvert_save_rasterizer_state(ctx->primconvert, &ctx->rasterizer->base);
+                        util_primconvert_draw_vbo(ctx->primconvert, info);
+                        return;
+                }
         }
 
         ctx->payload_tiler.prefix.draw_mode = g2m_draw_mode(mode);
 
         ctx->vertex_count = info->count;
 
-        int invocation_count = info->index_size ? (info->start + ctx->vertex_count) : ctx->vertex_count;
-        ctx->payload_vertex.prefix.invocation_count = MALI_POSITIVE(invocation_count);
-        ctx->payload_tiler.prefix.invocation_count = MALI_POSITIVE(invocation_count);
+        /* For non-indexed draws, they're the same */
+        unsigned invocation_count = ctx->vertex_count;
 
         /* For higher amounts of vertices (greater than what fits in a 16-bit
          * short), the other value is needed, otherwise there will be bizarre
@@ -1692,10 +1726,39 @@ panfrost_draw_vbo(
         ctx->payload_tiler.prefix.unknown_draw |= (ctx->vertex_count > 65535) ? 0x3000 : 0x18000;
 
         if (info->index_size) {
+                /* Calculate the min/max index used so we can figure out how
+                 * many times to invoke the vertex shader */
 
-                ctx->payload_vertex.draw_start = 0;
-                ctx->payload_tiler.draw_start = 0;
-                //ctx->payload_tiler.prefix.negative_start = -info->start;
+
+                const uint8_t *ibuf8 = panfrost_get_index_buffer_raw(info);
+
+
+                int min_index = INT_MAX;
+                int max_index = 0;
+
+                if (info->index_size == 1) {
+                        CALCULATE_MIN_MAX_INDEX(uint8_t, ibuf8, info->start, info->count);
+                } else if (info->index_size == 2) {
+                        const uint16_t *ibuf16 = (const uint16_t *) ibuf8;
+                        CALCULATE_MIN_MAX_INDEX(uint16_t, ibuf16, info->start, info->count);
+                } else if (info->index_size == 4) {
+                        const uint32_t *ibuf32 = (const uint32_t *) ibuf8;
+                        CALCULATE_MIN_MAX_INDEX(uint32_t, ibuf32, info->start, info->count);
+                } else {
+                        assert(0);
+                }
+
+                /* Make sure we didn't go crazy */
+                assert(min_index < INT_MAX);
+                assert(max_index > 0);
+                assert(max_index > min_index);
+
+                /* Use the corresponding values */
+                invocation_count = max_index - min_index + 1;
+                ctx->payload_vertex.draw_start = min_index;
+                ctx->payload_tiler.draw_start = min_index;
+
+                ctx->payload_tiler.prefix.negative_start = /*-info->start*/ -min_index;
                 ctx->payload_tiler.prefix.index_count = MALI_POSITIVE(info->count);
 
                 //assert(!info->restart_index); /* TODO: Research */
@@ -1703,8 +1766,6 @@ panfrost_draw_vbo(
                 //assert(!info->min_index); /* TODO: Use value */
 
                 ctx->payload_tiler.prefix.unknown_draw |= panfrost_translate_index_size(info->index_size);
-
-                const uint8_t *ibuf8 = panfrost_get_index_buffer_raw(info);
 
                 ctx->payload_tiler.prefix.indices = panfrost_upload_transient(ctx, ibuf8 + (info->start * info->index_size), info->count * info->index_size);
         } else {
@@ -1718,6 +1779,10 @@ panfrost_draw_vbo(
                 ctx->payload_tiler.prefix.unknown_draw &= ~MALI_DRAW_INDEXED_UINT32;
                 ctx->payload_tiler.prefix.indices = (uintptr_t) NULL;
         }
+
+        ctx->payload_vertex.prefix.invocation_count = MALI_POSITIVE(invocation_count);
+        ctx->payload_tiler.prefix.invocation_count = MALI_POSITIVE(invocation_count);
+
 
         /* Fire off the draw itself */
         panfrost_queue_draw(ctx);
@@ -1788,10 +1853,9 @@ panfrost_bind_rasterizer_state(
         struct panfrost_context *ctx = panfrost_context(pctx);
         struct pipe_rasterizer_state *cso = hwcso;
 
-        if (!hwcso) {
-                /* XXX: How to unbind rasterizer state? */
+        /* TODO: Why can't rasterizer be NULL ever? Other drivers are fine.. */
+        if (!hwcso)
                 return;
-        }
 
         /* If scissor test has changed, we'll need to update that now */
         bool update_scissor = !ctx->rasterizer || ctx->rasterizer->base.scissor != cso->scissor;
@@ -1849,7 +1913,7 @@ panfrost_create_shader_state(
         struct pipe_context *pctx,
         const struct pipe_shader_state *cso)
 {
-        struct panfrost_shader_state *so = CALLOC_STRUCT(panfrost_shader_state);
+        struct panfrost_shader_variants *so = CALLOC_STRUCT(panfrost_shader_variants);
         so->base = *cso;
 
         /* Token deep copy to prevent memory corruption */
@@ -1922,6 +1986,29 @@ panfrost_bind_sampler_states(
         ctx->dirty |= PAN_DIRTY_SAMPLERS;
 }
 
+static bool
+panfrost_variant_matches(struct panfrost_context *ctx, struct panfrost_shader_state *variant)
+{
+        struct pipe_alpha_state *alpha = &ctx->depth_stencil->alpha;
+
+        if (alpha->enabled || variant->alpha_state.enabled) {
+                /* Make sure enable state is at least the same */
+                if (alpha->enabled != variant->alpha_state.enabled) {
+                        return false;
+                }
+
+                /* Check that the contents of the test are the same */
+                bool same_func = alpha->func == variant->alpha_state.func;
+                bool same_ref = alpha->ref_value == variant->alpha_state.ref_value;
+
+                if (!(same_func && same_ref)) {
+                        return false;
+                }
+        }
+        /* Otherwise, we're good to go */
+        return true;
+}
+
 static void
 panfrost_bind_fs_state(
         struct pipe_context *pctx,
@@ -1932,9 +2019,39 @@ panfrost_bind_fs_state(
         ctx->fs = hwcso;
 
         if (hwcso) {
-                if (!ctx->fs->compiled) {
-                        panfrost_shader_compile(ctx, &ctx->fs->tripipe, NULL, JOB_TYPE_TILER, hwcso);
-                        ctx->fs->compiled = true;
+                /* Match the appropriate variant */
+
+                signed variant = -1;
+
+                struct panfrost_shader_variants *variants = (struct panfrost_shader_variants *) hwcso;
+
+                for (unsigned i = 0; i < variants->variant_count; ++i) {
+                        if (panfrost_variant_matches(ctx, &variants->variants[i])) {
+                                variant = i;
+                                break;
+                        }
+                }
+
+                if (variant == -1) {
+                        /* No variant matched, so create a new one */
+                        variant = variants->variant_count++;
+                        assert(variants->variant_count < MAX_SHADER_VARIANTS);
+
+                        variants->variants[variant].base = hwcso;
+                        variants->variants[variant].alpha_state = ctx->depth_stencil->alpha;
+                }
+
+                /* Select this variant */
+                variants->active_variant = variant;
+
+                struct panfrost_shader_state *shader_state = &variants->variants[variant];
+                assert(panfrost_variant_matches(ctx, shader_state));
+
+                /* Now we have a variant selected, so compile and go */
+
+                if (!shader_state->compiled) {
+                        panfrost_shader_compile(ctx, &shader_state->tripipe, NULL, JOB_TYPE_TILER, shader_state);
+                        shader_state->compiled = true;
                 }
         }
 
@@ -1951,9 +2068,10 @@ panfrost_bind_vs_state(
         ctx->vs = hwcso;
 
         if (hwcso) {
-                if (!ctx->vs->compiled) {
-                        panfrost_shader_compile(ctx, &ctx->vs->tripipe, NULL, JOB_TYPE_VERTEX, hwcso);
-                        ctx->vs->compiled = true;
+                if (!ctx->vs->variants[0].compiled) {
+                        ctx->vs->variants[0].base = hwcso;
+                        panfrost_shader_compile(ctx, &ctx->vs->variants[0].tripipe, NULL, JOB_TYPE_VERTEX, &ctx->vs->variants[0]);
+                        ctx->vs->variants[0].compiled = true;
                 }
         }
 
@@ -2172,6 +2290,18 @@ panfrost_resource_create_front(struct pipe_screen *screen,
         if (template->height0) sz *= template->height0;
 
         if (template->depth0) sz *= template->depth0;
+
+        /* Make sure we're familiar */
+        switch (template->target) {
+                case PIPE_BUFFER:
+                case PIPE_TEXTURE_1D:
+                case PIPE_TEXTURE_2D:
+                case PIPE_TEXTURE_RECT:
+                        break;
+                default:
+                        fprintf(stderr, "Unknown texture target %d\n", template->target);
+                        assert(0);
+        }
 
         if ((template->bind & PIPE_BIND_RENDER_TARGET) || (template->bind & PIPE_BIND_DEPTH_STENCIL)) {
                 if (template->bind & PIPE_BIND_DISPLAY_TARGET ||
@@ -2491,8 +2621,13 @@ panfrost_bind_depth_stencil_state(struct pipe_context *pipe,
         if (!depth_stencil)
                 return;
 
-        /* Alpha does not exist on ES2... */
-        assert(!depth_stencil->alpha.enabled);
+        /* Alpha does not exist in the hardware (it's not in ES3), so it's
+         * emulated in the fragment shader */
+
+        if (depth_stencil->alpha.enabled) {
+                /* We need to trigger a new shader (maybe) */
+                ctx->base.bind_fs_state(&ctx->base, ctx->fs);
+        }
 
         /* Stencil state */
         SET_BIT(ctx->fragment_shader_core.unknown2_4, MALI_STENCIL_TEST, depth_stencil->stencil[0].enabled); /* XXX: which one? */

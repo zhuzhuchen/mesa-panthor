@@ -414,6 +414,9 @@ typedef struct compiler_context {
 
         /* Count of instructions emitted from NIR overall, across all blocks */
         int instruction_count;
+
+        /* Alpha ref value passed in */
+        float alpha_ref;
 } compiler_context;
 
 /* Append instruction to end of current block */
@@ -654,6 +657,12 @@ optimise_nir(nir_shader *nir)
 
         NIR_PASS(progress, nir, nir_lower_regs_to_ssa);
         NIR_PASS(progress, nir, midgard_nir_lower_fdot2);
+
+        nir_lower_tex_options lower_tex_options = {
+                .lower_rect = true
+        };
+
+        NIR_PASS(progress, nir, nir_lower_tex, &lower_tex_options);
 
         do {
                 progress = false;
@@ -997,6 +1006,20 @@ emit_alu(compiler_context *ctx, nir_alu_instr *instr)
                 break;
         }
 
+        /* We don't have a native b2f32 instruction. Instead, like many GPUs,
+         * we exploit booleans as 0/~0 for false/true, and correspondingly AND
+         * by 1.0 to do the type conversion. For the moment, prime us to emit:
+         *
+         * iand [whatever], #0
+         *
+         * At the end of emit_alu (as MIR), we'll fix-up the constant */
+
+        case nir_op_b2f32: {
+                op = midgard_alu_op_iand;
+                components = 0;
+                break;
+        }
+
         default:
                 printf("Unhandled ALU op %s\n", nir_op_infos[instr->op].name);
                 assert(0);
@@ -1059,6 +1082,20 @@ emit_alu(compiler_context *ctx, nir_alu_instr *instr)
                 alu.mask &= expand_writemask(instr->dest.write_mask);
 
         ins.alu = alu;
+
+        /* Late fixup for emulated instructions */
+
+        if (instr->op == nir_op_b2f32) {
+                /* Presently, our second argument is an inline #0 constant.
+                 * Switch over to an embedded 1.0 constant (that can't fit
+                 * inline, since we're 32-bit, not 16-bit like the inline
+                 * constants) */
+
+                ins.ssa_args.inline_constant = false;
+                ins.ssa_args.src1 = SSA_FIXED_REGISTER(REGISTER_CONSTANT);
+                ins.has_constants = true;
+                ins.constants[0] = 1.0;
+        }
 
         if (_unit == UNIT_VLUT) {
                 /* To avoid duplicating the LUTs (we think?), LUT instructions can only
@@ -1347,6 +1384,17 @@ emit_intrinsic(compiler_context *ctx, nir_intrinsic_instr *instr)
 
                 break;
 
+        case nir_intrinsic_load_alpha_ref_float:
+                assert(instr->dest.is_ssa);
+
+                float ref_value = ctx->alpha_ref;
+
+                float *v = ralloc_array(NULL, float, 4);
+                memcpy(v, &ref_value, sizeof(float));
+                _mesa_hash_table_u64_insert(ctx->ssa_constants, instr->dest.ssa.index + 1, v);
+                break;
+
+
         default:
                 printf ("Unhandled intrinsic\n");
                 assert(0);
@@ -1359,6 +1407,7 @@ midgard_tex_format(enum glsl_sampler_dim dim)
 {
         switch (dim) {
         case GLSL_SAMPLER_DIM_2D:
+        case GLSL_SAMPLER_DIM_EXTERNAL:
                 return TEXTURE_2D;
 
         case GLSL_SAMPLER_DIM_3D:
@@ -1412,7 +1461,7 @@ emit_tex(compiler_context *ctx, nir_tex_instr *instr)
 
                 default: {
                         printf("Unknown source type\n");
-                        assert(0);
+                        //assert(0);
                         break;
                 }
                 }
@@ -2506,9 +2555,8 @@ inline_alu_constants(compiler_context *ctx)
                 CONDITIONAL_ATTACH(src0);
 
                 if (!alu->has_constants) {
-                        if (!alu->ssa_args.inline_constant)
-                                CONDITIONAL_ATTACH(src1)
-                        } else if (!alu->ssa_args.inline_constant) {
+                        CONDITIONAL_ATTACH(src1)
+                } else if (!alu->inline_constant) {
                         /* Corner case: _two_ vec4 constants, for instance with a
                          * csel. For this case, we can only use a constant
                          * register for one, we'll have to emit a move for the
@@ -2520,16 +2568,17 @@ inline_alu_constants(compiler_context *ctx)
                          */
 
                         void *entry = _mesa_hash_table_u64_search(ctx->ssa_constants, alu->ssa_args.src1 + 1);
+                        unsigned scratch = alu->ssa_args.dest;
 
                         if (entry) {
-                                midgard_instruction ins = v_fmov(SSA_FIXED_REGISTER(REGISTER_CONSTANT), blank_alu_src, 4096 + alu->ssa_args.src1);
+                                midgard_instruction ins = v_fmov(SSA_FIXED_REGISTER(REGISTER_CONSTANT), blank_alu_src, scratch);
                                 attach_constants(ctx, &ins, entry, alu->ssa_args.src1 + 1);
 
                                 /* Force a break XXX Defer r31 writes */
                                 ins.unit = UNIT_VLUT;
 
                                 /* Set the source */
-                                alu->ssa_args.src1 = 4096 + alu->ssa_args.src1;
+                                alu->ssa_args.src1 = scratch;
 
                                 /* Inject us -before- the last instruction which set r31 */
                                 mir_insert_instruction_before(mir_prev_op(alu), ins);
@@ -3232,6 +3281,8 @@ midgard_compile_shader_nir(nir_shader *nir, midgard_program *program, bool is_bl
 
                 .is_blend = is_blend,
                 .blend_constant_offset = -1,
+
+                .alpha_ref = program->alpha_ref
         };
 
         compiler_context *ctx = &ictx;
@@ -3278,7 +3329,17 @@ midgard_compile_shader_nir(nir_shader *nir, midgard_program *program, bool is_bl
         nir_foreach_variable(var, &nir->uniforms) {
                 if (glsl_get_base_type(var->type) == GLSL_TYPE_SAMPLER) continue;
 
-                for (int col = 0; col < glsl_get_matrix_columns(var->type); ++col) {
+                unsigned length = glsl_get_aoa_size(var->type);
+
+                if (!length) {
+                        length = glsl_get_length(var->type);
+                }
+
+                if (!length) {
+                        length = glsl_get_matrix_columns(var->type);
+                }
+
+                for (int col = 0; col < length; ++col) {
                         int id = ctx->uniform_count++;
                         _mesa_hash_table_u64_insert(ctx->uniform_nir_to_mdg, var->data.driver_location + col + 1, (void *) ((uintptr_t) (id + 1)));
                 }
@@ -3290,10 +3351,10 @@ midgard_compile_shader_nir(nir_shader *nir, midgard_program *program, bool is_bl
 
                 nir_foreach_variable(var, &nir->outputs) {
                         if (var->data.location < VARYING_SLOT_VAR0) {
-                                if (var->data.location == VARYING_SLOT_POS)
+                                if (var->data.location == VARYING_SLOT_POS) {
                                         _mesa_hash_table_u64_insert(ctx->varying_nir_to_mdg, var->data.driver_location + 1, (void *) ((uintptr_t) (1)));
-
-                                continue;
+                                        continue;
+                                }
                         }
 
                         for (int col = 0; col < glsl_get_matrix_columns(var->type); ++col) {
