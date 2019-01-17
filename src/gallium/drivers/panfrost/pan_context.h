@@ -65,7 +65,7 @@ struct prim_convert_context;
 #define PAN_DIRTY_VS	     (1 << 4)
 #define PAN_DIRTY_VERTEX     (1 << 5)
 #define PAN_DIRTY_VERT_BUF   (1 << 6)
-#define PAN_DIRTY_VIEWPORT   (1 << 7)
+//#define PAN_DIRTY_VIEWPORT   (1 << 7)
 #define PAN_DIRTY_SAMPLERS   (1 << 8)
 #define PAN_DIRTY_TEXTURES   (1 << 9)
 
@@ -176,7 +176,7 @@ struct panfrost_context {
 
         unsigned varying_height;
 
-        struct mali_viewport viewport;
+        struct mali_viewport *viewport;
         PANFROST_FRAMEBUFFER vt_framebuffer;
 
         /* TODO: Multiple uniform buffers (index =/= 0), finer updates? */
@@ -253,10 +253,10 @@ struct panfrost_varyings {
         unsigned varying_count;
         unsigned varying_buffer_count;
 
-        struct mali_attr_meta vertex_only_varyings[2];
-        struct mali_attr_meta varyings[PIPE_MAX_ATTRIBS];
-        struct mali_attr_meta fragment_only_varyings[1];
-        int fragment_only_varying_count;
+        /* Map of the actual varyings buffer */
+        uint8_t *varyings_buffer_cpu;
+        mali_ptr varyings_descriptor;
+        mali_ptr varyings_descriptor_fragment;
 };
 
 /* Variants bundle together to form the backing CSO, bundling multiple
@@ -268,9 +268,10 @@ struct panfrost_varyings {
 struct panfrost_shader_state {
         struct pipe_shader_state *base;
 
-        /* Compiled descriptor, ready for the hardware */
+        /* Compiled, mapped descriptor, ready for the hardware */
         bool compiled;
-        struct mali_shader_meta tripipe;
+        struct mali_shader_meta *tripipe;
+        mali_ptr tripipe_gpu;
 
         /* Non-descript information */
         int uniform_count;
@@ -298,8 +299,11 @@ struct panfrost_vertex_state {
         unsigned num_elements;
 
         struct pipe_vertex_element pipe[PIPE_MAX_ATTRIBS];
-        struct mali_attr_meta hw[PIPE_MAX_ATTRIBS];
         int nr_components[PIPE_MAX_ATTRIBS];
+
+        /* The actual attribute meta, prebaked and GPU mapped. TODO: Free memory */
+        struct mali_attr_meta *hw;
+        mali_ptr descriptor_ptr;
 };
 
 struct panfrost_sampler_state {

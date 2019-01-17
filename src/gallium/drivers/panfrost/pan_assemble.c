@@ -140,27 +140,27 @@ panfrost_shader_compile(struct panfrost_context *ctx, struct mali_shader_meta *m
                 /* Setup gl_Position and its weirdo analogue */
                 unsigned default_vec4_swizzle = panfrost_get_default_swizzle(4);
 
-                struct mali_attr_meta position_meta = {
-                        .index = 1,
-                        .format = MALI_VARYING_POS,
+                struct mali_attr_meta position_metas[2] = {
+                        {
+                                .index = 1,
+                                .format = MALI_VARYING_POS,
 
-                        .swizzle = default_vec4_swizzle,
-                        .unknown1 = 0x2,
+                                .swizzle = default_vec4_swizzle,
+                                .unknown1 = 0x2,
+                        },
+                        {
+                                .index = 1,
+                                .format = MALI_RGBA16F,
+
+                                /* TODO: Wat? yyyy swizzle? */
+                                .swizzle = 0x249,
+                                .unknown1 = 0x0,
+                        }
                 };
-
-                struct mali_attr_meta position_meta_prime = {
-                        .index = 1,
-                        .format = MALI_RGBA16F,
-
-                        /* TODO: Wat? yyyy swizzle? */
-                        .swizzle = 0x249,
-                        .unknown1 = 0x0,
-                };
-
-                varyings->vertex_only_varyings[0] = position_meta;
-                varyings->vertex_only_varyings[1] = position_meta_prime;
 
                 /* Setup actual varyings. XXX: Don't assume vec4 */
+
+                struct mali_attr_meta mali_varyings[PIPE_MAX_ATTRIBS];
 
                 for (int i = 0; i < varying_count; ++i) {
                         struct mali_attr_meta vec4_varying_meta = {
@@ -174,15 +174,37 @@ panfrost_shader_compile(struct panfrost_context *ctx, struct mali_shader_meta *m
                                 .src_offset = 8 * i,
                         };
 
-                        varyings->varyings[i] = vec4_varying_meta;
+                        mali_varyings[i] = vec4_varying_meta;
                 }
 
-                /* In this context, position_meta represents the implicit
-                 * gl_FragCoord varying */
-
-                varyings->fragment_only_varyings[0] = position_meta;
-                varyings->fragment_only_varying_count = 1;
-
+                /* XXX: Where did this off-by-one come from again? :P
+                 * (gl_Position probably) */
                 varyings->varying_count = varying_count - 1;
+
+                /* In this context, position_meta represents the implicit
+                 * gl_FragCoord varying. So, upload all the varyings */
+
+                unsigned varyings_size = sizeof(struct mali_attr_meta) * varyings->varying_count;
+                unsigned vertex_size = sizeof(position_metas) + varyings_size;
+                unsigned fragment_size = varyings_size + sizeof(struct mali_attr_meta);
+
+                struct panfrost_transfer transfer = panfrost_allocate_chunk(ctx, vertex_size + fragment_size, HEAP_DESCRIPTOR);
+
+                /* Copy varyings in the follow order:
+                 *  - Position 1, 2
+                 *  - Varyings 1, 2, ..., n
+                 *  - Varyings 1, 2, ..., n (duplicate)
+                 *  - Position 1
+                 */
+
+                memcpy(transfer.cpu, position_metas, sizeof(position_metas));
+                memcpy(transfer.cpu + sizeof(position_metas), mali_varyings, varyings_size);
+                memcpy(transfer.cpu + vertex_size, mali_varyings, varyings_size);
+                memcpy(transfer.cpu + vertex_size + varyings_size, &position_metas[0], sizeof(struct mali_attr_meta));
+
+                /* Point to the descriptor */
+                varyings->varyings_buffer_cpu = transfer.cpu;
+                varyings->varyings_descriptor = transfer.gpu;
+                varyings->varyings_descriptor_fragment = transfer.gpu + vertex_size;
         }
 }

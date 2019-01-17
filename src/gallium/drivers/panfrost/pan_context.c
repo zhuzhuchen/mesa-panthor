@@ -48,9 +48,6 @@
 #include "pan_blend_shaders.h"
 #include "pan_wallpaper.h"
 
-/* Texture memory */
-#define HEAP_TEXTURE 0
-
 static void
 panfrost_flush(
         struct pipe_context *pipe,
@@ -80,29 +77,6 @@ static bool USE_TRANSACTION_ELIMINATION = false;
 /* MSAA is not supported in sw_winsys but it does make for nicer demos ;) so we
  * can force it regardless of gallium saying we don't have it */
 static bool FORCE_MSAA = true;
-
-/* Descriptor is generated along with the shader compiler */
-
-static void
-panfrost_upload_varyings_descriptor(struct panfrost_context *ctx)
-{
-        struct panfrost_varyings *varyings = &ctx->vs->variants[ctx->vs->active_variant].varyings;
-
-        /* First, upload gl_Position varyings */
-        mali_ptr gl_Position = panfrost_upload(&ctx->cmdstream_persistent, varyings->vertex_only_varyings, sizeof(varyings->vertex_only_varyings), true);
-
-        /* Then, upload normal varyings for vertex shaders */
-        panfrost_upload_sequential(&ctx->cmdstream_persistent, varyings->varyings, sizeof(varyings->varyings[0]) * varyings->varying_count);
-
-        /* Then, upload normal varyings for fragment shaders (duplicating) */
-        mali_ptr varyings_fragment = panfrost_upload_sequential(&ctx->cmdstream_persistent, varyings->varyings, sizeof(varyings->varyings[0]) * varyings->varying_count);
-
-        /* Finally, upload gl_FragCoord varying */
-        panfrost_upload_sequential(&ctx->cmdstream_persistent, varyings->fragment_only_varyings, sizeof(varyings->fragment_only_varyings[0]) * varyings->fragment_only_varying_count);
-
-        ctx->payload_vertex.postfix.varying_meta = gl_Position;
-        ctx->payload_tiler.postfix.varying_meta = varyings_fragment;
-}
 
 /* TODO: Sample size, etc */
 
@@ -563,19 +537,16 @@ panfrost_viewport(struct panfrost_context *ctx,
                 .viewport1 = { MALI_POSITIVE(viewport_x1), MALI_POSITIVE(viewport_y1) },
         };
 
-        memcpy(&ctx->viewport, &ret, sizeof(ret));
-        ctx->dirty |= PAN_DIRTY_VIEWPORT;
+        memcpy(ctx->viewport, &ret, sizeof(ret));
 }
 
 /* Reset per-frame context, called on context initialisation as well as after
  * flushing a frame */
 
-static int last_persistent_stack = 0;
 static void
 panfrost_invalidate_frame(struct panfrost_context *ctx)
 {
-	printf("Uploaded transient %d bytes and persistent %d bytes, \n", ctx->transient_pools[ctx->cmdstream_i].entry_index*ctx->transient_pools[0].entry_size + ctx->transient_pools[ctx->cmdstream_i].entry_offset, ctx->cmdstream_persistent.stack_bottom - last_persistent_stack);
-        last_persistent_stack = ctx->cmdstream_persistent.stack_bottom;
+	printf("Uploaded transient %d bytes \n", ctx->transient_pools[ctx->cmdstream_i].entry_index*ctx->transient_pools[0].entry_size + ctx->transient_pools[ctx->cmdstream_i].entry_offset);
 
         /* Rotate cmdstream */
         if ((++ctx->cmdstream_i) == (sizeof(ctx->transient_pools) / sizeof(ctx->transient_pools[0])))
@@ -625,7 +596,7 @@ panfrost_emit_vertex_payload(struct panfrost_context *ctx)
 static void
 panfrost_emit_tiler_payload(struct panfrost_context *ctx)
 {
-        struct midgard_payload_vertex_tiler payload_1 = {
+        struct midgard_payload_vertex_tiler payload = {
                 .prefix = {
                         .workgroups_z_shift = 32,
                         .workgroups_x_shift_2 = 0x2,
@@ -635,7 +606,12 @@ panfrost_emit_tiler_payload(struct panfrost_context *ctx)
                 },
         };
 
-        memcpy(&ctx->payload_tiler, &payload_1, sizeof(payload_1));
+        /* Reserve the viewport */
+        struct panfrost_transfer t = panfrost_allocate_chunk(ctx, sizeof(struct mali_viewport), HEAP_DESCRIPTOR);
+        ctx->viewport = (struct mali_viewport *) t.cpu;
+        payload.postfix.viewport = t.gpu;
+
+        memcpy(&ctx->payload_tiler, &payload, sizeof(payload));
 }
 
 static unsigned
@@ -1081,26 +1057,33 @@ panfrost_emit_for_draw(struct panfrost_context *ctx, bool with_vertex_data)
                 struct panfrost_shader_state *vs = &ctx->vs->variants[ctx->vs->active_variant];
 
                 /* Late shader descriptor assignments */
-                vs->tripipe.texture_count = ctx->sampler_view_count[PIPE_SHADER_VERTEX];
-                vs->tripipe.sampler_count = ctx->sampler_count[PIPE_SHADER_VERTEX];
+                vs->tripipe->texture_count = ctx->sampler_view_count[PIPE_SHADER_VERTEX];
+                vs->tripipe->sampler_count = ctx->sampler_count[PIPE_SHADER_VERTEX];
 
                 /* Who knows */
-                vs->tripipe.midgard1.unknown1 = 0x2201;
+                vs->tripipe->midgard1.unknown1 = 0x2201;
 
-                ctx->payload_vertex.postfix._shader_upper = panfrost_upload(&ctx->cmdstream_persistent, &vs->tripipe, sizeof(struct mali_shader_meta), true) >> 4;
+                ctx->payload_vertex.postfix._shader_upper = vs->tripipe_gpu >> 4;
 
                 /* Varying descriptor is tied to the vertex shader. Also the
                  * fragment shader, I suppose, but it's generated with the
                  * vertex shader so */
 
-                panfrost_upload_varyings_descriptor(ctx);
+                struct panfrost_varyings *varyings = &ctx->vs->variants[ctx->vs->active_variant].varyings;
+
+                ctx->payload_vertex.postfix.varying_meta = varyings->varyings_descriptor;
+                ctx->payload_tiler.postfix.varying_meta = varyings->varyings_descriptor_fragment;
         }
+
+        /* TODO: Maybe dirty track FS, maybe not. For now, it's transient. */
+        if (ctx->fs)
+                ctx->dirty |= PAN_DIRTY_FS;
 
         if (ctx->dirty & PAN_DIRTY_FS) {
                 assert(ctx->fs);
                 struct panfrost_shader_state *variant = &ctx->fs->variants[ctx->fs->active_variant];
 
-#define COPY(name) ctx->fragment_shader_core.name = variant->tripipe.name
+#define COPY(name) ctx->fragment_shader_core.name = variant->tripipe->name
 
                 COPY(shader);
                 COPY(attribute_count);
@@ -1144,7 +1127,11 @@ panfrost_emit_for_draw(struct panfrost_context *ctx, bool with_vertex_data)
                 if (ctx->blend->has_blend_shader)
                         ctx->fragment_shader_core.blend_shader = ctx->blend->blend_shader;
 
-                ctx->payload_tiler.postfix._shader_upper = panfrost_upload(&ctx->cmdstream_persistent, &ctx->fragment_shader_core, sizeof(struct mali_shader_meta), true) >> 4;
+                size_t size = sizeof(struct mali_shader_meta) + sizeof(struct mali_blend_meta);
+                struct panfrost_transfer transfer = panfrost_allocate_transient(ctx, size);
+                memcpy(transfer.cpu, &ctx->fragment_shader_core, sizeof(struct mali_shader_meta));
+
+                ctx->payload_tiler.postfix._shader_upper = (transfer.gpu) >> 4;
 
 #ifdef T8XX
                 /* Additional blend descriptor tacked on for newer systems */
@@ -1189,20 +1176,12 @@ panfrost_emit_for_draw(struct panfrost_context *ctx, bool with_vertex_data)
                 if (ctx->blend->has_blend_shader)
                         memcpy(&blend_meta[0].blend_equation_1, &ctx->blend->blend_shader, sizeof(ctx->blend->blend_shader));
 
-                panfrost_upload_sequential(&ctx->cmdstream_persistent, blend_meta, sizeof(blend_meta));
+                memcpy(transfer.cpu + sizeof(struct mali_shader_meta), blend_meta, sizeof(blend_meta));
 #endif
         }
 
         if (ctx->dirty & PAN_DIRTY_VERTEX) {
-                ctx->payload_vertex.postfix.attribute_meta = panfrost_upload(&
-                                ctx->cmdstream_persistent, &ctx->vertex->hw,
-                                sizeof(struct mali_attr_meta) * ctx->vertex->num_elements, false);
-        }
-
-        ctx->dirty |= PAN_DIRTY_VIEWPORT; /* TODO: Viewport dirty track */
-
-        if (ctx->dirty & PAN_DIRTY_VIEWPORT) {
-                ctx->payload_tiler.postfix.viewport = panfrost_upload_transient(ctx, &ctx->viewport, sizeof(struct mali_viewport));
+                ctx->payload_vertex.postfix.attribute_meta = ctx->vertex->descriptor_ptr;
         }
 
         if (ctx->dirty & PAN_DIRTY_SAMPLERS) {
@@ -1334,7 +1313,6 @@ panfrost_emit_for_draw(struct panfrost_context *ctx, bool with_vertex_data)
 
                         /* Also attach the same buffer as a UBO for extended access */
 
-
                         struct mali_uniform_buffer_meta uniform_buffers[] = {
                                 {
                                         .size = MALI_POSITIVE((2 + uniform_count)),
@@ -1349,7 +1327,6 @@ panfrost_emit_for_draw(struct panfrost_context *ctx, bool with_vertex_data)
                         buf->dirty = 0;
                 }
         }
-
 
         ctx->dirty = 0;
 }
@@ -1649,6 +1626,26 @@ panfrost_get_index_buffer_raw(const struct pipe_draw_info *info)
         }
 }
 
+/* Gets a GPU address for the associated index buffer. Only gauranteed to be
+ * good for the duration of the draw (transient), could last longer */
+
+static mali_ptr
+panfrost_get_index_buffer_mapped(struct panfrost_context *ctx, const struct pipe_draw_info *info)
+{
+        struct panfrost_resource *rsrc = (struct panfrost_resource *) (info->index.resource);
+
+        off_t offset = info->start * info->index_size;
+
+        if (!info->has_user_indices) {
+                /* Only resources can be directly mapped */
+                return rsrc->gpu[0] + offset;
+        } else {
+                /* Otherwise, we need to upload to transient memory */
+                const uint8_t *ibuf8 = panfrost_get_index_buffer_raw(info);
+                return panfrost_upload_transient(ctx, ibuf8 + offset, info->count * info->index_size);
+        }
+}
+
 bool needs_dummy_draw = true;
 
 static void
@@ -1729,9 +1726,7 @@ panfrost_draw_vbo(
                 /* Calculate the min/max index used so we can figure out how
                  * many times to invoke the vertex shader */
 
-
                 const uint8_t *ibuf8 = panfrost_get_index_buffer_raw(info);
-
 
                 int min_index = INT_MAX;
                 int max_index = 0;
@@ -1758,7 +1753,7 @@ panfrost_draw_vbo(
                 ctx->payload_vertex.draw_start = min_index;
                 ctx->payload_tiler.draw_start = min_index;
 
-                ctx->payload_tiler.prefix.negative_start = /*-info->start*/ -min_index;
+                ctx->payload_tiler.prefix.negative_start = -min_index;
                 ctx->payload_tiler.prefix.index_count = MALI_POSITIVE(info->count);
 
                 //assert(!info->restart_index); /* TODO: Research */
@@ -1766,8 +1761,7 @@ panfrost_draw_vbo(
                 //assert(!info->min_index); /* TODO: Use value */
 
                 ctx->payload_tiler.prefix.unknown_draw |= panfrost_translate_index_size(info->index_size);
-
-                ctx->payload_tiler.prefix.indices = panfrost_upload_transient(ctx, ibuf8 + (info->start * info->index_size), info->count * info->index_size);
+                ctx->payload_tiler.prefix.indices = panfrost_get_index_buffer_mapped(ctx, info);
         } else {
                 /* Index count == vertex count, if no indexing is applied, as
                  * if it is internally indexed in the expected order */
@@ -1782,7 +1776,6 @@ panfrost_draw_vbo(
 
         ctx->payload_vertex.prefix.invocation_count = MALI_POSITIVE(invocation_count);
         ctx->payload_tiler.prefix.invocation_count = MALI_POSITIVE(invocation_count);
-
 
         /* Fire off the draw itself */
         panfrost_queue_draw(ctx);
@@ -1802,19 +1795,16 @@ panfrost_set_scissor(struct panfrost_context *ctx)
         const struct pipe_scissor_state *ss = &ctx->scissor;
 
         if (ss && ctx->rasterizer && ctx->rasterizer->base.scissor && 0) {
-                ctx->viewport.viewport0[0] = ss->minx;
-                ctx->viewport.viewport0[1] = ss->miny;
-                ctx->viewport.viewport1[0] = MALI_POSITIVE(ss->maxx);
-                ctx->viewport.viewport1[1] = MALI_POSITIVE(ss->maxy);
+                ctx->viewport->viewport0[0] = ss->minx;
+                ctx->viewport->viewport0[1] = ss->miny;
+                ctx->viewport->viewport1[0] = MALI_POSITIVE(ss->maxx);
+                ctx->viewport->viewport1[1] = MALI_POSITIVE(ss->maxy);
         } else {
-                ctx->viewport.viewport0[0] = 0;
-                ctx->viewport.viewport0[1] = 0;
-                ctx->viewport.viewport1[0] = MALI_POSITIVE(ctx->pipe_framebuffer.width);
-                ctx->viewport.viewport1[1] = MALI_POSITIVE(ctx->pipe_framebuffer.height);
-
+                ctx->viewport->viewport0[0] = 0;
+                ctx->viewport->viewport0[1] = 0;
+                ctx->viewport->viewport1[0] = MALI_POSITIVE(ctx->pipe_framebuffer.width);
+                ctx->viewport->viewport1[1] = MALI_POSITIVE(ctx->pipe_framebuffer.height);
         }
-
-        ctx->dirty |= PAN_DIRTY_VIEWPORT;
 }
 
 static void *
@@ -1875,10 +1865,17 @@ panfrost_create_vertex_elements_state(
         unsigned num_elements,
         const struct pipe_vertex_element *elements)
 {
+        struct panfrost_context *ctx = panfrost_context(pctx);
         struct panfrost_vertex_state *so = CALLOC_STRUCT(panfrost_vertex_state);
 
         so->num_elements = num_elements;
         memcpy(so->pipe, elements, sizeof(*elements) * num_elements);
+
+        struct panfrost_transfer transfer = panfrost_allocate_chunk(ctx, sizeof(struct mali_attr_meta) * num_elements, HEAP_DESCRIPTOR);
+        so->hw = (struct mali_attr_meta *) transfer.cpu;
+        so->descriptor_ptr = transfer.gpu;
+
+        /* Allocate memory for the descriptor state */
 
         for (int i = 0; i < num_elements; ++i) {
                 so->hw[i].index = elements[i].vertex_buffer_index;
@@ -1908,6 +1905,13 @@ panfrost_bind_vertex_elements_state(
         ctx->dirty |= PAN_DIRTY_VERTEX;
 }
 
+static void
+panfrost_delete_vertex_elements_state(struct pipe_context *pctx, void *hwcso)
+{
+        printf("Vertex elements delete leaks descriptor\n");
+        free(hwcso);
+}
+
 static void *
 panfrost_create_shader_state(
         struct pipe_context *pctx,
@@ -1929,6 +1933,7 @@ panfrost_delete_shader_state(
         struct pipe_context *pctx,
         void *so)
 {
+        printf("Deleting shader state maybe leaks tokens, per-variant compiled shaders, per-variant  descriptors\n");
         free(so);
 }
 
@@ -2039,6 +2044,14 @@ panfrost_bind_fs_state(
 
                         variants->variants[variant].base = hwcso;
                         variants->variants[variant].alpha_state = ctx->depth_stencil->alpha;
+
+                        /* Allocate the mapped descriptor ahead-of-time. TODO: Use for FS as well as VS */
+                        struct panfrost_context *ctx = panfrost_context(pctx);
+                        struct panfrost_transfer transfer = panfrost_allocate_chunk(ctx, sizeof(struct mali_shader_meta), HEAP_DESCRIPTOR);
+
+                        variants->variants[variant].tripipe = (struct mali_shader_meta *) transfer.cpu;
+                        variants->variants[variant].tripipe_gpu = transfer.gpu;
+
                 }
 
                 /* Select this variant */
@@ -2050,7 +2063,7 @@ panfrost_bind_fs_state(
                 /* Now we have a variant selected, so compile and go */
 
                 if (!shader_state->compiled) {
-                        panfrost_shader_compile(ctx, &shader_state->tripipe, NULL, JOB_TYPE_TILER, shader_state);
+                        panfrost_shader_compile(ctx, shader_state->tripipe, NULL, JOB_TYPE_TILER, shader_state);
                         shader_state->compiled = true;
                 }
         }
@@ -2070,7 +2083,13 @@ panfrost_bind_vs_state(
         if (hwcso) {
                 if (!ctx->vs->variants[0].compiled) {
                         ctx->vs->variants[0].base = hwcso;
-                        panfrost_shader_compile(ctx, &ctx->vs->variants[0].tripipe, NULL, JOB_TYPE_VERTEX, &ctx->vs->variants[0]);
+
+                        /* TODO DRY from above */
+                        struct panfrost_transfer transfer = panfrost_allocate_chunk(ctx, sizeof(struct mali_shader_meta), HEAP_DESCRIPTOR);
+                        ctx->vs->variants[0].tripipe = (struct mali_shader_meta *) transfer.cpu;
+                        ctx->vs->variants[0].tripipe_gpu = transfer.gpu;
+
+                        panfrost_shader_compile(ctx, ctx->vs->variants[0].tripipe, NULL, JOB_TYPE_VERTEX, &ctx->vs->variants[0]);
                         ctx->vs->variants[0].compiled = true;
                 }
         }
@@ -2358,6 +2377,8 @@ panfrost_resource_create_front(struct pipe_screen *screen,
                 } else {
                         /* But for linear, we can! */
 
+#if 0
+
                         struct panfrost_memory slab;
                         panfrost_allocate_slab(pscreen->any_context,
                                                &slab, (sz / 4096) + 1,
@@ -2366,6 +2387,16 @@ panfrost_resource_create_front(struct pipe_screen *screen,
                         /* Make the resource out of the slab */
                         so->cpu[0] = slab.cpu;
                         so->gpu[0] = slab.gpu;
+#endif
+
+                        struct pb_slab_entry *entry = pb_slab_alloc(&pscreen->any_context->slabs, sz, HEAP_TEXTURE);
+                        struct panfrost_memory_entry *p_entry = (struct panfrost_memory_entry *) entry;
+                        struct panfrost_memory *backing = (struct panfrost_memory *) entry->slab;
+                        so->entry[0] = p_entry;
+                        so->cpu[0] = backing->cpu + p_entry->offset;
+                        so->gpu[0] = backing->gpu + p_entry->offset;
+
+                        /* TODO: Mipmap */
                 }
         }
 
@@ -2385,8 +2416,32 @@ static void
 panfrost_resource_destroy(struct pipe_screen *screen,
                           struct pipe_resource *pt)
 {
-        printf("--resource destroy--\n");
-        /* TODO */
+        struct panfrost_screen *pscreen = panfrost_screen(screen);
+        struct panfrost_context *ctx = pscreen->any_context;
+        struct panfrost_resource *rsrc = (struct panfrost_resource *) pt;
+
+        if (rsrc->tiled) {
+                /* CPU is all malloc'ed, so just plain ol' free needed */
+
+                for (int l = 0; l < (rsrc->base.last_level + 1); ++l) {
+                        free(rsrc->cpu[l]);
+                }
+        } else if (rsrc->entry[0] != NULL) {
+                rsrc->entry[0]->freed = true;
+                pb_slab_free(&ctx->slabs, &rsrc->entry[0]->base);
+        } else {
+                printf("--leaking main allocation--\n");
+        }
+
+        if (rsrc->has_afbc) {
+                /* TODO */
+                printf("--leaking afbc--\n");
+        }
+
+        if (rsrc->has_checksum) {
+                /* TODO */
+                printf("--leaking afbc--\n");
+        }
 }
 
 static void *
@@ -2581,6 +2636,7 @@ static void
 panfrost_delete_blend_state(struct pipe_context *pipe,
                             void *blend)
 {
+        printf("Deleting blend state may leak blend shader\n");
         free(blend);
 }
 
@@ -2965,43 +3021,6 @@ panfrost_invalidate_resource(struct pipe_context *pctx, struct pipe_resource *pr
         //fprintf(stderr, "TODO %s\n", __func__);
 }
 
-static void
-panfrost_setup_hardware(struct panfrost_context *ctx)
-{
-        struct pipe_context *gallium = (struct pipe_context *) ctx;
-        struct panfrost_screen *screen = panfrost_screen(gallium->screen);
-
-        pandev_open(screen->fd);
-
-        for (int i = 0; i < ARRAY_SIZE(ctx->transient_pools); ++i) {
-                /* Allocate the beginning of the transient pool */
-                int entry_size = (1 << 22); /* 4MB */
-
-                ctx->transient_pools[i].entry_size = entry_size;
-                ctx->transient_pools[i].entry_count = 1;
-
-                ctx->transient_pools[i].entries[0] = (struct panfrost_memory_entry *) pb_slab_alloc(&ctx->slabs, entry_size, HEAP_TRANSIENT);
-        }
-
-        panfrost_allocate_slab(ctx, &ctx->cmdstream_persistent, 8 * 64 * 8 * 2, true, 0, 0, 0);
-        panfrost_allocate_slab(ctx, &ctx->scratchpad, 64, false, 0, 0, 0);
-        panfrost_allocate_slab(ctx, &ctx->varying_mem, 16384, false, 0, 0, 0);
-        panfrost_allocate_slab(ctx, &ctx->shaders, 4096, true, BASE_MEM_PROT_GPU_EX, 0, 0);
-        panfrost_allocate_slab(ctx, &ctx->tiler_heap, 32768, false, BASE_MEM_GROW_ON_GPF, 1, 128);
-        panfrost_allocate_slab(ctx, &ctx->misc_0, 128, false, BASE_MEM_GROW_ON_GPF, 1, 128);
-}
-
-static const struct u_transfer_vtbl transfer_vtbl = {
-        .resource_create          = panfrost_resource_create,
-        .resource_destroy         = panfrost_resource_destroy,
-        .transfer_map             = panfrost_transfer_map,
-        .transfer_unmap           = panfrost_transfer_unmap,
-        .transfer_flush_region    = u_default_transfer_flush_region,
-        //.get_internal_format      = panfrost_resource_get_internal_format,
-        //.set_stencil              = panfrost_resource_set_stencil,
-        //.get_stencil              = panfrost_resource_get_stencil,
-};
-
 static struct pb_slab *
 panfrost_slab_alloc(void *priv, unsigned heap, unsigned entry_size, unsigned group_index)
 {
@@ -3047,6 +3066,54 @@ panfrost_slab_free(void *priv, struct pb_slab *slab)
         //struct panfrost_memory *mem = (struct panfrost_memory *) slab;
         printf("stub: Tried to free slab\n");
 }
+
+static void
+panfrost_setup_hardware(struct panfrost_context *ctx)
+{
+        struct pipe_context *gallium = (struct pipe_context *) ctx;
+        struct panfrost_screen *screen = panfrost_screen(gallium->screen);
+
+        pandev_open(screen->fd);
+
+        pb_slabs_init(&ctx->slabs,
+                        MIN_SLAB_ENTRY_SIZE,
+                        MAX_SLAB_ENTRY_SIZE,
+
+                        3, /* Number of heaps */
+
+                        ctx,
+
+                        panfrost_slab_can_reclaim,
+                        panfrost_slab_alloc,
+                        panfrost_slab_free);
+
+        for (int i = 0; i < ARRAY_SIZE(ctx->transient_pools); ++i) {
+                /* Allocate the beginning of the transient pool */
+                int entry_size = (1 << 22); /* 4MB */
+
+                ctx->transient_pools[i].entry_size = entry_size;
+                ctx->transient_pools[i].entry_count = 1;
+
+                ctx->transient_pools[i].entries[0] = (struct panfrost_memory_entry *) pb_slab_alloc(&ctx->slabs, entry_size, HEAP_TRANSIENT);
+        }
+
+        panfrost_allocate_slab(ctx, &ctx->scratchpad, 64, false, 0, 0, 0);
+        panfrost_allocate_slab(ctx, &ctx->varying_mem, 16384, false, 0, 0, 0);
+        panfrost_allocate_slab(ctx, &ctx->shaders, 4096, true, BASE_MEM_PROT_GPU_EX, 0, 0);
+        panfrost_allocate_slab(ctx, &ctx->tiler_heap, 32768, false, BASE_MEM_GROW_ON_GPF, 1, 128);
+        panfrost_allocate_slab(ctx, &ctx->misc_0, 128, false, BASE_MEM_GROW_ON_GPF, 1, 128);
+}
+
+static const struct u_transfer_vtbl transfer_vtbl = {
+        .resource_create          = panfrost_resource_create,
+        .resource_destroy         = panfrost_resource_destroy,
+        .transfer_map             = panfrost_transfer_map,
+        .transfer_unmap           = panfrost_transfer_unmap,
+        .transfer_flush_region    = u_default_transfer_flush_region,
+        //.get_internal_format      = panfrost_resource_get_internal_format,
+        //.set_stencil              = panfrost_resource_set_stencil,
+        //.get_stencil              = panfrost_resource_get_stencil,
+};
 
 /* New context creation, which also does hardware initialisation since I don't
  * know the better way to structure this :smirk: */
@@ -3104,7 +3171,7 @@ panfrost_create_context(struct pipe_screen *screen, void *priv, unsigned flags)
 
         gallium->create_vertex_elements_state = panfrost_create_vertex_elements_state;
         gallium->bind_vertex_elements_state = panfrost_bind_vertex_elements_state;
-        gallium->delete_vertex_elements_state = panfrost_generic_cso_delete;
+        gallium->delete_vertex_elements_state = panfrost_delete_vertex_elements_state;
 
         gallium->create_fs_state = panfrost_create_shader_state;
         gallium->delete_fs_state = panfrost_delete_shader_state;
@@ -3142,11 +3209,12 @@ panfrost_create_context(struct pipe_screen *screen, void *priv, unsigned flags)
         gallium->end_query = panfrost_end_query;
         gallium->get_query_result = panfrost_get_query_result;
 
-
         gallium->blit = panfrost_blit;
 
         gallium->flush_resource = panfrost_flush_resource;
         gallium->invalidate_resource = panfrost_invalidate_resource;
+
+        panfrost_setup_hardware(ctx);
 
         /* XXX: leaks */
         gallium->stream_uploader = u_upload_create_default(gallium);
@@ -3160,20 +3228,7 @@ panfrost_create_context(struct pipe_screen *screen, void *priv, unsigned flags)
         ctx->blitter = util_blitter_create(gallium);
         assert(ctx->blitter);
 
-        pb_slabs_init(&ctx->slabs,
-                        MIN_SLAB_ENTRY_SIZE,
-                        MAX_SLAB_ENTRY_SIZE,
-
-                        2, /* Number of heaps */
-
-                        ctx,
-
-                        panfrost_slab_can_reclaim,
-                        panfrost_slab_alloc,
-                        panfrost_slab_free);
-
         /* Prepare for render! */
-        panfrost_setup_hardware(ctx);
 
         /* TODO: XXX */
         ctx->vt_framebuffer = panfrost_emit_fbd(ctx);

@@ -61,6 +61,11 @@ panfrost_shader_compile(struct panfrost_context *ctx, struct mali_shader_meta *m
 
 #define HEAP_TRANSIENT 1
 
+/* Multi-frame descriptor memory (replaces what used to be
+ * cmdstream_persistent), for long-living small allocations */
+
+#define HEAP_DESCRIPTOR 2
+
 /* Represents a fat pointer for GPU-mapped memory, returned from the transient
  * allocator and not used for much else */
 
@@ -121,6 +126,9 @@ panfrost_reserve(struct panfrost_memory *mem, size_t sz)
         mem->stack_bottom += sz;
         return mem->gpu + (mem->stack_bottom - sz);
 }
+
+struct panfrost_transfer
+panfrost_allocate_chunk(struct panfrost_context *ctx, size_t size, unsigned heap_id);
 
 #include <math.h>
 #define inff INFINITY
