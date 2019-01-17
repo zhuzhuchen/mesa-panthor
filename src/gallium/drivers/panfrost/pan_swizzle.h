@@ -26,7 +26,6 @@
 #define __TEXSWZ_H__
 
 #include <stdint.h>
-#include "pan_nondrm.h"
 
 void
 panfrost_generate_space_filler_indices(void);

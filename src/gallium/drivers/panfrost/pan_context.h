@@ -32,7 +32,6 @@
 #define CACHE_LINE_SIZE 1024 /* TODO */
 #include <sys/mman.h>
 #include <assert.h>
-#include "pan_nondrm.h"
 #include "pan_resource.h"
 
 #include "pipe/p_compiler.h"
@@ -331,7 +330,7 @@ struct panfrost_sampler_view {
 };
 
 static inline struct panfrost_context *
-panfrost_context(struct pipe_context *pcontext)
+pan_context(struct pipe_context *pcontext)
 {
         return (struct panfrost_context *) pcontext;
 }
@@ -344,15 +343,6 @@ pan_screen(struct pipe_screen *p)
 
 struct pipe_context *
 panfrost_create_context(struct pipe_screen *screen, void *priv, unsigned flags);
-
-void
-panfrost_allocate_slab(struct panfrost_context *ctx,
-                       struct panfrost_memory *mem,
-                       size_t pages,
-                       bool same_va,
-                       int extra_flags,
-                       int commit_count,
-                       int extent);
 
 void
 panfrost_emit_for_draw(struct panfrost_context *ctx, bool with_vertex_data);
@@ -368,5 +358,8 @@ panfrost_flush(
         struct pipe_context *pipe,
         struct pipe_fence_handle **fence,
         unsigned flags);
+
+void
+panfrost_shader_compile(struct panfrost_context *ctx, struct mali_shader_meta *meta, const char *src, int type, struct panfrost_shader_state *state);
 
 #endif

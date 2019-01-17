@@ -43,6 +43,8 @@
 #include "drm_fourcc.h"
 
 #include "pan_screen.h"
+#include "pan_nondrm.h"
+#include "pan_drm.h"
 #include "pan_resource.h"
 #include "pan_public.h"
 
@@ -675,7 +677,6 @@ panfrost_create_screen(int fd, struct renderonly *ro, bool is_drm)
         if (!screen)
                 return NULL;
 
-        screen->fd = fd;
         if (ro) {
                 screen->ro = renderonly_dup(ro);
                 if (!screen->ro) {
@@ -685,7 +686,10 @@ panfrost_create_screen(int fd, struct renderonly *ro, bool is_drm)
                 }
         }
 
-        screen->is_drm = is_drm;
+	if (is_drm)
+	        screen->driver = panfrost_create_drm_driver(fd);
+        else
+	        screen->driver = panfrost_create_nondrm_driver(fd);
 
         screen->base.destroy = panfrost_destroy_screen;
 
@@ -702,6 +706,9 @@ panfrost_create_screen(int fd, struct renderonly *ro, bool is_drm)
         screen->base.get_compiler_options = panfrost_screen_get_compiler_options;
         screen->base.fence_reference = panfrost_fence_reference;
         screen->base.fence_finish = panfrost_fence_finish;
+
+	screen->last_fragment_id = -1;
+	screen->last_fragment_flushed = true;
 
         panfrost_resource_screen_init(screen);
 

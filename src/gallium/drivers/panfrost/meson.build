@@ -37,6 +37,7 @@ files_panfrost = files(
   'pan_context.c',
 
   'pan_nondrm.c',
+  'pan_drm.c',
   'pan_allocate.c',
   'pan_assemble.c',
   'pan_format.c',

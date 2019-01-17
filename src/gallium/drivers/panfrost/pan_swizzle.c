@@ -24,6 +24,7 @@
 
 #include <stdio.h>
 #include "pan_swizzle.h"
+#include "pan_allocate.h"
 
 /* Space a group of 4-bits out. For instance, 0x7 -- that is, 0b111 -- would
  * become 0b10101 */

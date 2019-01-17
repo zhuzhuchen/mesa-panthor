@@ -32,41 +32,12 @@
 #define PAN_RESOURCE_H
 
 #include <panfrost-job.h>
-#include "pan_nondrm.h"
 #include "pan_screen.h"
+#include "pan_allocate.h"
 #include <drm.h>
 
-/* Corresponds to pipe_resource for our hacky pre-DRM interface */
-
-struct sw_displaytarget;
-
 struct panfrost_bo {
-	//struct panfrost_device *dev;
-	uint32_t size;
-	uint32_t handle;
-	uint32_t name;
-	int32_t refcnt;
-	uint64_t iova;
-	void *map;
-	//const struct fd_bo_funcs *funcs;
-
-	enum {
-		NO_CACHE = 0,
-		BO_CACHE = 1,
-		RING_CACHE = 2,
-	} bo_reuse;
-
-	//struct list_head list;   /* bucket-list entry */
-	time_t free_time;        /* time when added to bucket-list */
-};
-
-struct panfrost_resource {
-        struct pipe_resource base;
-
-        struct panfrost_bo *bo;
-        struct renderonly_scanout *scanout;
-
-        /* Address to the resource in question */
+        /* Address to the BO in question */
 
         uint8_t *cpu[MAX_MIP_LEVELS];
 
@@ -79,13 +50,11 @@ struct panfrost_resource {
         /* Memory entry corresponding to gpu above */
         struct panfrost_memory_entry *entry[MAX_MIP_LEVELS];
 
-        /* Is something other than level 0 ever written? */
-        bool is_mipmap;
-
-        struct sw_displaytarget *dt;
-
         /* Set for tiled, clear for linear. */
         bool tiled;
+
+        /* Is something other than level 0 ever written? */
+        bool is_mipmap;
 
         /* If AFBC is enabled for this resource, we lug around an AFBC
          * metadata buffer as well. The actual AFBC resource is also in
@@ -99,6 +68,13 @@ struct panfrost_resource {
         bool has_checksum;
         struct panfrost_memory checksum_slab;
         int checksum_stride;
+};
+
+struct panfrost_resource {
+        struct pipe_resource base;
+
+        struct panfrost_bo *bo;
+        struct renderonly_scanout *scanout;
 };
 
 static inline struct panfrost_resource *

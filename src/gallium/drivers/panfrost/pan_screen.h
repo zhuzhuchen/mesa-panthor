@@ -35,20 +35,44 @@
 #include "pipe/p_defines.h"
 #include "renderonly/renderonly.h"
 
+#include <panfrost-misc.h>
+#include "pan_allocate.h"
+
 struct panfrost_context;
 struct panfrost_resource;
+struct panfrost_screen;
+
+struct panfrost_driver {
+	struct panfrost_bo * (*create_bo) (struct panfrost_screen *screen, const struct pipe_resource *template);
+	struct panfrost_bo * (*import_bo) (struct panfrost_screen *screen, struct winsys_handle *whandle);
+	uint8_t * (*map_bo) (struct panfrost_context *ctx, struct pipe_transfer *transfer);
+	void (*unmap_bo) (struct panfrost_context *ctx, struct pipe_transfer *transfer);
+	void (*destroy_bo) (struct panfrost_screen *screen, struct panfrost_bo *bo);
+
+	void (*submit_job) (struct panfrost_context *ctx, mali_ptr addr, int nr_atoms);
+	void (*force_flush_fragment) (struct panfrost_context *ctx);
+	void (*allocate_slab) (struct panfrost_context *ctx,
+		               struct panfrost_memory *mem,
+		               size_t pages,
+		               bool same_va,
+		               int extra_flags,
+		               int commit_count,
+		               int extent);
+};
 
 struct panfrost_screen {
         struct pipe_screen base;
 
         struct renderonly *ro;
-        int fd;
-        bool is_drm;
+        struct panfrost_driver *driver;
 
         struct panfrost_context *any_context;
         
         /* TODO: Where? */
         struct panfrost_resource *display_target;
+
+	int last_fragment_id;
+	int last_fragment_flushed;
 };
 
 static inline struct panfrost_screen *
