@@ -50,6 +50,7 @@
 static const struct panwrap_flag_info gl_enable_flag_info[] = {
         FLAG_INFO(CULL_FACE_FRONT),
         FLAG_INFO(CULL_FACE_BACK),
+        FLAG_INFO(OCCLUSION_BOOLEAN),
         {}
 };
 #undef FLAG_INFO
@@ -1526,6 +1527,8 @@ panwrap_replay_vertex_tiler_postfix(const struct mali_vertex_tiler_postfix *p, i
         MEMORY_COMMENT(p, varying_meta);
         DYN_MEMORY_PROP(p, job_no, viewport);
         MEMORY_COMMENT(p, viewport);
+        DYN_MEMORY_PROP(p, job_no, occlusion_counter);
+        MEMORY_COMMENT(p, occlusion_counter);
         MEMORY_COMMENT(p, framebuffer & ~1);
         panwrap_msg("%" PRIx64 "\n", p->viewport);
         panwrap_msg("%" PRIx64 "\n", p->framebuffer);

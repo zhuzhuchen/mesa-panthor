@@ -75,6 +75,15 @@ struct panfrost_constant_buffer {
         void *buffer;
 };
 
+struct panfrost_query {
+        /* Passthrough from Gallium */
+        unsigned type;
+        unsigned index;
+
+        /* Memory for the GPU to writeback the value of the query */
+        struct panfrost_transfer transfer;
+};
+
 #define PANFROST_MAX_TRANSIENT_ENTRIES 64
 
 struct panfrost_transient_pool {
@@ -121,6 +130,8 @@ struct panfrost_context {
                 double depth;
                 unsigned stencil;
         } last_clear;
+
+        struct panfrost_query *occlusion_query;
 
         /* Each render job has multiple framebuffer descriptors associated with
          * it, used for various purposes with more or less the same format. The
