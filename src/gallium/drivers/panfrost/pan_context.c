@@ -1048,7 +1048,11 @@ panfrost_emit_for_draw(struct panfrost_context *ctx, bool with_vertex_data)
                 ctx->payload_tiler.gl_enables = ctx->rasterizer->tiler_gl_enables;
 
                 panfrost_set_framebuffer_msaa(ctx, FORCE_MSAA || ctx->rasterizer->base.multisample);
+        }
 
+        if (ctx->occlusion_query) {
+                ctx->payload_tiler.gl_enables |= MALI_GL_OCCLUSION_BOOLEAN;
+                ctx->payload_tiler.postfix.occlusion_counter = ctx->occlusion_query->transfer.gpu;
         }
 
         if (ctx->dirty & PAN_DIRTY_VS) {
@@ -2906,19 +2910,12 @@ panfrost_blit(struct pipe_context *pipe,
         return;
 }
 
-struct panfrost_query {
-        unsigned type;
-        unsigned index;
-};
-
 static struct pipe_query *
 panfrost_create_query(struct pipe_context *pipe, 
 		      unsigned type,
 		      unsigned index)
 {
-        /* STUB */
         struct panfrost_query *q = CALLOC_STRUCT(panfrost_query);
-        printf("Creating query %d, %d\n", type, index);
 
         q->type = type;
         q->index = index;
@@ -2935,16 +2932,34 @@ panfrost_destroy_query(struct pipe_context *pipe, struct pipe_query *q)
 static boolean
 panfrost_begin_query(struct pipe_context *pipe, struct pipe_query *q)
 {
+        struct panfrost_context *ctx = panfrost_context(pipe);
         struct panfrost_query *query = (struct panfrost_query *) q;
-        printf("Skipping query %d\n", query->type);
-        /* STUB */
+
+        switch (query->type) {
+                case PIPE_QUERY_OCCLUSION_PREDICATE:
+                case PIPE_QUERY_OCCLUSION_PREDICATE_CONSERVATIVE:
+                {
+                        /* Allocate a word for the query results to be stored */
+                        query->transfer = panfrost_allocate_chunk(ctx, sizeof(unsigned), HEAP_DESCRIPTOR);
+
+                        ctx->occlusion_query = query;
+
+                        break;
+                }
+
+                default:
+                        fprintf(stderr, "Skipping query %d\n", query->type);
+                        break;
+        }
+
         return true;
 }
 
 static bool
 panfrost_end_query(struct pipe_context *pipe, struct pipe_query *q)
 {
-        /* STUB */
+        struct panfrost_context *ctx = panfrost_context(pipe);
+        ctx->occlusion_query = NULL;
         return true;
 }
 
@@ -2954,9 +2969,28 @@ panfrost_get_query_result(struct pipe_context *pipe,
                           boolean wait,
                           union pipe_query_result *vresult)
 {
-        /* STUB */
         struct panfrost_query *query = (struct panfrost_query *) q;
-        printf("Skipped query get %d\n", query->type);
+
+        /* We need to flush out the jobs to actually run the counter, TODO
+         * check wait, TODO wallpaper after if needed */
+
+        panfrost_flush(pipe, NULL, PIPE_FLUSH_END_OF_FRAME);
+
+        switch (query->type) {
+                case PIPE_QUERY_OCCLUSION_PREDICATE:
+                case PIPE_QUERY_OCCLUSION_PREDICATE_CONSERVATIVE: {
+                        /* Read back the query results */
+                        unsigned *result = (unsigned *) query->transfer.cpu;
+                        unsigned passed = *result;
+
+                        vresult->b = !!passed;
+                        break;
+                }
+                default:
+                        fprintf(stderr, "Skipped query get %d\n", query->type);
+                        break;
+        }
+
         return true;
 }
 

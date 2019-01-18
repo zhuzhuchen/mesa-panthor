@@ -73,12 +73,16 @@ enum mali_gl_mode {
         MALI_GL_TRIANGLE_FAN   = 0xC,
 };
 
+/* Applies to tiler_gl_enables */
+
 #define MALI_GL_CULL_FACE_BACK  0x80
 #define MALI_GL_CULL_FACE_FRONT 0x40
 
 #define MALI_GL_FRONT_FACE(v) (v << 5)
 #define MALI_GL_CCW (0)
 #define MALI_GL_CW  (1)
+
+#define MALI_GL_OCCLUSION_BOOLEAN 0x8
 
 /* TODO: Might this actually be a finer bitfield? */
 #define MALI_DEPTH_STENCIL_ENABLE 0x6400
@@ -961,14 +965,13 @@ struct mali_vertex_tiler_postfix {
 
         uintptr_t uniforms;
         u8 flags : 4;
-uintptr_t _shader_upper :
-        MALI_SHORT_PTR_BITS - 4; /* struct shader_meta */
+        uintptr_t _shader_upper : MALI_SHORT_PTR_BITS - 4; /* struct shader_meta */
         uintptr_t attributes; /* struct attribute_buffer[] */
         uintptr_t attribute_meta; /* attribute_meta[] */
         uintptr_t varyings; /* struct attr */
         uintptr_t varying_meta; /* pointer */
         uintptr_t viewport;
-        uintptr_t zero6;
+        uintptr_t occlusion_counter; /* A single bit as far as I can tell */
 
         /* Note: on Bifrost, this isn't actually the FBD. It points to
          * bifrost_scratchpad instead. However, it does point to the same thing
