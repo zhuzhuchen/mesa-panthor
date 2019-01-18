@@ -2919,11 +2919,15 @@ write_transformed_position(nir_builder *b, nir_src input_point_src, int uniform_
         nir_ssa_def *depth_offset     = nir_fmul(b, nir_fadd(b, depth_far, depth_near), nir_imm_float(b, 0.5f));
         nir_ssa_def *screen_depth     = nir_fadd(b, nir_fmul(b, nir_channel(b, ndc_point, 2), depth_multiplier), depth_offset);
 
+        /* gl_Position will be written out in screenspace xyz, with w set to
+         * the reciprocal we computed earlier. The transformed w component is
+         * then used for perspective-correct varying interpolation */
+
         nir_ssa_def *screen_space = nir_vec4(b,
                                              nir_channel(b, viewport_xy, 0),
                                              nir_channel(b, viewport_xy, 1),
                                              screen_depth,
-                                             nir_imm_float(b, 0.0));
+                                             nir_fabs(b, w_recip));
 
         /* Finally, write out the transformed values to the varying */
 
