@@ -954,13 +954,16 @@ struct mali_vertex_tiler_postfix {
          */
         uintptr_t uniform_buffers;
 
-        /* For reasons I don't quite understand this is a pointer to a pointer.
-         * That second pointer points to the actual texture descriptor. */
+        /* This is a pointer to an array of pointers to the texture
+         * descriptors, number of pointers bounded by number of textures. The
+         * indirection is needed to accomodate varying numbers and sizes of
+         * texture descriptors */
         uintptr_t texture_trampoline;
 
         /* For OpenGL, from what I've seen, this is intimately connected to
          * texture_meta. cwabbott says this is not the case under Vulkan, hence
-         * why this field is seperate (Midgard is Vulkan capable) */
+         * why this field is seperate (Midgard is Vulkan capable). Pointer to
+         * array of sampler descriptors (which are uniform in size) */
         uintptr_t sampler_descriptor;
 
         uintptr_t uniforms;

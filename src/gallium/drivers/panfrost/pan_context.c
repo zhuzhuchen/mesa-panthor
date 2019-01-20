@@ -1650,29 +1650,10 @@ panfrost_get_index_buffer_mapped(struct panfrost_context *ctx, const struct pipe
         }
 }
 
-bool needs_dummy_draw = true;
-
 static void
 panfrost_draw_vbo(
         struct pipe_context *pipe,
         const struct pipe_draw_info *info);
-
-/* XXX: First frame w/ a draw seems to fail... so inject a fake frame */
-
-static void
-panfrost_maybe_dummy_draw(struct panfrost_context *ctx, const struct pipe_draw_info *info)
-{
-        if (!needs_dummy_draw)
-                return;
-
-        needs_dummy_draw = false;
-        dont_scanout = true;
-
-        panfrost_draw_vbo((struct pipe_context *) ctx, info);
-        panfrost_flush((struct pipe_context *) ctx, NULL, 0);
-
-        dont_scanout = false;
-}
 
 #define CALCULATE_MIN_MAX_INDEX(T, buffer, start, count) \
         for (unsigned _idx = (start); _idx < (start + count); ++_idx) { \
@@ -1687,8 +1668,6 @@ panfrost_draw_vbo(
         const struct pipe_draw_info *info)
 {
         struct panfrost_context *ctx = panfrost_context(pipe);
-
-        panfrost_maybe_dummy_draw(ctx, info);
 
         ctx->payload_vertex.draw_start = info->start;
         ctx->payload_tiler.draw_start = info->start;
@@ -3005,9 +2984,16 @@ panfrost_allocate_slab(struct panfrost_context *ctx,
 {
         struct pipe_context *gallium = (struct pipe_context *) ctx;
         struct panfrost_screen *screen = panfrost_screen(gallium->screen);
-        int flags = BASE_MEM_PROT_CPU_RD | BASE_MEM_PROT_CPU_WR |
-                    BASE_MEM_PROT_GPU_RD | BASE_MEM_PROT_GPU_WR;
         int out_flags;
+
+        /* Set sane reasonable flags. TODO: COHERENT_LOCAL isn't generally
+         * "default", but for certain buffers it's necessary to avoid severe
+         * rendering glitches. In the future, figure out who needs it. For now,
+         * always set to be safe */
+
+        int flags = BASE_MEM_PROT_CPU_RD | BASE_MEM_PROT_CPU_WR |
+                    BASE_MEM_PROT_GPU_RD | BASE_MEM_PROT_GPU_WR |
+                    BASE_MEM_COHERENT_LOCAL;
 
         flags |= extra_flags;
 
