@@ -102,6 +102,7 @@ panfrost_shader_compile(struct panfrost_context *ctx, struct mali_shader_meta *m
         meta->midgard1.work_count = program.work_register_count;
 
         state->can_discard = program.can_discard;
+        state->writes_point_size = program.writes_point_size;
 
         /* Separate as primary uniform count is truncated */
         state->uniform_count = program.uniform_count;

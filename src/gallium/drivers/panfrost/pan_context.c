@@ -1064,6 +1064,22 @@ panfrost_emit_for_draw(struct panfrost_context *ctx, bool with_vertex_data)
                 vs->tripipe->texture_count = ctx->sampler_view_count[PIPE_SHADER_VERTEX];
                 vs->tripipe->sampler_count = ctx->sampler_count[PIPE_SHADER_VERTEX];
 
+                /* Set the flag allowing point size writes if we need that */
+                SET_BIT(ctx->payload_tiler.prefix.unknown_draw, 0x100, vs->writes_point_size);
+
+                if (vs->writes_point_size) {
+                        struct panfrost_transfer transfer = panfrost_allocate_chunk(ctx, 64, HEAP_DESCRIPTOR);
+
+                        uint16_t fs[] = {
+                                _mesa_float_to_half(30.0),
+                                _mesa_float_to_half(60.0),
+                                _mesa_float_to_half(90.0)
+                        };
+
+                        memcpy(transfer.cpu, &fs, sizeof(fs));
+                        ctx->payload_tiler.width_varying = transfer.gpu;
+                }
+
                 /* Who knows */
                 vs->tripipe->midgard1.unknown1 = 0x2201;
 
@@ -1703,7 +1719,7 @@ panfrost_draw_vbo(
          * rendering artefacts. It's not clear what these values mean yet. */
 
         ctx->payload_tiler.prefix.unknown_draw &= ~(0x3000 | 0x18000);
-        ctx->payload_tiler.prefix.unknown_draw |= (ctx->vertex_count > 65535) ? 0x3000 : 0x18000;
+        ctx->payload_tiler.prefix.unknown_draw |= (info->mode == PIPE_PRIM_POINTS || ctx->vertex_count > 65535) ? 0x3000 : 0x18000;
 
         if (info->index_size) {
                 /* Calculate the min/max index used so we can figure out how

@@ -1014,7 +1014,14 @@ struct midgard_payload_vertex_tiler {
         struct mali_vertex_tiler_postfix postfix;
 
 #ifdef T8XX
-        float line_width;
+        /* Point/line width can either be specified as a constant or as a
+         * varying. Which is used is controlled by unknown_draw & 0x100 (set
+         * for varying, clear for constant) */
+
+        union {
+                float line_width;
+                mali_ptr width_varying;
+        };
 #endif
 } __attribute__((packed));
 
