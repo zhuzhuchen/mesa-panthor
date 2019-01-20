@@ -2302,7 +2302,7 @@ panfrost_resource_create_front(struct pipe_screen *screen,
                         break;
                 default:
                         fprintf(stderr, "Unknown texture target %d\n", template->target);
-                        assert(0);
+                        //assert(0);
         }
 
         if ((template->bind & PIPE_BIND_RENDER_TARGET) || (template->bind & PIPE_BIND_DEPTH_STENCIL)) {

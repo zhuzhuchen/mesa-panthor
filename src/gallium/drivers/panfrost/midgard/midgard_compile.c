@@ -3403,14 +3403,14 @@ midgard_compile_shader_nir(nir_shader *nir, midgard_program *program, bool is_bl
                         if (var->data.location < VARYING_SLOT_VAR0) {
                                 if (var->data.location == VARYING_SLOT_POS) {
                                         _mesa_hash_table_u64_insert(ctx->varying_nir_to_mdg, var->data.driver_location + 1, (void *) ((uintptr_t) (1)));
+                                        continue;
                                 } else if (var->data.location == VARYING_SLOT_PSIZ) {
                                         /* TODO: Point size */
                                         printf("Skipping gl_PointSize.. TODO\n");
+                                        continue;
                                 } else {
-                                        printf("Skipping unknown varying location\n");
+                                        printf("Allowing unknown varying location\n");
                                 }
-
-                                continue;
                         }
 
                         for (int col = 0; col < glsl_get_matrix_columns(var->type); ++col) {
