@@ -2985,7 +2985,8 @@ panfrost_allocate_slab(struct panfrost_context *ctx,
         struct pipe_context *gallium = (struct pipe_context *) ctx;
         struct panfrost_screen *screen = panfrost_screen(gallium->screen);
         int flags = BASE_MEM_PROT_CPU_RD | BASE_MEM_PROT_CPU_WR |
-                    BASE_MEM_PROT_GPU_RD | BASE_MEM_PROT_GPU_WR;
+                    BASE_MEM_PROT_GPU_RD | BASE_MEM_PROT_GPU_WR |
+                    BASE_MEM_COHERENT_LOCAL;
         int out_flags;
 
         flags |= extra_flags;
