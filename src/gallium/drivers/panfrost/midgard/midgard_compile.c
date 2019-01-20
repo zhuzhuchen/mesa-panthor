@@ -417,6 +417,9 @@ typedef struct compiler_context {
 
         /* Alpha ref value passed in */
         float alpha_ref;
+
+        /* The index corresponding to the fragment output */
+        unsigned fragment_output;
 } compiler_context;
 
 /* Append instruction to end of current block */
@@ -1342,6 +1345,11 @@ emit_intrinsic(compiler_context *ctx, nir_intrinsic_instr *instr)
                          * writes */
 
                         midgard_pin_output(ctx, reg, 0);
+
+                        /* Save the index we're writing to for later reference
+                         * in the epilogue */
+
+                        ctx->fragment_output = reg;
                 } else if (ctx->stage == MESA_SHADER_VERTEX) {
                         /* Varyings are written into one of two special
                          * varying register, r26 or r27. The register itself is selected as the register
@@ -3018,7 +3026,20 @@ transform_position_writes(nir_shader *shader)
 static void
 emit_fragment_epilogue(compiler_context *ctx)
 {
-        /* See the docs for why this works. TODO: gl_FragDepth */
+        /* Special case: writing out constants requires us to include the move
+         * explicitly now, so shove it into r0 */
+
+        void *constant_value = _mesa_hash_table_u64_search(ctx->ssa_constants, ctx->fragment_output + 1);
+
+        if (constant_value) {
+                midgard_instruction ins = v_fmov(SSA_FIXED_REGISTER(REGISTER_CONSTANT), blank_alu_src, SSA_FIXED_REGISTER(0));
+                attach_constants(ctx, &ins, constant_value, ctx->fragment_output + 1);
+                emit_mir_instruction(ctx, ins);
+        }
+
+        /* Perform the actual fragment writeout. We have two writeout/branch
+         * instructions, forming a loop until writeout is successful as per the
+         * docs. TODO: gl_FragDepth */
 
         EMIT(alu_br_compact_cond, midgard_jmp_writeout_op_writeout, TAG_ALU_4, 0, midgard_condition_always);
         EMIT(alu_br_compact_cond, midgard_jmp_writeout_op_writeout, TAG_ALU_4, -1, midgard_condition_always);
