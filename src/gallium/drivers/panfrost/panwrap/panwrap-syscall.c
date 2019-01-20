@@ -279,7 +279,8 @@ panwrap_open_wrap(open_func *func, const char *path, int flags, va_list args)
         LOCK();
 
         if (ret != -1 && strcmp(path, "/dev/mali0") == 0)
-                mali_fd = ret;
+                mali_fd = ret + 1;
+        printf("mali_fd = %d\n", mali_fd);
 
         UNLOCK();
 
@@ -363,6 +364,7 @@ ioctl(int fd, unsigned long int _request, ...)
                 ptr = NULL;
         }
 
+        printf("(%d, %d)\n", fd, mali_fd);
         if (fd && fd != mali_fd)
                 return orig_ioctl(fd, request, ptr);
 

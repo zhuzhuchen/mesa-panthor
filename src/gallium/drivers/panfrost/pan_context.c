@@ -522,12 +522,13 @@ panfrost_viewport(struct panfrost_context *ctx,
 
         struct mali_viewport ret = {
                 .floats = {
-#if 0
                         -inff, -inff,
                         inff, inff,
-#endif
+
+#if 0
                         0.0, 0.0,
                         2048.0, 1600.0,
+#endif
                 },
 
                 .depth_range_n = depth_range_n,
@@ -806,7 +807,7 @@ panfrost_default_shader_backend(struct panfrost_context *ctx)
 }
 
 /* Generates a vertex/tiler job. This is, in some sense, the heart of the
- * graphics command stream. It should be called once per draw, accordding to
+ * graphics command stream. It should be called once per draw, according to
  * presentations. Set is_tiler for "tiler" jobs (fragment shader jobs, but in
  * Mali parlance, "fragment" refers to framebuffer writeout). Clear it for
  * vertex jobs. */
@@ -1466,6 +1467,8 @@ panfrost_submit_frame(struct panfrost_context *ctx, bool flush_immediate)
         if (!has_draws)
                 flush_immediate = true;
 
+        printf("Has draws? %d (%d)\n", ctx->draw_count, has_draws);
+
         /* A number of jobs are batched -- this must be linked and cleared */
         panfrost_link_jobs(ctx);
 
@@ -1487,7 +1490,7 @@ panfrost_submit_frame(struct panfrost_context *ctx, bool flush_immediate)
                 {
                         .jc = ctx->set_value_job,
                         .atom_number = vt_atom,
-                        .core_req = BASE_JD_REQ_CS | BASE_JD_REQ_T | BASE_JD_REQ_CF | BASE_JD_REQ_COHERENT_GROUP | BASEP_JD_REQ_EVENT_NEVER,
+                        .core_req = BASE_JD_REQ_CS | BASE_JD_REQ_T | BASE_JD_REQ_CF | BASE_JD_REQ_COHERENT_GROUP /*| BASEP_JD_REQ_EVENT_NEVER*/,
                 },
                 {
                         .jc = panfrost_fragment_job(ctx),
@@ -1505,7 +1508,7 @@ panfrost_submit_frame(struct panfrost_context *ctx, bool flush_immediate)
 
         if (has_draws) {
                 atoms[1].pre_dep[0].atom_id = vt_atom;
-                atoms[1].pre_dep[0].dependency_type = BASE_JD_DEP_TYPE_DATA;
+                atoms[1].pre_dep[0].dependency_type = /*BASE_JD_DEP_TYPE_DATA*/BASE_JD_DEP_TYPE_ORDER;
         }
 
         atoms[1].core_req |= panfrost_is_scanout(ctx) ? BASE_JD_REQ_EXTERNAL_RESOURCES : BASE_JD_REQ_FS_AFBC;
@@ -1516,13 +1519,26 @@ panfrost_submit_frame(struct panfrost_context *ctx, bool flush_immediate)
                 atoms[i].compat_core_req = atoms[i].core_req;
 
         struct kbase_ioctl_job_submit submit = {
-                .addr = (mali_ptr)(atoms + (has_draws ? 0 : 1)),
-                .nr_atoms = has_draws ? 2 : 1,
+                .addr = (mali_ptr)(atoms),
+                .nr_atoms = 1,
                 .stride = sizeof(struct base_jd_atom_v2),
         };
 
         if (pandev_ioctl(screen->fd, KBASE_IOCTL_JOB_SUBMIT, &submit))
                 printf("Error submitting\n");
+
+        usleep(1000*10);
+
+        struct kbase_ioctl_job_submit submit2 = {
+                .addr = (mali_ptr)(atoms + 1),
+                .nr_atoms = 1,
+                .stride = sizeof(struct base_jd_atom_v2),
+        };
+
+        if (pandev_ioctl(screen->fd, KBASE_IOCTL_JOB_SUBMIT, &submit2))
+                printf("Error submitting\n");
+
+
 
         /* If visual, we can stall a frame */
 
@@ -2985,7 +3001,7 @@ panfrost_allocate_slab(struct panfrost_context *ctx,
         struct pipe_context *gallium = (struct pipe_context *) ctx;
         struct panfrost_screen *screen = panfrost_screen(gallium->screen);
         int flags = BASE_MEM_PROT_CPU_RD | BASE_MEM_PROT_CPU_WR |
-                    BASE_MEM_PROT_GPU_RD | BASE_MEM_PROT_GPU_WR;
+                    BASE_MEM_PROT_GPU_RD | BASE_MEM_PROT_GPU_WR | BASE_MEM_COHERENT_LOCAL;
         int out_flags;
 
         flags |= extra_flags;
