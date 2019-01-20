@@ -886,6 +886,18 @@ struct mali_vertex_tiler_prefix {
         uintptr_t indices;
 } __attribute__((packed));
 
+/* Point size / line width can either be specified as a 32-bit float (for
+ * constant size) or as a [machine word size]-bit GPU pointer (for varying size). If a pointer
+ * is selected, by setting the appropriate MALI_VARYING_SIZE bit in the tiler
+ * payload, the contents of varying_pointer will be intepreted as an array of
+ * fp16 sizes, one for each vertex. gl_PointSize is therefore implemented by
+ * creating a special MALI_R16F varying writing to varying_pointer. */
+
+union midgard_primitive_size {
+        float constant;
+        uintptr_t pointer;
+};
+
 struct bifrost_vertex_only {
         u32 unk2; /* =0x2 */
 
@@ -919,8 +931,7 @@ struct bifrost_tiler_meta {
 
 struct bifrost_tiler_only {
         /* 0x20 */
-        float line_width;
-        u32 zero0;
+        union midgard_primitive_size primitive_size;
 
         mali_ptr tiler_meta;
 
@@ -992,7 +1003,7 @@ struct mali_vertex_tiler_postfix {
 
 struct midgard_payload_vertex_tiler {
 #ifdef T6XX
-        float line_width;
+        union midgard_primitive_size primitive_size;
 #endif
 
         struct mali_vertex_tiler_prefix prefix;
@@ -1014,14 +1025,7 @@ struct midgard_payload_vertex_tiler {
         struct mali_vertex_tiler_postfix postfix;
 
 #ifdef T8XX
-        /* Point/line width can either be specified as a constant or as a
-         * varying. Which is used is controlled by unknown_draw & 0x100 (set
-         * for varying, clear for constant) */
-
-        union {
-                float line_width;
-                mali_ptr width_varying;
-        };
+        union midgard_primitive_size primitive_size;
 #endif
 } __attribute__((packed));
 

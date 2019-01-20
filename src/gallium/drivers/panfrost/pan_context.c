@@ -1044,7 +1044,7 @@ panfrost_emit_for_draw(struct panfrost_context *ctx, bool with_vertex_data)
         }
 
         if (ctx->dirty & PAN_DIRTY_RASTERIZER) {
-                ctx->payload_tiler.line_width = ctx->rasterizer->base.line_width;
+                ctx->payload_tiler.primitive_size.constant = ctx->rasterizer->base.line_width;
                 ctx->payload_tiler.gl_enables = ctx->rasterizer->tiler_gl_enables;
 
                 panfrost_set_framebuffer_msaa(ctx, FORCE_MSAA || ctx->rasterizer->base.multisample);
@@ -1077,7 +1077,7 @@ panfrost_emit_for_draw(struct panfrost_context *ctx, bool with_vertex_data)
                         };
 
                         memcpy(transfer.cpu, &fs, sizeof(fs));
-                        ctx->payload_tiler.width_varying = transfer.gpu;
+                        ctx->payload_tiler.primitive_size.pointer = transfer.gpu;
                 }
 
                 /* Who knows */

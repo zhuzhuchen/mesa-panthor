@@ -1662,19 +1662,32 @@ panwrap_replay_gl_enables(uint32_t gl_enables, int job_type)
 }
 
 static void
+panwrap_replay_primitive_size(union midgard_primitive_size u, bool constant)
+{
+        panwrap_log(".primitive_size = {\n");
+        panwrap_indent++;
+
+        panwrap_prop("constant = %f", u.constant);
+
+        panwrap_indent;;
+        panwrap_log("},\n");
+}
+
+static void
 panwrap_replay_tiler_only_bfr(const struct bifrost_tiler_only *t, int job_no)
 {
         panwrap_log_cont("{\n");
         panwrap_indent++;
 
-        panwrap_prop("line_width = %f", t->line_width);
+        /* TODO: gl_PointSize on Bifrost */
+        panwrap_replay_primitive_size(t->primitive_size, true);
+
         DYN_MEMORY_PROP(t, job_no, tiler_meta);
         panwrap_replay_gl_enables(t->gl_enables, JOB_TYPE_TILER);
 
-        if (t->zero0 || t->zero1 || t->zero2 || t->zero3 || t->zero4 || t->zero5
+        if (t->zero1 || t->zero2 || t->zero3 || t->zero4 || t->zero5
                         || t->zero6 || t->zero7 || t->zero8) {
                 panwrap_msg("tiler only zero tripped");
-                panwrap_prop("zero0 = 0x%" PRIx32, t->zero0);
                 panwrap_prop("zero1 = 0x%" PRIx64, t->zero1);
                 panwrap_prop("zero2 = 0x%" PRIx64, t->zero2);
                 panwrap_prop("zero3 = 0x%" PRIx64, t->zero3);
@@ -1765,7 +1778,9 @@ panwrap_replay_vertex_or_tiler_job_mdg(const struct mali_job_descriptor_header *
         panwrap_log("struct midgard_payload_vertex_tiler payload_%d = {\n", job_no);
         panwrap_indent++;
 
-        panwrap_prop("line_width = %ff", v->line_width);
+        /* TODO: gl_PointSize */
+        panwrap_replay_primitive_size(v->primitive_size, true);
+
         panwrap_log(".prefix = ");
         panwrap_replay_vertex_tiler_prefix(&v->prefix, job_no);
 
