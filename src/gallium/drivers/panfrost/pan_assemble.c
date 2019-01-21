@@ -167,9 +167,7 @@ panfrost_shader_compile(struct panfrost_context *ctx, struct mali_shader_meta *m
                         {
                                 .index = 2,
                                 .format = MALI_R16F,
-
-                                /* TODO: Wat? xyyy swizzle? */
-                                .swizzle = /*0x248*/ default_vec1_swizzle,
+                                .swizzle =  default_vec1_swizzle,
                                 .unknown1 = 0x2
                         }
                 };

@@ -3405,7 +3405,7 @@ midgard_compile_shader_nir(nir_shader *nir, midgard_program *program, bool is_bl
                                 ctx->varying_count = MAX2(ctx->varying_count, 3);
 
                                 program->writes_point_size = true;
-                        } 
+                        }
                 }
 
                 /* Now, collect normal varyings */

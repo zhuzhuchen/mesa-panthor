@@ -65,8 +65,6 @@ panfrost_allocate_slab(struct panfrost_context *ctx,
 
 static bool USE_TRANSACTION_ELIMINATION = false;
 
-uint16_t *psz;
-
 /* Do not actually send anything to the GPU; merely generate the cmdstream as fast as possible. Disables framebuffer writes */
 //#define DRY_RUN
 
@@ -1028,7 +1026,6 @@ panfrost_emit_vertex_data(struct panfrost_context *ctx)
                 } else if (i == 2) {
                         /* gl_PointSize */
                         ctx->payload_tiler.primitive_size.pointer = varying_address;
-                        psz = ctx->varying_mem.cpu + ctx->varying_height;
                 }
 
                 /* Varyings appear to need 64-byte alignment */
@@ -1473,14 +1470,6 @@ force_flush_fragment(struct panfrost_context *ctx)
                 } while (event.atom_number != last_fragment_id);
 
                 last_fragment_flushed = true;
-        }
-
-        if (psz) {
-                float *f = psz;
-                for (int i = 0; i < 3; ++i) {
-                        float *fstrided = (float *) &psz[i];
-                        printf("%d: %X -- half %f, full %f -- er, %f\n", i, psz[i], _mesa_half_to_float(psz[i]), f[i], fstrided[0]);
-                }
         }
 }
 
