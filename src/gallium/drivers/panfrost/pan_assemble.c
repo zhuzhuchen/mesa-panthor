@@ -145,6 +145,7 @@ panfrost_shader_compile(struct panfrost_context *ctx, struct mali_shader_meta *m
                 }
 
                 /* Setup gl_Position, its weirdo analogue, and gl_PointSize (optionally) */
+                unsigned default_vec1_swizzle = panfrost_get_default_swizzle(1);
                 unsigned default_vec4_swizzle = panfrost_get_default_swizzle(4);
 
                 struct mali_attr_meta vertex_special_varyings[] = {
@@ -168,7 +169,7 @@ panfrost_shader_compile(struct panfrost_context *ctx, struct mali_shader_meta *m
                                 .format = MALI_R16F,
 
                                 /* TODO: Wat? xyyy swizzle? */
-                                .swizzle = 0x248,
+                                .swizzle = /*0x248*/ default_vec1_swizzle,
                                 .unknown1 = 0x2
                         }
                 };
