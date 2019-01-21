@@ -1052,20 +1052,7 @@ panfrost_emit_for_draw(struct panfrost_context *ctx, bool with_vertex_data)
         }
 
         if (ctx->dirty & PAN_DIRTY_RASTERIZER) {
-                assert(ctx->vs);
-
-                struct panfrost_shader_state *vs = &ctx->vs->variants[ctx->vs->active_variant];
-
-                if (!vs->writes_point_size) {
-                        /* If the size is constant, write it out. Otherwise,
-                         * don't touch primitive_size (since we would clobber
-                         * the pointer there) */
-
-                        ctx->payload_tiler.primitive_size.constant = ctx->rasterizer->base.line_width;
-                }
-
                 ctx->payload_tiler.gl_enables = ctx->rasterizer->tiler_gl_enables;
-
                 panfrost_set_framebuffer_msaa(ctx, FORCE_MSAA || ctx->rasterizer->base.multisample);
         }
 
@@ -1083,9 +1070,6 @@ panfrost_emit_for_draw(struct panfrost_context *ctx, bool with_vertex_data)
                 vs->tripipe->texture_count = ctx->sampler_view_count[PIPE_SHADER_VERTEX];
                 vs->tripipe->sampler_count = ctx->sampler_count[PIPE_SHADER_VERTEX];
 
-                /* Set the flag for varying (pointer) point size if the shader needs that */
-                SET_BIT(ctx->payload_tiler.prefix.unknown_draw, MALI_DRAW_VARYING_SIZE, vs->writes_point_size);
-
                 /* Who knows */
                 vs->tripipe->midgard1.unknown1 = 0x2201;
 
@@ -1099,6 +1083,25 @@ panfrost_emit_for_draw(struct panfrost_context *ctx, bool with_vertex_data)
 
                 ctx->payload_vertex.postfix.varying_meta = varyings->varyings_descriptor;
                 ctx->payload_tiler.postfix.varying_meta = varyings->varyings_descriptor_fragment;
+        }
+
+        if (ctx->dirty & (PAN_DIRTY_RASTERIZER | PAN_DIRTY_VS)) {
+                /* Check if we need to link the gl_PointSize varying */
+                assert(ctx->vs);
+                struct panfrost_shader_state *vs = &ctx->vs->variants[ctx->vs->active_variant];
+
+                bool needs_gl_point_size = vs->writes_point_size && ctx->payload_tiler.prefix.draw_mode == MALI_GL_POINTS;
+
+                if (!needs_gl_point_size) {
+                        /* If the size is constant, write it out. Otherwise,
+                         * don't touch primitive_size (since we would clobber
+                         * the pointer there) */
+
+                        ctx->payload_tiler.primitive_size.constant = ctx->rasterizer->base.line_width;
+                }
+
+                /* Set the flag for varying (pointer) point size if the shader needs that */
+                SET_BIT(ctx->payload_tiler.prefix.unknown_draw, MALI_DRAW_VARYING_SIZE, needs_gl_point_size);
         }
 
         /* TODO: Maybe dirty track FS, maybe not. For now, it's transient. */
