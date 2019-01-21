@@ -74,17 +74,11 @@ static bool USE_TRANSACTION_ELIMINATION = false;
 	else \
 		lval &= ~(bit);
 
-/* MSAA is not supported in sw_winsys but it does make for nicer demos ;) so we
- * can force it regardless of gallium saying we don't have it */
-static bool FORCE_MSAA = true;
-
 /* TODO: Sample size, etc */
 
 static void
 panfrost_set_framebuffer_msaa(struct panfrost_context *ctx, bool enabled)
 {
-        enabled = false;
-
         SET_BIT(ctx->fragment_shader_core.unknown2_3, MALI_HAS_MSAA, enabled);
         SET_BIT(ctx->fragment_shader_core.unknown2_4, MALI_NO_MSAA, !enabled);
 
@@ -1053,7 +1047,7 @@ panfrost_emit_for_draw(struct panfrost_context *ctx, bool with_vertex_data)
 
         if (ctx->dirty & PAN_DIRTY_RASTERIZER) {
                 ctx->payload_tiler.gl_enables = ctx->rasterizer->tiler_gl_enables;
-                panfrost_set_framebuffer_msaa(ctx, FORCE_MSAA || ctx->rasterizer->base.multisample);
+                panfrost_set_framebuffer_msaa(ctx, ctx->rasterizer->base.multisample);
         }
 
         if (ctx->occlusion_query) {
@@ -1560,7 +1554,6 @@ panfrost_submit_frame(struct panfrost_context *ctx, bool flush_immediate)
         /* If readback, flush now (hurts the pipelined performance) */
         if (panfrost_is_scanout(ctx) && flush_immediate)
                 force_flush_fragment(ctx);
-
 #endif
 }
 
