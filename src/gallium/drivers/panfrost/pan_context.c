@@ -65,6 +65,8 @@ panfrost_allocate_slab(struct panfrost_context *ctx,
 
 static bool USE_TRANSACTION_ELIMINATION = false;
 
+uint16_t *psz;
+
 /* Do not actually send anything to the GPU; merely generate the cmdstream as fast as possible. Disables framebuffer writes */
 //#define DRY_RUN
 
@@ -1016,7 +1018,9 @@ panfrost_emit_vertex_data(struct panfrost_context *ctx)
                 varyings[i].stride = vars->varyings_stride[i];
                 varyings[i].size = vars->varyings_stride[i] * invocation_count;
 
-                /* If this varying has to be linked somewhere, do it now. See pan_assemble.c for the indices */
+                /* If this varying has to be linked somewhere, do it now. See
+                 * pan_assemble.c for the indices. TODO: Use a more generic
+                 * linking interface */
 
                 if (i == 1) {
                         /* gl_Position */
@@ -1024,7 +1028,7 @@ panfrost_emit_vertex_data(struct panfrost_context *ctx)
                 } else if (i == 2) {
                         /* gl_PointSize */
                         ctx->payload_tiler.primitive_size.pointer = varying_address;
-                        printf("Setting the size %llx.\n", varying_address);
+                        psz = ctx->varying_mem.cpu + ctx->varying_height;
                 }
 
                 /* Varyings appear to need 64-byte alignment */
@@ -1084,9 +1088,6 @@ panfrost_emit_for_draw(struct panfrost_context *ctx, bool with_vertex_data)
 
                 /* Set the flag for varying (pointer) point size if the shader needs that */
                 SET_BIT(ctx->payload_tiler.prefix.unknown_draw, MALI_DRAW_VARYING_SIZE, vs->writes_point_size);
-                if (vs->writes_point_size) {
-                        printf("K, so %p\n", ctx->payload_tiler.primitive_size.pointer);
-                }
 
                 /* Who knows */
                 vs->tripipe->midgard1.unknown1 = 0x2201;
@@ -1472,6 +1473,14 @@ force_flush_fragment(struct panfrost_context *ctx)
                 } while (event.atom_number != last_fragment_id);
 
                 last_fragment_flushed = true;
+        }
+
+        if (psz) {
+                float *f = psz;
+                for (int i = 0; i < 3; ++i) {
+                        float *fstrided = (float *) &psz[i];
+                        printf("%d: %X -- half %f, full %f -- er, %f\n", i, psz[i], _mesa_half_to_float(psz[i]), f[i], fstrided[0]);
+                }
         }
 }
 
