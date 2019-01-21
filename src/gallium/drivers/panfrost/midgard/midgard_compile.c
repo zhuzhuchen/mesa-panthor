@@ -3397,11 +3397,11 @@ midgard_compile_shader_nir(nir_shader *nir, midgard_program *program, bool is_bl
                                  * least from the shader's perspective), we
                                  * just need to skip over the spot*/
 
-                                _mesa_hash_table_u64_insert(ctx->varying_nir_to_mdg, var->data.driver_location + 1, (void *) ((uintptr_t) (1)));
+                                _mesa_hash_table_u64_insert(ctx->varying_nir_to_mdg, var->data.driver_location + 1, (void *) ((uintptr_t) (0 + 1)));
                                 ctx->varying_count = MAX2(ctx->varying_count, 2);
                         } else if (var->data.location == VARYING_SLOT_PSIZ) {
                                 /* Set point size second (third, see above) */
-                                _mesa_hash_table_u64_insert(ctx->varying_nir_to_mdg, var->data.driver_location + 1, (void *) ((uintptr_t) (3)));
+                                _mesa_hash_table_u64_insert(ctx->varying_nir_to_mdg, var->data.driver_location + 1, (void *) ((uintptr_t) (2 + 1)));
                                 ctx->varying_count = MAX2(ctx->varying_count, 3);
 
                                 program->writes_point_size = true;
@@ -3418,9 +3418,6 @@ midgard_compile_shader_nir(nir_shader *nir, midgard_program *program, bool is_bl
                                 _mesa_hash_table_u64_insert(ctx->varying_nir_to_mdg, var->data.driver_location + col + 1, (void *) ((uintptr_t) (id + 1)));
                         }
                 }
-
-                /* pan_assemble isn't expecting us to reserve space for the secondary position varying */
-                ctx->varying_count--;
         }
 
 

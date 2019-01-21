@@ -916,6 +916,7 @@ panwrap_replay_vertex_tiler_prefix(struct mali_vertex_tiler_prefix *p, int job_n
                     bits(p->invocation_count, p->workgroups_z_shift,
                          32) + 1);
 
+        /* TODO: Decode */
         panwrap_prop("unknown_draw = 0x%" PRIx32, p->unknown_draw);
         panwrap_prop("workgroups_x_shift_3 = 0x%" PRIx32, p->workgroups_x_shift_3);
 

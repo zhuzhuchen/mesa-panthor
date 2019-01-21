@@ -98,7 +98,7 @@ panfrost_shader_compile(struct panfrost_context *ctx, struct mali_shader_meta *m
 
         meta->midgard1.uniform_count = MIN2(program.uniform_count, program.uniform_cutoff);
         meta->attribute_count = program.attribute_count;
-        meta->varying_count = program.varying_count + 2;
+        meta->varying_count = program.varying_count;
         meta->midgard1.work_count = program.work_register_count;
 
         state->can_discard = program.can_discard;
@@ -137,6 +137,12 @@ panfrost_shader_compile(struct panfrost_context *ctx, struct mali_shader_meta *m
 
                 /* highp gl_Position */
                 varyings->varyings_stride[1] = 4 * sizeof(float);
+
+                /* mediump gl_PointSize */
+                if (program.writes_point_size) {
+                        ++varyings->varying_buffer_count;
+                        varyings->varyings_stride[2] = 2; /* sizeof(fp16) */
+                }
 
                 /* Setup gl_Position, its weirdo analogue, and gl_PointSize (optionally) */
                 unsigned default_vec4_swizzle = panfrost_get_default_swizzle(4);
