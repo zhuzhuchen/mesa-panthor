@@ -47,11 +47,6 @@
 
 #include "disassemble.h"
 
-#define NIR_DEBUG
-//#define NIR_DEBUG_FINE
-//#define MIR_DEBUG
-#define MDG_DEBUG
-
 /* Instruction arguments represented as block-local SSA indices, rather than
  * registers. Negative values mean unused. */
 
@@ -1581,11 +1576,6 @@ emit_jump(compiler_context *ctx, nir_jump_instr *instr)
 static void
 emit_instr(compiler_context *ctx, struct nir_instr *instr)
 {
-#ifdef NIR_DEBUG_FINE
-        nir_print_instr(instr, stdout);
-        putchar('\n');
-#endif
-
         switch (instr->type) {
         case nir_instr_type_load_const:
                 emit_load_const(ctx, nir_instr_as_load_const(instr));
@@ -3187,10 +3177,6 @@ emit_block(compiler_context *ctx, nir_block *block)
         /* Document the fallthrough chain */
         ctx->previous_source_block = this_block;
 
-#ifdef MIR_DEBUG
-        print_mir_block(this_block);
-#endif
-
         return this_block;
 }
 
@@ -3437,9 +3423,7 @@ midgard_compile_shader_nir(nir_shader *nir, midgard_program *program, bool is_bl
 
         optimise_nir(nir);
 
-#ifdef NIR_DEBUG
         nir_print_shader(nir, stdout);
-#endif
 
         /* Assign counts, now that we're sure (post-optimisation) */
         program->uniform_count = nir->num_uniforms;
@@ -3623,9 +3607,7 @@ midgard_compile_shader_nir(nir_shader *nir, midgard_program *program, bool is_bl
 
         program->blend_patch_offset = ctx->blend_constant_offset;
 
-#ifdef MDG_DEBUG
         disassemble_midgard(program->compiled.data, program->compiled.size);
-#endif
 
         return 0;
 }
