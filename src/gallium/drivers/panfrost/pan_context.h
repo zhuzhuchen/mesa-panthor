@@ -25,7 +25,6 @@
 #ifndef __BUILDER_H__
 #define __BUILDER_H__
 
-#define BIT64
 #define MFBD
 
 #define _LARGEFILE64_SOURCE 1
