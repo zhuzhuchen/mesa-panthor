@@ -132,7 +132,7 @@ if _drivers.contains('auto')
     elif ['arm', 'aarch64'].contains(host_machine.cpu_family())
       _drivers = [
         'kmsro', 'v3d', 'vc4', 'freedreno', 'etnaviv', 'imx', 'nouveau',
-        'tegra', 'virgl', 'swrast', 'panfrost', 'meson', 'rockchip'
+        'tegra', 'virgl', 'swrast', 'panfrost'
       ]
     else
       error('Unknown architecture @0@. Please pass -Dgallium-drivers to set driver options. Patches gladly accepted to fix this.'.format(
@@ -155,8 +155,6 @@ with_gallium_softpipe = _drivers.contains('swrast')
 with_gallium_vc4 = _drivers.contains('vc4')
 with_gallium_v3d = _drivers.contains('v3d')
 with_gallium_panfrost = _drivers.contains('panfrost')
-with_gallium_meson = _drivers.contains('meson')
-with_gallium_rockchip = _drivers.contains('rockchip')
 with_gallium_etnaviv = _drivers.contains('etnaviv')
 with_gallium_imx = _drivers.contains('imx')
 with_gallium_tegra = _drivers.contains('tegra')
@@ -193,9 +191,6 @@ if _vulkan_drivers.contains('auto')
     error('Unknown OS @0@. Please pass -Dvulkan-drivers to set driver options. Patches gladly accepted to fix this.'.format(
           host_machine.system()))
   endif
-endif
-if (with_gallium_meson or with_gallium_rockchip) and not with_gallium_panfrost
-  error('meson/rockchip driver requires panfrost driver')
 endif
 
 with_intel_vk = _vulkan_drivers.contains('intel')
@@ -342,7 +337,7 @@ pre_args += '-DGLX_USE_TLS'
 if with_glx != 'disabled'
   if not (with_platform_x11 and with_any_opengl)
     error('Cannot build GLX support without X11 platform support and at least one OpenGL API')
-  elif with_glx == 'gallium-xlib'
+  elif with_glx == 'gallium-xlib' 
     if not with_gallium
       error('Gallium-xlib based GLX requires at least one gallium driver')
     elif not with_gallium_softpipe
@@ -350,7 +345,7 @@ if with_glx != 'disabled'
     elif with_dri
       error('gallium-xlib conflicts with any dri driver')
     endif
-  elif with_glx == 'xlib'
+  elif with_glx == 'xlib' 
     if with_dri
       error('xlib conflicts with any dri driver')
     endif
