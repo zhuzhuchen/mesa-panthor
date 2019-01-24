@@ -22,6 +22,9 @@ kmsro_c_args = []
 if with_gallium_etnaviv
   kmsro_c_args += '-DGALLIUM_ETNAVIV'
 endif
+if with_gallium_panfrost
+  kmsro_c_args += '-DGALLIUM_PANFROST'
+endif
 if with_gallium_vc4
   kmsro_c_args += '-DGALLIUM_VC4'
 endif
