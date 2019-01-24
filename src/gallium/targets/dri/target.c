@@ -82,10 +82,6 @@ DEFINE_LOADER_DRM_ENTRYPOINT(pl111)
 #endif
 #endif
 
-#if defined(GALLIUM_ROCKCHIP)
-DEFINE_LOADER_DRM_ENTRYPOINT(rockchip)
-#endif
-
 #if defined(GALLIUM_PANFROST)
 DEFINE_LOADER_DRM_ENTRYPOINT(panfrost)
 #endif
@@ -97,8 +93,4 @@ DEFINE_LOADER_DRM_ENTRYPOINT(etnaviv)
 
 #if defined(GALLIUM_TEGRA)
 DEFINE_LOADER_DRM_ENTRYPOINT(tegra);
-#endif
-
-#if defined(GALLIUM_MESON)
-DEFINE_LOADER_DRM_ENTRYPOINT(meson)
 #endif
