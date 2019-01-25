@@ -417,6 +417,9 @@ typedef struct compiler_context {
 
         /* Alpha ref value passed in */
         float alpha_ref;
+
+        /* The index corresponding to the fragment output */
+        unsigned fragment_output;
 } compiler_context;
 
 /* Append instruction to end of current block */
@@ -1342,6 +1345,11 @@ emit_intrinsic(compiler_context *ctx, nir_intrinsic_instr *instr)
                          * writes */
 
                         midgard_pin_output(ctx, reg, 0);
+
+                        /* Save the index we're writing to for later reference
+                         * in the epilogue */
+
+                        ctx->fragment_output = reg;
                 } else if (ctx->stage == MESA_SHADER_VERTEX) {
                         /* Varyings are written into one of two special
                          * varying register, r26 or r27. The register itself is selected as the register
@@ -1374,9 +1382,34 @@ emit_intrinsic(compiler_context *ctx, nir_intrinsic_instr *instr)
                         if (offset > 0)
                                 offset += 1;
 
-                        /* Do not emit the varying yet -- instead, just mark down that we need to later */
+                        /* If this varying corresponds to a constant (why?!),
+                         * emit that now since it won't get picked up by
+                         * hoisting (since there is no corresponding move
+                         * emitted otherwise) */
 
-                        _mesa_hash_table_u64_insert(ctx->ssa_varyings, reg + 1, (void *) ((uintptr_t) (offset + 1)));
+                        void *constant_value = _mesa_hash_table_u64_search(ctx->ssa_constants, reg + 1);
+
+                        if (constant_value) {
+                                /* Special case: emit the varying write
+                                 * directly to r26 (looks funny in asm but it's
+                                 * fine) and emit the store _now_. Possibly
+                                 * slightly slower, but this is a really stupid
+                                 * special case anyway (why on earth would you
+                                 * have a constant varying? Your own fault for
+                                 * slightly worse perf :P) */
+
+                                midgard_instruction ins = v_fmov(SSA_FIXED_REGISTER(REGISTER_CONSTANT), blank_alu_src, SSA_FIXED_REGISTER(26));
+                                attach_constants(ctx, &ins, constant_value, reg + 1);
+                                emit_mir_instruction(ctx, ins);
+
+                                midgard_instruction st = m_store_vary_32(SSA_FIXED_REGISTER(0), offset);
+                                st.load_store.unknown = 0x1E9E; /* XXX: What is this? */
+                                emit_mir_instruction(ctx, st);
+                        } else {
+                                /* Do not emit the varying yet -- instead, just mark down that we need to later */
+
+                                _mesa_hash_table_u64_insert(ctx->ssa_varyings, reg + 1, (void *) ((uintptr_t) (offset + 1)));
+                        }
                 } else {
                         printf("Unknown store\n");
                         assert(0);
@@ -2993,7 +3026,20 @@ transform_position_writes(nir_shader *shader)
 static void
 emit_fragment_epilogue(compiler_context *ctx)
 {
-        /* See the docs for why this works. TODO: gl_FragDepth */
+        /* Special case: writing out constants requires us to include the move
+         * explicitly now, so shove it into r0 */
+
+        void *constant_value = _mesa_hash_table_u64_search(ctx->ssa_constants, ctx->fragment_output + 1);
+
+        if (constant_value) {
+                midgard_instruction ins = v_fmov(SSA_FIXED_REGISTER(REGISTER_CONSTANT), blank_alu_src, SSA_FIXED_REGISTER(0));
+                attach_constants(ctx, &ins, constant_value, ctx->fragment_output + 1);
+                emit_mir_instruction(ctx, ins);
+        }
+
+        /* Perform the actual fragment writeout. We have two writeout/branch
+         * instructions, forming a loop until writeout is successful as per the
+         * docs. TODO: gl_FragDepth */
 
         EMIT(alu_br_compact_cond, midgard_jmp_writeout_op_writeout, TAG_ALU_4, 0, midgard_condition_always);
         EMIT(alu_br_compact_cond, midgard_jmp_writeout_op_writeout, TAG_ALU_4, -1, midgard_condition_always);
