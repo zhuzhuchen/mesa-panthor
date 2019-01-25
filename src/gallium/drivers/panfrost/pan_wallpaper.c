@@ -106,7 +106,7 @@ static struct panfrost_shader_state *wallpaper_saved_program = NULL;
 static void
 panfrost_enable_wallpaper_program(struct pipe_context *pctx)
 {
-        struct panfrost_context *ctx = panfrost_context(pctx);
+        struct panfrost_context *ctx = pan_context(pctx);
 
         if (!wallpaper_program) {
                 wallpaper_program = panfrost_create_wallpaper_program(pctx);
@@ -132,7 +132,7 @@ panfrost_disable_wallpaper_program(struct pipe_context *pctx)
 void
 panfrost_draw_wallpaper(struct pipe_context *pipe)
 {
-        struct panfrost_context *ctx = panfrost_context(pipe);
+        struct panfrost_context *ctx = pan_context(pipe);
 
         /* Disable wallpapering for now */
         return;

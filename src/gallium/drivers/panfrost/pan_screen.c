@@ -36,7 +36,6 @@
 #include "pipe/p_defines.h"
 #include "pipe/p_screen.h"
 #include "draw/draw_context.h"
-#include "state_tracker/winsys_handle.h"
 #include <xf86drm.h>
 
 #include <fcntl.h>
@@ -44,6 +43,9 @@
 #include "drm_fourcc.h"
 
 #include "pan_screen.h"
+#include "pan_nondrm.h"
+#include "pan_drm.h"
+#include "pan_resource.h"
 #include "pan_public.h"
 
 #include "pan_context.h"
@@ -667,153 +669,14 @@ panfrost_screen_get_compiler_options(struct pipe_screen *pscreen,
         return &midgard_nir_options;
 }
 
-
-static boolean
-panfrost_can_create_resource(struct pipe_screen *screen,
-                             const struct pipe_resource *res)
-{
-        return TRUE;
-}
-
-static struct pipe_resource *
-panfrost_resource_create(struct pipe_screen *screen,
-                         const struct pipe_resource *templat)
-{
-        return panfrost_resource_create_front(screen, templat, NULL);
-}
-
-static void
-panfrost_resource_destroy(struct pipe_screen *pscreen,
-                          struct pipe_resource *pt)
-{
-        FREE(pt);
-}
-
-static struct pipe_resource *
-panfrost_resource_from_handle(struct pipe_screen *pscreen,
-                              const struct pipe_resource *templat,
-                              struct winsys_handle *whandle,
-                              unsigned usage)
-{
-        struct panfrost_screen *screen = pan_screen(pscreen);
-        struct drm_mode_map_dumb map_arg;
-        struct panfrost_resource *rsc;
-        struct pipe_resource *prsc;
-        int ret;
-        unsigned gem_handle;
-
-        assert(whandle->type == WINSYS_HANDLE_TYPE_FD);
-
-        rsc = CALLOC_STRUCT(panfrost_resource);
-        if (!rsc)
-                return NULL;
-
-        prsc = &rsc->base;
-
-        *prsc = *templat;
-
-        pipe_reference_init(&prsc->reference, 1);
-        prsc->screen = pscreen;
-
-        union kbase_ioctl_mem_import framebuffer_import = {
-                .in = {
-                        .phandle = (uint64_t) (uintptr_t) &whandle->handle,
-                        .type = BASE_MEM_IMPORT_TYPE_UMM,
-                        .flags = BASE_MEM_PROT_CPU_RD |
-                                 BASE_MEM_PROT_CPU_WR |
-                                 BASE_MEM_PROT_GPU_RD |
-                                 BASE_MEM_PROT_GPU_WR |
-                                 BASE_MEM_IMPORT_SHARED,
-                }
-        };
-
-        ret = pandev_ioctl(screen->fd, KBASE_IOCTL_MEM_IMPORT, &framebuffer_import);
-        assert(ret == 0);
-
-        rsc->gpu[0] = mmap(NULL, framebuffer_import.out.va_pages * 4096, PROT_READ | PROT_WRITE, MAP_SHARED, screen->fd, framebuffer_import.out.gpu_va);
-
-        ret = drmPrimeFDToHandle(screen->ro->kms_fd, whandle->handle, &gem_handle);
-        assert(ret >= 0);
-
-        memset(&map_arg, 0, sizeof(map_arg));
-        map_arg.handle = gem_handle;
-
-        ret = drmIoctl(screen->ro->kms_fd, DRM_IOCTL_MODE_MAP_DUMB, &map_arg);
-        assert(!ret);
-
-        rsc->cpu[0] = mmap(NULL, framebuffer_import.out.va_pages * 4096, PROT_READ | PROT_WRITE, MAP_SHARED, screen->ro->kms_fd, map_arg.offset);
-
-        u64 addresses[1];
-        addresses[0] = rsc->gpu[0];
-        struct kbase_ioctl_sticky_resource_map map = {
-                .count = 1,
-                .address = addresses,
-        };
-        ret = pandev_ioctl(screen->fd, KBASE_IOCTL_STICKY_RESOURCE_MAP, &map);
-        assert(ret == 0);
-
-        return prsc;
-}
-
-static boolean
-panfrost_resource_get_handle(struct pipe_screen *pscreen,
-                             struct pipe_context *ctx,
-                             struct pipe_resource *pt,
-                             struct winsys_handle *handle,
-                             unsigned usage)
-{
-        struct panfrost_screen *screen = pan_screen(pscreen);
-        struct panfrost_resource *rsrc = (struct panfrost_resource *) pt;
-        struct renderonly_scanout *scanout = rsrc->scanout;
-        int bytes_per_pixel = util_format_get_blocksize(rsrc->base.format);
-        int stride = bytes_per_pixel * rsrc->base.width0; /* TODO: Alignment? */
-
-        handle->stride = stride;
-        handle->modifier = DRM_FORMAT_MOD_INVALID;
-
-        if (handle->type == WINSYS_HANDLE_TYPE_SHARED) {
-                printf("Missed shared handle\n");
-                return FALSE;
-        } else if (handle->type == WINSYS_HANDLE_TYPE_KMS) {
-                if (renderonly_get_handle(scanout, handle)) {
-                        return TRUE;
-                } else {
-                        printf("Missed nonrenderonly KMS handle for resource %p with scanout %p\n", pt, scanout);
-                        return FALSE;
-                }
-        } else if (handle->type == WINSYS_HANDLE_TYPE_FD) {
-                if (scanout) {
-                        struct drm_prime_handle args = {
-                                .handle = scanout->handle,
-                                .flags = DRM_CLOEXEC,
-                        };
-
-                        int ret = pandev_ioctl(screen->ro->kms_fd, DRM_IOCTL_PRIME_HANDLE_TO_FD, &args);
-                        if (ret == -1)
-                                return FALSE;
-
-                        handle->handle = args.fd;
-
-                        return TRUE;
-                } else {
-                        printf("Missed nonscanout FD handle\n");
-                        assert(0);
-                        return FALSE;
-                }
-        }
-
-        return FALSE;
-}
-
 struct pipe_screen *
-panfrost_create_screen(int fd, struct renderonly *ro)
+panfrost_create_screen(int fd, struct renderonly *ro, bool is_drm)
 {
         struct panfrost_screen *screen = CALLOC_STRUCT(panfrost_screen);
 
         if (!screen)
                 return NULL;
 
-        screen->fd = fd;
         if (ro) {
                 screen->ro = renderonly_dup(ro);
                 if (!screen->ro) {
@@ -822,6 +685,11 @@ panfrost_create_screen(int fd, struct renderonly *ro)
                         return NULL;
                 }
         }
+
+	if (is_drm)
+	        screen->driver = panfrost_create_drm_driver(fd);
+        else
+	        screen->driver = panfrost_create_nondrm_driver(fd);
 
         screen->base.destroy = panfrost_destroy_screen;
 
@@ -839,12 +707,10 @@ panfrost_create_screen(int fd, struct renderonly *ro)
         screen->base.fence_reference = panfrost_fence_reference;
         screen->base.fence_finish = panfrost_fence_finish;
 
-        screen->base.resource_create = panfrost_resource_create;
-        screen->base.resource_create_front = panfrost_resource_create_front;
-        screen->base.resource_destroy = panfrost_resource_destroy;
-        screen->base.resource_from_handle = panfrost_resource_from_handle;
-        screen->base.resource_get_handle = panfrost_resource_get_handle;
-        screen->base.can_create_resource = panfrost_can_create_resource;
+	screen->last_fragment_id = -1;
+	screen->last_fragment_flushed = true;
+
+        panfrost_resource_screen_init(screen);
 
         return &screen->base;
 }

@@ -32,7 +32,7 @@
 #define CACHE_LINE_SIZE 1024 /* TODO */
 #include <sys/mman.h>
 #include <assert.h>
-#include "pan_nondrm.h"
+#include "pan_resource.h"
 
 #include "pipe/p_compiler.h"
 #include "pipe/p_config.h"
@@ -330,81 +330,10 @@ struct panfrost_sampler_view {
         struct mali_texture_descriptor hw;
 };
 
-/* Corresponds to pipe_resource for our hacky pre-DRM interface */
-
-struct sw_displaytarget;
-
-struct panfrost_bo {
-	//struct panfrost_device *dev;
-	uint32_t size;
-	uint32_t handle;
-	uint32_t name;
-	int32_t refcnt;
-	uint64_t iova;
-	void *map;
-	//const struct fd_bo_funcs *funcs;
-
-	enum {
-		NO_CACHE = 0,
-		BO_CACHE = 1,
-		RING_CACHE = 2,
-	} bo_reuse;
-
-	//struct list_head list;   /* bucket-list entry */
-	time_t free_time;        /* time when added to bucket-list */
-};
-
-struct panfrost_resource {
-        struct pipe_resource base;
-
-        struct panfrost_bo *bo;
-        struct renderonly_scanout *scanout;
-
-        /* Address to the resource in question */
-
-        uint8_t *cpu[MAX_MIP_LEVELS];
-
-        /* Not necessarily a GPU mapping of cpu! In case of texture tiling, gpu
-         * points to the GPU-side, tiled texture, while cpu points to the
-         * CPU-side, untiled texture from mesa */
-
-        mali_ptr gpu[MAX_MIP_LEVELS];
-
-        /* Memory entry corresponding to gpu above */
-        struct panfrost_memory_entry *entry[MAX_MIP_LEVELS];
-
-        /* Is something other than level 0 ever written? */
-        bool is_mipmap;
-
-        struct sw_displaytarget *dt;
-
-        /* Set for tiled, clear for linear. */
-        bool tiled;
-
-        /* If AFBC is enabled for this resource, we lug around an AFBC
-         * metadata buffer as well. The actual AFBC resource is also in
-         * afbc_slab (only defined for AFBC) at position afbc_main_offset */
-
-        bool has_afbc;
-        struct panfrost_memory afbc_slab;
-        int afbc_metadata_size;
-
-        /* Similarly for TE */
-        bool has_checksum;
-        struct panfrost_memory checksum_slab;
-        int checksum_stride;
-};
-
 static inline struct panfrost_context *
-panfrost_context(struct pipe_context *pcontext)
+pan_context(struct pipe_context *pcontext)
 {
         return (struct panfrost_context *) pcontext;
-}
-
-static inline struct panfrost_resource *
-pan_resource(struct pipe_resource *p)
-{
-   return (struct panfrost_resource *)p;
 }
 
 static inline struct panfrost_screen *
@@ -416,11 +345,6 @@ pan_screen(struct pipe_screen *p)
 struct pipe_context *
 panfrost_create_context(struct pipe_screen *screen, void *priv, unsigned flags);
 
-struct pipe_resource *
-panfrost_resource_create_front(struct pipe_screen *screen,
-                               const struct pipe_resource *template,
-                               const void *map_front_private);
-
 void
 panfrost_emit_for_draw(struct panfrost_context *ctx, bool with_vertex_data);
 
@@ -429,5 +353,14 @@ panfrost_vertex_tiler_job(struct panfrost_context *ctx, bool is_tiler, bool is_e
 
 unsigned
 panfrost_get_default_swizzle(unsigned components);
+
+void
+panfrost_flush(
+        struct pipe_context *pipe,
+        struct pipe_fence_handle **fence,
+        unsigned flags);
+
+void
+panfrost_shader_compile(struct panfrost_context *ctx, struct mali_shader_meta *meta, const char *src, int type, struct panfrost_shader_state *state);
 
 #endif

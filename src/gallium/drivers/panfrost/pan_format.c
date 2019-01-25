@@ -150,6 +150,17 @@ panfrost_find_format(const struct util_format_description *desc)
 
         /* Check for special formats */
         switch (desc->format) {
+		case PIPE_FORMAT_YV12:
+		case PIPE_FORMAT_YV16:
+		case PIPE_FORMAT_IYUV:
+		case PIPE_FORMAT_NV21:
+			fprintf(stderr, "YUV format type %s (%d) is not yet supported, but it's probably close to NV12!\n", desc->name, desc->format);
+			assert(0);
+			break;
+
+		case PIPE_FORMAT_NV12:
+			return MALI_NV12;
+
                 case PIPE_FORMAT_R10G10B10X2_UNORM:
                 case PIPE_FORMAT_B10G10R10X2_UNORM:
                 case PIPE_FORMAT_R10G10B10A2_UNORM:

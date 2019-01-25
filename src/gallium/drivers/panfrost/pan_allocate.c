@@ -29,7 +29,6 @@
 #include <panfrost-misc.h>
 #include <panfrost-job.h>
 #include "pan_context.h"
-#include "pan_nondrm.h"
 
 /* TODO: What does this actually have to be? */
 #define ALIGNMENT 128

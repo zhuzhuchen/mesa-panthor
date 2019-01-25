@@ -1,5 +1,5 @@
 /*
- * © Copyright 2017-2018 Alyssa Rosenzweig
+ * © Copyright 2019 Collabora, Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -22,11 +22,11 @@
  *
  */
 
-#ifndef __PAN_NONDRM_H__
-#define __PAN_NONDRM_H__
+#ifndef __PAN_DRM_H__
+#define __PAN_DRM_H__
 
 #include "pan_screen.h"
 
-struct panfrost_driver *panfrost_create_nondrm_driver(int fd);
+struct panfrost_driver *panfrost_create_drm_driver(int fd);
 
-#endif /* __PAN_NONDRM_H__ */
+#endif /* __PAN_DRM_H__ */

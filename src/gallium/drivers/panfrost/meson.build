@@ -23,6 +23,8 @@ files_panfrost = files(
   'pan_public.h',
   'pan_screen.c',
   'pan_screen.h',
+  'pan_resource.c',
+  'pan_resource.h',
 
   'midgard/midgard_compile.c',
   'midgard/cppwrap.cpp',
@@ -35,6 +37,7 @@ files_panfrost = files(
   'pan_context.c',
 
   'pan_nondrm.c',
+  'pan_drm.c',
   'pan_allocate.c',
   'pan_assemble.c',
   'pan_format.c',
