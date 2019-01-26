@@ -635,7 +635,7 @@ struct mali_payload_set_value {
  * When a quad is dispatched, it receives a single, linear index. However, we
  * need to translate that index into a (vertex id, instance id) pair, or a
  * (local id x, local id y, local id z) triple for compute shaders (although
- * vertex shaders and vertex shaders are handled almost identically).
+ * vertex shaders and compute shaders are handled almost identically).
  * Focusing on vertex shaders, one option would be to do:
  *
  * vertex_id = linear_id % num_vertices
@@ -822,6 +822,7 @@ struct mali_uniform_buffer_meta {
 #define MALI_DRAW_INDEXED_UINT8  (0x10)
 #define MALI_DRAW_INDEXED_UINT16 (0x20)
 #define MALI_DRAW_INDEXED_UINT32 (0x30)
+#define MALI_DRAW_VARYING_SIZE   (0x100)
 
 struct mali_vertex_tiler_prefix {
         /* This is a dynamic bitfield containing the following things in this order:
@@ -890,6 +891,18 @@ struct mali_vertex_tiler_prefix {
         uintptr_t indices;
 } __attribute__((packed));
 
+/* Point size / line width can either be specified as a 32-bit float (for
+ * constant size) or as a [machine word size]-bit GPU pointer (for varying size). If a pointer
+ * is selected, by setting the appropriate MALI_DRAW_VARYING_SIZE bit in the tiler
+ * payload, the contents of varying_pointer will be intepreted as an array of
+ * fp16 sizes, one for each vertex. gl_PointSize is therefore implemented by
+ * creating a special MALI_R16F varying writing to varying_pointer. */
+
+union midgard_primitive_size {
+        float constant;
+        uintptr_t pointer;
+};
+
 struct bifrost_vertex_only {
         u32 unk2; /* =0x2 */
 
@@ -923,8 +936,7 @@ struct bifrost_tiler_meta {
 
 struct bifrost_tiler_only {
         /* 0x20 */
-        float line_width;
-        u32 zero0;
+        union midgard_primitive_size primitive_size;
 
         mali_ptr tiler_meta;
 
@@ -996,7 +1008,7 @@ struct mali_vertex_tiler_postfix {
 
 struct midgard_payload_vertex_tiler {
 #ifdef T6XX
-        float line_width;
+        union midgard_primitive_size primitive_size;
 #endif
 
         struct mali_vertex_tiler_prefix prefix;
@@ -1018,7 +1030,7 @@ struct midgard_payload_vertex_tiler {
         struct mali_vertex_tiler_postfix postfix;
 
 #ifdef T8XX
-        float line_width;
+        union midgard_primitive_size primitive_size;
 #endif
 } __attribute__((packed));
 

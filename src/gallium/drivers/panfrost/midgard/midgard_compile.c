@@ -1373,15 +1373,6 @@ emit_intrinsic(compiler_context *ctx, nir_intrinsic_instr *instr)
 
                         offset = (uintptr_t) (entry) - 1;
 
-                        /* Compute offset: gl_Position is zero. The
-                         * first varying is two. The nth varying is 2+n
-                         * for zero-indexed n. Varying #1 is unused.
-                         * See the corresponding structures in the
-                         * command stream. */
-
-                        if (offset > 0)
-                                offset += 1;
-
                         /* If this varying corresponds to a constant (why?!),
                          * emit that now since it won't get picked up by
                          * hoisting (since there is no corresponding move
@@ -3397,15 +3388,30 @@ midgard_compile_shader_nir(nir_shader *nir, midgard_program *program, bool is_bl
 
         if (ctx->stage == MESA_SHADER_VERTEX) {
                 ctx->varying_nir_to_mdg = _mesa_hash_table_u64_create(NULL);
-                ctx->varying_count = 1; /* Offset away from gl_Position */
 
+                /* First, collect the special varyings */
                 nir_foreach_variable(var, &nir->outputs) {
-                        if (var->data.location < VARYING_SLOT_VAR0) {
-                                if (var->data.location == VARYING_SLOT_POS) {
-                                        _mesa_hash_table_u64_insert(ctx->varying_nir_to_mdg, var->data.driver_location + 1, (void *) ((uintptr_t) (1)));
-                                        continue;
-                                }
+                        if (var->data.location == VARYING_SLOT_POS) {
+                                /* Set position first, always. It takes up two
+                                 * spots, the latter one is de facto unused (at
+                                 * least from the shader's perspective), we
+                                 * just need to skip over the spot*/
+
+                                _mesa_hash_table_u64_insert(ctx->varying_nir_to_mdg, var->data.driver_location + 1, (void *) ((uintptr_t) (0 + 1)));
+                                ctx->varying_count = MAX2(ctx->varying_count, 2);
+                        } else if (var->data.location == VARYING_SLOT_PSIZ) {
+                                /* Set point size second (third, see above) */
+                                _mesa_hash_table_u64_insert(ctx->varying_nir_to_mdg, var->data.driver_location + 1, (void *) ((uintptr_t) (2 + 1)));
+                                ctx->varying_count = MAX2(ctx->varying_count, 3);
+
+                                program->writes_point_size = true;
                         }
+                }
+
+                /* Now, collect normal varyings */
+ 
+                nir_foreach_variable(var, &nir->outputs) {
+                        if (var->data.location == VARYING_SLOT_POS || var->data.location == VARYING_SLOT_PSIZ) continue;
 
                         for (int col = 0; col < glsl_get_matrix_columns(var->type); ++col) {
                                 int id = ctx->varying_count++;

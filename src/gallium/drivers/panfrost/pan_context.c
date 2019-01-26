@@ -55,17 +55,11 @@ static bool USE_TRANSACTION_ELIMINATION = false;
 	else \
 		lval &= ~(bit);
 
-/* MSAA is not supported in sw_winsys but it does make for nicer demos ;) so we
- * can force it regardless of gallium saying we don't have it */
-static bool FORCE_MSAA = true;
-
 /* TODO: Sample size, etc */
 
 static void
 panfrost_set_framebuffer_msaa(struct panfrost_context *ctx, bool enabled)
 {
-        enabled = false;
-
         SET_BIT(ctx->fragment_shader_core.unknown2_3, MALI_HAS_MSAA, enabled);
         SET_BIT(ctx->fragment_shader_core.unknown2_4, MALI_NO_MSAA, !enabled);
 
@@ -996,15 +990,23 @@ panfrost_emit_vertex_data(struct panfrost_context *ctx)
         struct panfrost_varyings *vars = &ctx->vs->variants[ctx->vs->active_variant].varyings;
 
         for (int i = 0; i < vars->varying_buffer_count; ++i) {
-                varyings[i].elements = (ctx->varying_mem.gpu + ctx->varying_height) | 1;
-                varyings[i].stride = vars->varyings_stride[i];
+                mali_ptr varying_address = ctx->varying_mem.gpu + ctx->varying_height;
 
-                /* XXX: Why does adding an extra ~8000 vertices fix missing triangles in glmark2-es2 -bshadow? */
+                varyings[i].elements = varying_address | 1;
+                varyings[i].stride = vars->varyings_stride[i];
                 varyings[i].size = vars->varyings_stride[i] * invocation_count;
 
-                /* gl_Position varying is always last by convention */
-                if ((i + 1) == vars->varying_buffer_count)
-                        ctx->payload_tiler.postfix.position_varying = ctx->varying_mem.gpu + ctx->varying_height;
+                /* If this varying has to be linked somewhere, do it now. See
+                 * pan_assemble.c for the indices. TODO: Use a more generic
+                 * linking interface */
+
+                if (i == 1) {
+                        /* gl_Position */
+                        ctx->payload_tiler.postfix.position_varying = varying_address;
+                } else if (i == 2) {
+                        /* gl_PointSize */
+                        ctx->payload_tiler.primitive_size.pointer = varying_address;
+                }
 
                 /* Varyings appear to need 64-byte alignment */
                 ctx->varying_height += ALIGN(varyings[i].size, 64);
@@ -1030,10 +1032,8 @@ panfrost_emit_for_draw(struct panfrost_context *ctx, bool with_vertex_data)
         }
 
         if (ctx->dirty & PAN_DIRTY_RASTERIZER) {
-                ctx->payload_tiler.line_width = ctx->rasterizer->base.line_width;
                 ctx->payload_tiler.gl_enables = ctx->rasterizer->tiler_gl_enables;
-
-                panfrost_set_framebuffer_msaa(ctx, FORCE_MSAA || ctx->rasterizer->base.multisample);
+                panfrost_set_framebuffer_msaa(ctx, ctx->rasterizer->base.multisample);
         }
 
         if (ctx->occlusion_query) {
@@ -1063,6 +1063,25 @@ panfrost_emit_for_draw(struct panfrost_context *ctx, bool with_vertex_data)
 
                 ctx->payload_vertex.postfix.varying_meta = varyings->varyings_descriptor;
                 ctx->payload_tiler.postfix.varying_meta = varyings->varyings_descriptor_fragment;
+        }
+
+        if (ctx->dirty & (PAN_DIRTY_RASTERIZER | PAN_DIRTY_VS)) {
+                /* Check if we need to link the gl_PointSize varying */
+                assert(ctx->vs);
+                struct panfrost_shader_state *vs = &ctx->vs->variants[ctx->vs->active_variant];
+
+                bool needs_gl_point_size = vs->writes_point_size && ctx->payload_tiler.prefix.draw_mode == MALI_GL_POINTS;
+
+                if (!needs_gl_point_size) {
+                        /* If the size is constant, write it out. Otherwise,
+                         * don't touch primitive_size (since we would clobber
+                         * the pointer there) */
+
+                        ctx->payload_tiler.primitive_size.constant = ctx->rasterizer->base.line_width;
+                }
+
+                /* Set the flag for varying (pointer) point size if the shader needs that */
+                SET_BIT(ctx->payload_tiler.prefix.unknown_draw, MALI_DRAW_VARYING_SIZE, needs_gl_point_size);
         }
 
         /* TODO: Maybe dirty track FS, maybe not. For now, it's transient. */
@@ -1483,7 +1502,6 @@ panfrost_submit_frame(struct panfrost_context *ctx, bool flush_immediate)
         /* If readback, flush now (hurts the pipelined performance) */
         if (panfrost_is_scanout(ctx) && flush_immediate)
                 screen->driver->force_flush_fragment(ctx);
-
 #endif
 }
 
@@ -1651,7 +1669,7 @@ panfrost_draw_vbo(
          * rendering artefacts. It's not clear what these values mean yet. */
 
         ctx->payload_tiler.prefix.unknown_draw &= ~(0x3000 | 0x18000);
-        ctx->payload_tiler.prefix.unknown_draw |= (ctx->vertex_count > 65535) ? 0x3000 : 0x18000;
+        ctx->payload_tiler.prefix.unknown_draw |= (info->mode == PIPE_PRIM_POINTS || ctx->vertex_count > 65535) ? 0x3000 : 0x18000;
 
         if (info->index_size) {
                 /* Calculate the min/max index used so we can figure out how

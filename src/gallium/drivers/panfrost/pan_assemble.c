@@ -97,10 +97,11 @@ panfrost_shader_compile(struct panfrost_context *ctx, struct mali_shader_meta *m
 
         meta->midgard1.uniform_count = MIN2(program.uniform_count, program.uniform_cutoff);
         meta->attribute_count = program.attribute_count;
-        meta->varying_count = program.varying_count + 2;
+        meta->varying_count = program.varying_count;
         meta->midgard1.work_count = program.work_register_count;
 
         state->can_discard = program.can_discard;
+        state->writes_point_size = program.writes_point_size;
 
         /* Separate as primary uniform count is truncated */
         state->uniform_count = program.uniform_count;
@@ -136,10 +137,17 @@ panfrost_shader_compile(struct panfrost_context *ctx, struct mali_shader_meta *m
                 /* highp gl_Position */
                 varyings->varyings_stride[1] = 4 * sizeof(float);
 
-                /* Setup gl_Position and its weirdo analogue */
+                /* mediump gl_PointSize */
+                if (program.writes_point_size) {
+                        ++varyings->varying_buffer_count;
+                        varyings->varyings_stride[2] = 2; /* sizeof(fp16) */
+                }
+
+                /* Setup gl_Position, its weirdo analogue, and gl_PointSize (optionally) */
+                unsigned default_vec1_swizzle = panfrost_get_default_swizzle(1);
                 unsigned default_vec4_swizzle = panfrost_get_default_swizzle(4);
 
-                struct mali_attr_meta position_metas[2] = {
+                struct mali_attr_meta vertex_special_varyings[] = {
                         {
                                 .index = 1,
                                 .format = MALI_VARYING_POS,
@@ -154,8 +162,17 @@ panfrost_shader_compile(struct panfrost_context *ctx, struct mali_shader_meta *m
                                 /* TODO: Wat? yyyy swizzle? */
                                 .swizzle = 0x249,
                                 .unknown1 = 0x0,
+                        },
+                        {
+                                .index = 2,
+                                .format = MALI_R16F,
+                                .swizzle =  default_vec1_swizzle,
+                                .unknown1 = 0x2
                         }
                 };
+
+                /* How many special vertex varyings are actually required? */
+                int vertex_special_count = 2 + (program.writes_point_size ? 1 : 0);
 
                 /* Setup actual varyings. XXX: Don't assume vec4 */
 
@@ -176,15 +193,15 @@ panfrost_shader_compile(struct panfrost_context *ctx, struct mali_shader_meta *m
                         mali_varyings[i] = vec4_varying_meta;
                 }
 
-                /* XXX: Where did this off-by-one come from again? :P
-                 * (gl_Position probably) */
+                /* We don't count the weirdo gl_Position in our varying count */
                 varyings->varying_count = varying_count - 1;
 
                 /* In this context, position_meta represents the implicit
                  * gl_FragCoord varying. So, upload all the varyings */
 
                 unsigned varyings_size = sizeof(struct mali_attr_meta) * varyings->varying_count;
-                unsigned vertex_size = sizeof(position_metas) + varyings_size;
+                unsigned vertex_special_size = sizeof(struct mali_attr_meta) * vertex_special_count;
+                unsigned vertex_size = vertex_special_size + varyings_size;
                 unsigned fragment_size = varyings_size + sizeof(struct mali_attr_meta);
 
                 struct panfrost_transfer transfer = panfrost_allocate_chunk(ctx, vertex_size + fragment_size, HEAP_DESCRIPTOR);
@@ -196,10 +213,10 @@ panfrost_shader_compile(struct panfrost_context *ctx, struct mali_shader_meta *m
                  *  - Position 1
                  */
 
-                memcpy(transfer.cpu, position_metas, sizeof(position_metas));
-                memcpy(transfer.cpu + sizeof(position_metas), mali_varyings, varyings_size);
+                memcpy(transfer.cpu, vertex_special_varyings, vertex_special_size);
+                memcpy(transfer.cpu + vertex_special_size, mali_varyings, varyings_size);
                 memcpy(transfer.cpu + vertex_size, mali_varyings, varyings_size);
-                memcpy(transfer.cpu + vertex_size + varyings_size, &position_metas[0], sizeof(struct mali_attr_meta));
+                memcpy(transfer.cpu + vertex_size + varyings_size, &vertex_special_varyings[0], sizeof(struct mali_attr_meta));
 
                 /* Point to the descriptor */
                 varyings->varyings_buffer_cpu = transfer.cpu;

@@ -287,6 +287,7 @@ struct panfrost_shader_state {
         /* Non-descript information */
         int uniform_count;
         bool can_discard;
+        bool writes_point_size;
 
         /* Valid for vertex shaders only due to when this is calculated */
         struct panfrost_varyings varyings;
