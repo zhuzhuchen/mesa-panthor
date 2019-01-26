@@ -800,7 +800,7 @@ panfrost_vertex_tiler_job(struct panfrost_context *ctx, bool is_tiler, bool is_e
         struct mali_job_descriptor_header job = {
                 .job_type = is_tiler ? JOB_TYPE_TILER : JOB_TYPE_VERTEX,
                 .job_index = draw_job_index + (is_tiler ? 1 : 0),
-#ifdef BIT64
+#ifdef __LP64__
                 .job_descriptor_size = 1,
 #endif
         };
@@ -830,12 +830,10 @@ panfrost_vertex_tiler_job(struct panfrost_context *ctx, bool is_tiler, bool is_e
 
         /* There's some padding hacks on 32-bit */
 
-#ifdef BIT64
+#ifdef __LP64__
         int offset = 0;
-
 #else
         int offset = 4;
-
 #endif
         struct panfrost_transfer transfer = panfrost_allocate_transient(ctx, sizeof(job) + sizeof(*payload));
         memcpy(transfer.cpu, &job, sizeof(job));
@@ -915,7 +913,7 @@ panfrost_fragment_job(struct panfrost_context *ctx)
         struct mali_job_descriptor_header header = {
                 .job_type = JOB_TYPE_FRAGMENT,
                 .job_index = 1,
-#ifdef BIT64
+#ifdef __LP64__
                 .job_descriptor_size = 1
 #endif
         };

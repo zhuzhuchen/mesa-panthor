@@ -367,10 +367,8 @@ emit_alu(struct compiler_context *ctx, nir_alu_instr *instr)
 static void
 emit_instr(struct compiler_context *ctx, struct nir_instr *instr)
 {
-#ifdef NIR_DEBUG_FINE
         nir_print_instr(instr, stdout);
         putchar('\n');
-#endif
 
         switch (instr->type) {
         case nir_instr_type_load_const:

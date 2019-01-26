@@ -998,7 +998,7 @@ struct mali_vertex_tiler_postfix {
          */
         mali_ptr framebuffer;
 
-#if UINTPTR_MAX == 0xffffffffffffffff /* 64-bit */
+#ifdef __LP64__
 #ifndef T8XX
         /* most likely padding to make this a multiple of 64 bytes */
         u64 zero7;
