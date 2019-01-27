@@ -350,7 +350,7 @@ ioctl(int fd, unsigned long int _request, ...)
         unsigned long int request = _request;
         int ioc_size = _IOC_SIZE(request);
         int ret;
-        size_t va_pages;
+        size_t va_pages = 0;
         void *ptr;
 
         if (ioc_size) {

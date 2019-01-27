@@ -25,6 +25,8 @@
 #define __PAN_PRETTY_H
 
 #include "panfrost-job.h"
+
 char *panwrap_format_name(enum mali_format format);
+void panfrost_print_blend_equation(struct mali_blend_equation eq);
 
 #endif

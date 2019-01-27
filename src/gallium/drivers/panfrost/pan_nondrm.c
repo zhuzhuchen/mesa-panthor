@@ -170,7 +170,7 @@ panfrost_nondrm_import_bo(struct panfrost_screen *screen, struct winsys_handle *
         ret = pandev_ioctl(nondrm->fd, KBASE_IOCTL_MEM_IMPORT, &framebuffer_import);
         assert(ret == 0);
 
-        bo->base.gpu[0] = mmap(NULL, framebuffer_import.out.va_pages * 4096, PROT_READ | PROT_WRITE, MAP_SHARED, nondrm->fd, framebuffer_import.out.gpu_va);
+        bo->base.gpu[0] = (mali_ptr) (uintptr_t) mmap(NULL, framebuffer_import.out.va_pages * 4096, PROT_READ | PROT_WRITE, MAP_SHARED, nondrm->fd, framebuffer_import.out.gpu_va);
 
         ret = drmPrimeFDToHandle(screen->ro->kms_fd, whandle->handle, &gem_handle);
         assert(ret >= 0);
@@ -187,7 +187,7 @@ panfrost_nondrm_import_bo(struct panfrost_screen *screen, struct winsys_handle *
         addresses[0] = bo->base.gpu[0];
         struct kbase_ioctl_sticky_resource_map map = {
                 .count = 1,
-                .address = addresses,
+                .address = (u64) (uintptr_t) addresses,
         };
         ret = pandev_ioctl(nondrm->fd, KBASE_IOCTL_STICKY_RESOURCE_MAP, &map);
         assert(ret == 0);

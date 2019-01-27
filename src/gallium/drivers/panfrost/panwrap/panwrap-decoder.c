@@ -1670,7 +1670,7 @@ panwrap_replay_primitive_size(union midgard_primitive_size u, bool constant)
 
         panwrap_prop("constant = %f", u.constant);
 
-        panwrap_indent;;
+        panwrap_indent--;
         panwrap_log("},\n");
 }
 

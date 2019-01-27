@@ -44,8 +44,6 @@
 #include "pan_blend_shaders.h"
 #include "pan_wallpaper.h"
 
-static bool USE_TRANSACTION_ELIMINATION = false;
-
 /* Do not actually send anything to the GPU; merely generate the cmdstream as fast as possible. Disables framebuffer writes */
 //#define DRY_RUN
 
@@ -526,7 +524,8 @@ panfrost_viewport(struct panfrost_context *ctx,
 static void
 panfrost_invalidate_frame(struct panfrost_context *ctx)
 {
-	printf("Uploaded transient %d bytes \n", ctx->transient_pools[ctx->cmdstream_i].entry_index*ctx->transient_pools[0].entry_size + ctx->transient_pools[ctx->cmdstream_i].entry_offset);
+        unsigned transient_count = ctx->transient_pools[ctx->cmdstream_i].entry_index*ctx->transient_pools[0].entry_size + ctx->transient_pools[ctx->cmdstream_i].entry_offset;
+	printf("Uploaded transient %d bytes\n", transient_count);
 
         /* Rotate cmdstream */
         if ((++ctx->cmdstream_i) == (sizeof(ctx->transient_pools) / sizeof(ctx->transient_pools[0])))
