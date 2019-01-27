@@ -76,7 +76,7 @@ panfrost_build_wallpaper_program()
 
         nir_ssa_def *texel = &tx->dest.ssa;
 
-        nir_store_var(b, c_out, /*texel*/ s_src, 0xFF);
+        nir_store_var(b, c_out, texel, 0xFF);
 
         nir_print_shader(shader, stdout);
 
@@ -113,7 +113,7 @@ panfrost_enable_wallpaper_program(struct pipe_context *pctx)
         }
 
         /* Push the shader state */
-        wallpaper_saved_program = ctx->fs;
+        wallpaper_saved_program = &ctx->fs->variants[ctx->fs->active_variant];
 
         /* Bind the program */
         pctx->bind_fs_state(pctx, wallpaper_program);
@@ -132,12 +132,15 @@ panfrost_disable_wallpaper_program(struct pipe_context *pctx)
 void
 panfrost_draw_wallpaper(struct pipe_context *pipe)
 {
-        struct panfrost_context *ctx = pan_context(pipe);
+        /* Disable wallpapering for now, but still exercise the shader generation to minimise bit rot */
 
-        /* Disable wallpapering for now */
+        panfrost_enable_wallpaper_program(pipe);
+        panfrost_disable_wallpaper_program(pipe);
+
         return;
 
 #if 0
+        struct panfrost_context *ctx = pan_context(pipe);
 
         /* Setup payload for elided quad. TODO: Refactor draw_vbo so this can
          * be a little more DRY */
