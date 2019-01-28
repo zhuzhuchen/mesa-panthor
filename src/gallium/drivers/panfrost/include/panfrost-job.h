@@ -71,8 +71,11 @@ enum mali_gl_mode {
         MALI_GL_TRIANGLES      = 0x8,
         MALI_GL_TRIANGLE_STRIP = 0xA,
         MALI_GL_TRIANGLE_FAN   = 0xC,
+        MALI_GL_POLYGONS       = 0xD,
         MALI_GL_QUADS          = 0xE,
-        MALI_GL_QUAD_STRIP     = 0xF
+        MALI_GL_QUAD_STRIP     = 0xF,
+
+        /* Invalid modes: 0x3 0x5 0x7 0x9 0xB */
 };
 
 /* Applies to tiler_gl_enables */
