@@ -76,7 +76,7 @@ enum mali_gl_mode {
         MALI_GL_QUADS          = 0xE,
         MALI_GL_QUAD_STRIP     = 0xF,
 
-        /* Invalid modes: 0x3 0x5 0x7 0x9 0xB */
+        /* All other modes invalid */
 };
 
 /* Applies to tiler_gl_enables */
