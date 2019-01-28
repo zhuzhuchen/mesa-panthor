@@ -42,7 +42,7 @@ struct panfrost_context;
 struct panfrost_resource;
 struct panfrost_screen;
 
-#define DUMP_PERFORMANCE_COUNTERS
+//#define DUMP_PERFORMANCE_COUNTERS
 
 struct panfrost_driver {
 	struct panfrost_bo * (*create_bo) (struct panfrost_screen *screen, const struct pipe_resource *template);
