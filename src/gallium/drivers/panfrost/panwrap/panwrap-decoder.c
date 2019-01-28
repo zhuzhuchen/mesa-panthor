@@ -146,6 +146,7 @@ panwrap_gl_mode_name(enum mali_gl_mode mode)
                 DEFINE_CASE(GL_TRIANGLE_FAN);
                 DEFINE_CASE(GL_LINE_STRIP);
                 DEFINE_CASE(GL_LINE_LOOP);
+                DEFINE_CASE(GL_POLYGONS);
                 DEFINE_CASE(GL_QUADS);
                 DEFINE_CASE(GL_QUAD_STRIP);
 

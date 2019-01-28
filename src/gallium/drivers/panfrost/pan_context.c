@@ -1567,6 +1567,7 @@ g2m_draw_mode(enum pipe_prim_type mode)
                 DEFINE_CASE(TRIANGLE_FAN);
                 DEFINE_CASE(QUADS);
                 DEFINE_CASE(QUAD_STRIP);
+                DEFINE_CASE(POLYGONS);
 
         default:
                 printf("Illegal draw mode %d\n", mode);
