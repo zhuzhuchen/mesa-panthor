@@ -146,7 +146,7 @@ panfrost_draw_wallpaper(struct pipe_context *pipe)
          * be a little more DRY */
 
         ctx->payload_tiler.draw_start = 0;
-        ctx->payload_tiler.prefix.draw_mode = MALI_GL_TRIANGLE_STRIP;
+        ctx->payload_tiler.prefix.draw_mode = MALI_TRIANGLE_STRIP;
         ctx->vertex_count = 4;
         ctx->payload_tiler.prefix.invocation_count = MALI_POSITIVE(4);
         ctx->payload_tiler.prefix.unknown_draw &= ~(0x3000 | 0x18000);
