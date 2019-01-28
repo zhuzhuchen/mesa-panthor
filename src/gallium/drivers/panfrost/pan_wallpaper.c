@@ -85,7 +85,7 @@ panfrost_build_wallpaper_program()
 
 /* Creates the CSO corresponding to the wallpaper program */
 
-static struct panfrost_shader_state *
+static struct panfrost_shader_variants *
 panfrost_create_wallpaper_program(struct pipe_context *pctx) 
 {
         nir_shader *built_nir_shader = panfrost_build_wallpaper_program();
@@ -100,8 +100,8 @@ panfrost_create_wallpaper_program(struct pipe_context *pctx)
         return pctx->create_fs_state(pctx, &so);
 }
 
-static struct panfrost_shader_state *wallpaper_program = NULL;
-static struct panfrost_shader_state *wallpaper_saved_program = NULL;
+static struct panfrost_shader_variants *wallpaper_program = NULL;
+static struct panfrost_shader_variants *wallpaper_saved_program = NULL;
 
 static void
 panfrost_enable_wallpaper_program(struct pipe_context *pctx)
@@ -113,7 +113,7 @@ panfrost_enable_wallpaper_program(struct pipe_context *pctx)
         }
 
         /* Push the shader state */
-        wallpaper_saved_program = &ctx->fs->variants[ctx->fs->active_variant];
+        wallpaper_saved_program = ctx->fs;
 
         /* Bind the program */
         pctx->bind_fs_state(pctx, wallpaper_program);
