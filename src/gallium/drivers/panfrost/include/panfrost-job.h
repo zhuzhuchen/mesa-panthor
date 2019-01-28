@@ -57,6 +57,7 @@ enum mali_job_type {
         JOB_TYPE_CACHE_FLUSH = 3,
         JOB_TYPE_COMPUTE = 4,
         JOB_TYPE_VERTEX = 5,
+        JOB_TYPE_GEOMETRY = 6,
         JOB_TYPE_TILER = 7,
         JOB_TYPE_FUSED = 8,
         JOB_TYPE_FRAGMENT = 9,
