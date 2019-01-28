@@ -111,7 +111,7 @@ panfrost_nondrm_create_bo(struct panfrost_screen *screen, const struct pipe_reso
 
 		/* Allocate the framebuffer as its own slab of GPU-accessible memory */
 		struct panfrost_memory slab;
-		screen->driver->allocate_slab(screen->any_context, &slab, (sz / 4096) + 1, false, 0, 0, 0);
+		screen->driver->allocate_slab(screen, &slab, (sz / 4096) + 1, false, 0, 0, 0);
 
 		/* Make the resource out of the slab */
 		bo->base.cpu[0] = slab.cpu;
@@ -364,7 +364,7 @@ panfrost_nondrm_force_flush_fragment(struct panfrost_context *ctx)
 }
 
 static void
-panfrost_nondrm_allocate_slab(struct panfrost_context *ctx,
+panfrost_nondrm_allocate_slab(struct panfrost_screen *screen,
 		              struct panfrost_memory *mem,
 		              size_t pages,
 		              bool same_va,
@@ -372,8 +372,6 @@ panfrost_nondrm_allocate_slab(struct panfrost_context *ctx,
 		              int commit_count,
 		              int extent)
 {
-        struct pipe_context *gallium = (struct pipe_context *) ctx;
-        struct panfrost_screen *screen = panfrost_screen(gallium->screen);
 	struct panfrost_nondrm *nondrm = (struct panfrost_nondrm *)screen->driver;
         int flags = BASE_MEM_PROT_CPU_RD | BASE_MEM_PROT_CPU_WR |
                     BASE_MEM_PROT_GPU_RD | BASE_MEM_PROT_GPU_WR |

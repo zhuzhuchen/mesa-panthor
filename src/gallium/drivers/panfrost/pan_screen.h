@@ -53,7 +53,7 @@ struct panfrost_driver {
 
 	void (*submit_job) (struct panfrost_context *ctx, mali_ptr addr, int nr_atoms);
 	void (*force_flush_fragment) (struct panfrost_context *ctx);
-	void (*allocate_slab) (struct panfrost_context *ctx,
+	void (*allocate_slab) (struct panfrost_screen *screen,
 		               struct panfrost_memory *mem,
 		               size_t pages,
 		               bool same_va,

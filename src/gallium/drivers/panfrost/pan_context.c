@@ -100,7 +100,7 @@ panfrost_enable_afbc(struct panfrost_context *ctx, struct panfrost_resource *rsr
         rsrc->bo->afbc_metadata_size = tile_w * tile_h * 16;
 
         /* Allocate the AFBC slab itself, large enough to hold the above */
-        screen->driver->allocate_slab(ctx, &rsrc->bo->afbc_slab,
+        screen->driver->allocate_slab(screen, &rsrc->bo->afbc_slab,
                                (rsrc->bo->afbc_metadata_size + main_size + 4095) / 4096,
                                true, 0, 0, 0);
 
@@ -127,7 +127,7 @@ panfrost_enable_checksum(struct panfrost_context *ctx, struct panfrost_resource 
         /* 8 byte checksum per tile */
         rsrc->bo->checksum_stride = tile_w * 8;
         int pages = (((rsrc->bo->checksum_stride * tile_h) + 4095) / 4096);
-        screen->driver->allocate_slab(ctx, &rsrc->bo->checksum_slab, pages, false, 0, 0, 0);
+        screen->driver->allocate_slab(screen, &rsrc->bo->checksum_slab, pages, false, 0, 0, 0);
 
         rsrc->bo->has_checksum = true;
 }
@@ -2652,7 +2652,7 @@ panfrost_slab_alloc(void *priv, unsigned heap, unsigned entry_size, unsigned gro
         /* Actually allocate the memory from kernel-space. Mapped, same_va, no
          * special flags */
 
-        screen->driver->allocate_slab(ctx, mem, slab_size / 4096, true, 0, 0, 0);
+        screen->driver->allocate_slab(screen, mem, slab_size / 4096, true, 0, 0, 0);
 
         return &mem->slab;
 }
@@ -2700,11 +2700,11 @@ panfrost_setup_hardware(struct panfrost_context *ctx)
                 ctx->transient_pools[i].entries[0] = (struct panfrost_memory_entry *) pb_slab_alloc(&ctx->slabs, entry_size, HEAP_TRANSIENT);
         }
 
-        screen->driver->allocate_slab(ctx, &ctx->scratchpad, 64, false, 0, 0, 0);
-        screen->driver->allocate_slab(ctx, &ctx->varying_mem, 16384, false, 0, 0, 0);
-        screen->driver->allocate_slab(ctx, &ctx->shaders, 4096, true, BASE_MEM_PROT_GPU_EX, 0, 0);
-        screen->driver->allocate_slab(ctx, &ctx->tiler_heap, 32768, false, BASE_MEM_GROW_ON_GPF, 1, 128);
-        screen->driver->allocate_slab(ctx, &ctx->misc_0, 128, false, BASE_MEM_GROW_ON_GPF, 1, 128);
+        screen->driver->allocate_slab(screen, &ctx->scratchpad, 64, false, 0, 0, 0);
+        screen->driver->allocate_slab(screen, &ctx->varying_mem, 16384, false, 0, 0, 0);
+        screen->driver->allocate_slab(screen, &ctx->shaders, 4096, true, BASE_MEM_PROT_GPU_EX, 0, 0);
+        screen->driver->allocate_slab(screen, &ctx->tiler_heap, 32768, false, BASE_MEM_GROW_ON_GPF, 1, 128);
+        screen->driver->allocate_slab(screen, &ctx->misc_0, 128, false, BASE_MEM_GROW_ON_GPF, 1, 128);
 
 }
 

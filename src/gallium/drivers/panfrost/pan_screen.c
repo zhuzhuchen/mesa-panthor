@@ -692,7 +692,7 @@ panfrost_create_screen(int fd, struct renderonly *ro, bool is_drm)
 	        screen->driver = panfrost_create_nondrm_driver(fd);
 
 #ifdef DUMP_PERFORMANCE_COUNTERS
-        //screen->driver->allocate_slab(ctx, &screen->perf_counters, 64, true, 0, 0, 0);
+        screen->driver->allocate_slab(screen, &screen->perf_counters, 64, true, 0, 0, 0);
 #endif
 
         screen->base.destroy = panfrost_destroy_screen;
