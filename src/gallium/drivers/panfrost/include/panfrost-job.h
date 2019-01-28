@@ -63,18 +63,18 @@ enum mali_job_type {
         JOB_TYPE_FRAGMENT = 9,
 };
 
-enum mali_gl_mode {
-        MALI_GL_NONE           = 0x0,
-        MALI_GL_POINTS         = 0x1,
-        MALI_GL_LINES          = 0x2,
-        MALI_GL_LINE_STRIP     = 0x4,
-        MALI_GL_LINE_LOOP      = 0x6,
-        MALI_GL_TRIANGLES      = 0x8,
-        MALI_GL_TRIANGLE_STRIP = 0xA,
-        MALI_GL_TRIANGLE_FAN   = 0xC,
-        MALI_GL_POLYGONS       = 0xD,
-        MALI_GL_QUADS          = 0xE,
-        MALI_GL_QUAD_STRIP     = 0xF,
+enum mali_draw_mode {
+        MALI_DRAW_NONE      = 0x0,
+        MALI_POINTS         = 0x1,
+        MALI_LINES          = 0x2,
+        MALI_LINE_STRIP     = 0x4,
+        MALI_LINE_LOOP      = 0x6,
+        MALI_TRIANGLES      = 0x8,
+        MALI_TRIANGLE_STRIP = 0xA,
+        MALI_TRIANGLE_FAN   = 0xC,
+        MALI_POLYGON        = 0xD,
+        MALI_QUADS          = 0xE,
+        MALI_QUAD_STRIP     = 0xF,
 
         /* All other modes invalid */
 };

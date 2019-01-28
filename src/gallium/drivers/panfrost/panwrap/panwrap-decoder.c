@@ -133,25 +133,25 @@ panwrap_job_type_name(enum mali_job_type type)
 }
 
 static char *
-panwrap_gl_mode_name(enum mali_gl_mode mode)
+panwrap_draw_mode_name(enum mali_draw_mode mode)
 {
 #define DEFINE_CASE(name) case MALI_ ## name: return "MALI_" #name
 
         switch (mode) {
-                DEFINE_CASE(GL_NONE);
-                DEFINE_CASE(GL_POINTS);
-                DEFINE_CASE(GL_LINES);
-                DEFINE_CASE(GL_TRIANGLES);
-                DEFINE_CASE(GL_TRIANGLE_STRIP);
-                DEFINE_CASE(GL_TRIANGLE_FAN);
-                DEFINE_CASE(GL_LINE_STRIP);
-                DEFINE_CASE(GL_LINE_LOOP);
-                DEFINE_CASE(GL_POLYGONS);
-                DEFINE_CASE(GL_QUADS);
-                DEFINE_CASE(GL_QUAD_STRIP);
+                DEFINE_CASE(DRAW_NONE);
+                DEFINE_CASE(POINTS);
+                DEFINE_CASE(LINES);
+                DEFINE_CASE(TRIANGLES);
+                DEFINE_CASE(TRIANGLE_STRIP);
+                DEFINE_CASE(TRIANGLE_FAN);
+                DEFINE_CASE(LINE_STRIP);
+                DEFINE_CASE(LINE_LOOP);
+                DEFINE_CASE(POLYGON);
+                DEFINE_CASE(QUADS);
+                DEFINE_CASE(QUAD_STRIP);
 
         default:
-                return "MALI_GL_TRIANGLES /* XXX: Unknown GL mode, check dump */";
+                return "MALI_TRIANGLES /* XXX: Unknown GL mode, check dump */";
         }
 
 #undef DEFINE_CASE
@@ -923,7 +923,7 @@ panwrap_replay_vertex_tiler_prefix(struct mali_vertex_tiler_prefix *p, int job_n
         panwrap_prop("unknown_draw = 0x%" PRIx32, p->unknown_draw);
         panwrap_prop("workgroups_x_shift_3 = 0x%" PRIx32, p->workgroups_x_shift_3);
 
-        panwrap_prop("draw_mode = %s", panwrap_gl_mode_name(p->draw_mode));
+        panwrap_prop("draw_mode = %s", panwrap_draw_mode_name(p->draw_mode));
 
         /* Index count only exists for tiler jobs anyway */
 

@@ -1071,7 +1071,7 @@ panfrost_emit_for_draw(struct panfrost_context *ctx, bool with_vertex_data)
                 assert(ctx->vs);
                 struct panfrost_shader_state *vs = &ctx->vs->variants[ctx->vs->active_variant];
 
-                bool needs_gl_point_size = vs->writes_point_size && ctx->payload_tiler.prefix.draw_mode == MALI_GL_POINTS;
+                bool needs_gl_point_size = vs->writes_point_size && ctx->payload_tiler.prefix.draw_mode == MALI_POINTS;
 
                 if (!needs_gl_point_size) {
                         /* If the size is constant, write it out. Otherwise,
@@ -1552,7 +1552,7 @@ panfrost_flush(
         panfrost_invalidate_frame(ctx);
 }
 
-#define DEFINE_CASE(c) case PIPE_PRIM_##c: return MALI_GL_##c;
+#define DEFINE_CASE(c) case PIPE_PRIM_##c: return MALI_##c;
 
 static int
 g2m_draw_mode(enum pipe_prim_type mode)
@@ -1567,12 +1567,12 @@ g2m_draw_mode(enum pipe_prim_type mode)
                 DEFINE_CASE(TRIANGLE_FAN);
                 DEFINE_CASE(QUADS);
                 DEFINE_CASE(QUAD_STRIP);
-                DEFINE_CASE(POLYGONS);
+                DEFINE_CASE(POLYGON);
 
         default:
                 printf("Illegal draw mode %d\n", mode);
                 assert(0);
-                return MALI_GL_LINE_LOOP;
+                return MALI_LINE_LOOP;
         }
 }
 
@@ -1653,9 +1653,12 @@ panfrost_draw_vbo(
 
         int mode = info->mode;
 
-        /* Fallback for non-ES draw modes */
-
 #if 0
+        /* Fallback for non-ES draw modes */
+        /* Primconvert not needed on Midgard anymore due to native
+         * QUADS/POLYGONS. Bifrost/desktop-GL may need it though so not
+         * removing */
+
         if (info->mode >= PIPE_PRIM_QUADS) {
                 if (info->mode == PIPE_PRIM_QUADS && info->count == 4 && ctx->rasterizer && !ctx->rasterizer->base.flatshade) {
                         mode = PIPE_PRIM_TRIANGLE_FAN;
