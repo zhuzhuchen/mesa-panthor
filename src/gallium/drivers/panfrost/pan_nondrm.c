@@ -322,6 +322,14 @@ panfrost_nondrm_submit_job(struct panfrost_context *ctx, mali_ptr addr, int nr_a
 
         if (pandev_ioctl(nondrm->fd, KBASE_IOCTL_JOB_SUBMIT, &submit))
                 printf("Error submitting\n");
+
+#ifdef DUMP_PERFORMANCE_COUNTERS
+        /* Dump the performance counters as soon as we submit work */
+        if (pandev_ioctl(nondrm->fd, KBASE_IOCTL_HWCNT_DUMP, NULL)) {
+                fprintf(stderr, "Error dumping counters\n");
+                return;
+        }
+#endif
 }
 
 /* Forces a flush, to make sure everything is consistent.
@@ -406,6 +414,25 @@ panfrost_nondrm_allocate_slab(struct panfrost_context *ctx,
         mem->stack_bottom = 0;
 }
 
+static void
+panfrost_nondrm_enable_counters(struct panfrost_screen *screen)
+{
+	struct panfrost_nondrm *nondrm = (struct panfrost_nondrm *) screen->driver;
+
+        struct kbase_ioctl_hwcnt_enable enable_flags = {
+                .dump_buffer = screen->perf_counters.gpu,
+                .jm_bm = ~0,
+                .shader_bm = ~0,
+                .tiler_bm = ~0,
+                .mmu_l2_bm = ~0
+        };
+
+        if (pandev_ioctl(nondrm->fd, KBASE_IOCTL_HWCNT_ENABLE, &enable_flags)) {
+                fprintf(stderr, "Error enabling performance counters\n");
+                return;
+        }
+}
+
 struct panfrost_driver *
 panfrost_create_nondrm_driver(int fd)
 {
@@ -424,6 +451,7 @@ panfrost_create_nondrm_driver(int fd)
 	driver->base.submit_job = panfrost_nondrm_submit_job;
 	driver->base.force_flush_fragment = panfrost_nondrm_force_flush_fragment;
 	driver->base.allocate_slab = panfrost_nondrm_allocate_slab;
+	driver->base.enable_counters = panfrost_nondrm_enable_counters;
 
         ret = ioctl(fd, KBASE_IOCTL_VERSION_CHECK, &version);
         if (ret != 0) {

@@ -42,6 +42,8 @@ struct panfrost_context;
 struct panfrost_resource;
 struct panfrost_screen;
 
+#define DUMP_PERFORMANCE_COUNTERS
+
 struct panfrost_driver {
 	struct panfrost_bo * (*create_bo) (struct panfrost_screen *screen, const struct pipe_resource *template);
 	struct panfrost_bo * (*import_bo) (struct panfrost_screen *screen, struct winsys_handle *whandle);
@@ -58,6 +60,7 @@ struct panfrost_driver {
 		               int extra_flags,
 		               int commit_count,
 		               int extent);
+	void (*enable_counters) (struct panfrost_screen *screen);
 };
 
 struct panfrost_screen {
@@ -67,6 +70,8 @@ struct panfrost_screen {
         struct panfrost_driver *driver;
 
         struct panfrost_context *any_context;
+
+        struct panfrost_memory perf_counters;
         
         /* TODO: Where? */
         struct panfrost_resource *display_target;

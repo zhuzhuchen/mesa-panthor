@@ -44,6 +44,10 @@
 #include "pan_blend_shaders.h"
 #include "pan_wallpaper.h"
 
+#ifdef DUMP_PERFORMANCE_COUNTERS
+static int performance_counter_number = 0;
+#endif
+
 /* Do not actually send anything to the GPU; merely generate the cmdstream as fast as possible. Disables framebuffer writes */
 //#define DRY_RUN
 
@@ -1499,6 +1503,15 @@ panfrost_submit_frame(struct panfrost_context *ctx, bool flush_immediate)
         /* If readback, flush now (hurts the pipelined performance) */
         if (panfrost_is_scanout(ctx) && flush_immediate)
                 screen->driver->force_flush_fragment(ctx);
+
+#ifdef DUMP_PERFORMANCE_COUNTERS
+        char filename[128];
+        snprintf(filename, sizeof(filename), "/dev/shm/frame%d.mdgprf", ++performance_counter_number);
+        FILE *fp = fopen(filename, "wb");
+        fwrite(screen->perf_counters.cpu,  4096, sizeof(uint32_t), fp);
+        fclose(fp);
+#endif
+
 #endif
 }
 
@@ -1552,6 +1565,8 @@ g2m_draw_mode(enum pipe_prim_type mode)
                 DEFINE_CASE(TRIANGLES);
                 DEFINE_CASE(TRIANGLE_STRIP);
                 DEFINE_CASE(TRIANGLE_FAN);
+                DEFINE_CASE(QUADS);
+                DEFINE_CASE(QUAD_STRIP);
 
         default:
                 printf("Illegal draw mode %d\n", mode);
@@ -1639,6 +1654,7 @@ panfrost_draw_vbo(
 
         /* Fallback for non-ES draw modes */
 
+#if 0
         if (info->mode >= PIPE_PRIM_QUADS) {
                 if (info->mode == PIPE_PRIM_QUADS && info->count == 4 && ctx->rasterizer && !ctx->rasterizer->base.flatshade) {
                         mode = PIPE_PRIM_TRIANGLE_FAN;
@@ -1653,6 +1669,7 @@ panfrost_draw_vbo(
                         return;
                 }
         }
+#endif
 
         ctx->payload_tiler.prefix.draw_mode = g2m_draw_mode(mode);
 
@@ -2688,6 +2705,7 @@ panfrost_setup_hardware(struct panfrost_context *ctx)
         screen->driver->allocate_slab(ctx, &ctx->shaders, 4096, true, BASE_MEM_PROT_GPU_EX, 0, 0);
         screen->driver->allocate_slab(ctx, &ctx->tiler_heap, 32768, false, BASE_MEM_GROW_ON_GPF, 1, 128);
         screen->driver->allocate_slab(ctx, &ctx->misc_0, 128, false, BASE_MEM_GROW_ON_GPF, 1, 128);
+
 }
 
 /* New context creation, which also does hardware initialisation since I don't
