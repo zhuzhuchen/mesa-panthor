@@ -624,10 +624,10 @@ translate_tex_filter(enum pipe_tex_filter f)
 {
         switch (f) {
         case PIPE_TEX_FILTER_NEAREST:
-                return MALI_GL_NEAREST;
+                return MALI_NEAREST;
 
         case PIPE_TEX_FILTER_LINEAR:
-                return MALI_GL_LINEAR;
+                return MALI_LINEAR;
 
         default:
                 assert(0);
@@ -638,7 +638,7 @@ translate_tex_filter(enum pipe_tex_filter f)
 static unsigned
 translate_mip_filter(enum pipe_tex_mipfilter f)
 {
-        return (f == PIPE_TEX_MIPFILTER_LINEAR) ? MALI_GL_MIP_LINEAR : 0;
+        return (f == PIPE_TEX_MIPFILTER_LINEAR) ? MALI_MIP_LINEAR : 0;
 }
 
 static unsigned
@@ -1038,7 +1038,7 @@ panfrost_emit_for_draw(struct panfrost_context *ctx, bool with_vertex_data)
         }
 
         if (ctx->occlusion_query) {
-                ctx->payload_tiler.gl_enables |= MALI_GL_OCCLUSION_BOOLEAN;
+                ctx->payload_tiler.gl_enables |= MALI_OCCLUSION_BOOLEAN;
                 ctx->payload_tiler.postfix.occlusion_counter = ctx->occlusion_query->transfer.gpu;
         }
 
@@ -1790,14 +1790,14 @@ panfrost_create_rasterizer_state(
         so->tiler_gl_enables = 0x105;
 #endif
 
-        so->tiler_gl_enables |= MALI_GL_FRONT_FACE(
-                                        cso->front_ccw ? MALI_GL_CCW : MALI_GL_CW);
+        so->tiler_gl_enables |= MALI_FRONT_FACE(
+                                        cso->front_ccw ? MALI_CCW : MALI_CW);
 
         if (cso->cull_face & PIPE_FACE_FRONT)
-                so->tiler_gl_enables |= MALI_GL_CULL_FACE_FRONT;
+                so->tiler_gl_enables |= MALI_CULL_FACE_FRONT;
 
         if (cso->cull_face & PIPE_FACE_BACK)
-                so->tiler_gl_enables |= MALI_GL_CULL_FACE_BACK;
+                so->tiler_gl_enables |= MALI_CULL_FACE_BACK;
 
         return so;
 }
@@ -1915,8 +1915,8 @@ panfrost_create_sampler_state(
         /* sampler_state corresponds to mali_sampler_descriptor, which we can generate entirely here */
 
         struct mali_sampler_descriptor sampler_descriptor = {
-                .filter_mode = MALI_GL_TEX_MIN(translate_tex_filter(cso->min_img_filter))
-                | MALI_GL_TEX_MAG(translate_tex_filter(cso->mag_img_filter))
+                .filter_mode = MALI_TEX_MIN(translate_tex_filter(cso->min_img_filter))
+                | MALI_TEX_MAG(translate_tex_filter(cso->mag_img_filter))
                 | translate_mip_filter(cso->min_mip_filter)
                 | 0x20,
 

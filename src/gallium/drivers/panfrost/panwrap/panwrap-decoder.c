@@ -46,7 +46,7 @@
 		panwrap_prop("%s = %s_%d_p", #p, #p, no); \
 }
 
-#define FLAG_INFO(flag) { MALI_GL_##flag, "MALI_GL_" #flag }
+#define FLAG_INFO(flag) { MALI_##flag, "MALI_" #flag }
 static const struct panwrap_flag_info gl_enable_flag_info[] = {
         FLAG_INFO(CULL_FACE_FRONT),
         FLAG_INFO(CULL_FACE_BACK),
@@ -1469,9 +1469,9 @@ panwrap_replay_vertex_tiler_postfix_pre(const struct mali_vertex_tiler_postfix *
                                 panwrap_indent++;
 
                                 /* Only the lower two bits are understood right now; the rest we display as hex */
-                                panwrap_log(".filter_mode = MALI_GL_TEX_MIN(%s) | MALI_GL_TEX_MAG(%s) | 0x%" PRIx32",\n",
-                                            MALI_FILTER_NAME(s->filter_mode & MALI_GL_TEX_MIN_MASK),
-                                            MALI_FILTER_NAME(s->filter_mode & MALI_GL_TEX_MAG_MASK),
+                                panwrap_log(".filter_mode = MALI_TEX_MIN(%s) | MALI_TEX_MAG(%s) | 0x%" PRIx32",\n",
+                                            MALI_FILTER_NAME(s->filter_mode & MALI_TEX_MIN_MASK),
+                                            MALI_FILTER_NAME(s->filter_mode & MALI_TEX_MAG_MASK),
                                             s->filter_mode & ~3);
 
                                 panwrap_prop("min_lod = FIXED_16(%f)", DECODE_FIXED_16(s->min_lod));
@@ -1654,10 +1654,10 @@ panwrap_replay_gl_enables(uint32_t gl_enables, int job_type)
         panwrap_log(".gl_enables = ");
 
         if (job_type == JOB_TYPE_TILER) {
-                panwrap_log_cont("MALI_GL_FRONT_FACE(MALI_GL_%s) | ",
-                                 gl_enables & MALI_GL_FRONT_FACE(MALI_GL_CW) ? "CW" : "CCW");
+                panwrap_log_cont("MALI_FRONT_FACE(MALI_%s) | ",
+                                 gl_enables & MALI_FRONT_FACE(MALI_CW) ? "CW" : "CCW");
 
-                gl_enables &= ~(MALI_GL_FRONT_FACE(1));
+                gl_enables &= ~(MALI_FRONT_FACE(1));
         }
 
         panwrap_log_decoded_flags(gl_enable_flag_info, gl_enables);

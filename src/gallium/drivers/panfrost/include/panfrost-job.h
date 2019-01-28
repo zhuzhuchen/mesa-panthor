@@ -81,14 +81,14 @@ enum mali_draw_mode {
 
 /* Applies to tiler_gl_enables */
 
-#define MALI_GL_CULL_FACE_BACK  0x80
-#define MALI_GL_CULL_FACE_FRONT 0x40
+#define MALI_CULL_FACE_BACK  0x80
+#define MALI_CULL_FACE_FRONT 0x40
 
-#define MALI_GL_FRONT_FACE(v) (v << 5)
-#define MALI_GL_CCW (0)
-#define MALI_GL_CW  (1)
+#define MALI_FRONT_FACE(v) (v << 5)
+#define MALI_CCW (0)
+#define MALI_CW  (1)
 
-#define MALI_GL_OCCLUSION_BOOLEAN 0x8
+#define MALI_OCCLUSION_BOOLEAN 0x8
 
 /* TODO: Might this actually be a finer bitfield? */
 #define MALI_DEPTH_STENCIL_ENABLE 0x6400
@@ -1135,19 +1135,19 @@ struct mali_texture_descriptor {
 
 /* Used as part of filter_mode */
 
-#define MALI_GL_LINEAR 0
-#define MALI_GL_NEAREST 1
-#define MALI_GL_MIP_LINEAR (0x18)
+#define MALI_LINEAR 0
+#define MALI_NEAREST 1
+#define MALI_MIP_LINEAR (0x18)
 
 /* Used to construct low bits of filter_mode */
 
-#define MALI_GL_TEX_MAG(mode) (((mode) & 1) << 0)
-#define MALI_GL_TEX_MIN(mode) (((mode) & 1) << 1)
+#define MALI_TEX_MAG(mode) (((mode) & 1) << 0)
+#define MALI_TEX_MIN(mode) (((mode) & 1) << 1)
 
-#define MALI_GL_TEX_MAG_MASK (1)
-#define MALI_GL_TEX_MIN_MASK (2)
+#define MALI_TEX_MAG_MASK (1)
+#define MALI_TEX_MIN_MASK (2)
 
-#define MALI_FILTER_NAME(filter) (filter ? "MALI_GL_NEAREST" : "MALI_GL_LINEAR")
+#define MALI_FILTER_NAME(filter) (filter ? "MALI_NEAREST" : "MALI_LINEAR")
 
 /* Used for lod encoding. Thanks @urjaman for pointing out these routines can
  * be cleaned up a lot. */
