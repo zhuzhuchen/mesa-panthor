@@ -2624,71 +2624,11 @@ panfrost_get_query_result(struct pipe_context *pipe,
         return true;
 }
 
-static struct pb_slab *
-panfrost_slab_alloc(void *priv, unsigned heap, unsigned entry_size, unsigned group_index)
-{
-        struct panfrost_context *ctx = (struct panfrost_context *) priv;
-        struct panfrost_memory *mem = CALLOC_STRUCT(panfrost_memory);
-        struct pipe_context *gallium = (struct pipe_context *) ctx;
-        struct panfrost_screen *screen = pan_screen(gallium->screen);
-
-        size_t slab_size = (1 << (MAX_SLAB_ENTRY_SIZE + 1));
-
-        mem->slab.num_entries = slab_size / entry_size;
-        mem->slab.num_free = mem->slab.num_entries;
-
-        LIST_INITHEAD(&mem->slab.free);
-        for (unsigned i = 0; i < mem->slab.num_entries; ++i) {
-                /* Create a slab entry */
-                struct panfrost_memory_entry *entry = CALLOC_STRUCT(panfrost_memory_entry);
-                entry->offset = entry_size * i;
-
-                entry->base.slab = &mem->slab;
-                entry->base.group_index = group_index;
-
-                LIST_ADDTAIL(&entry->base.head, &mem->slab.free);
-        }
-
-        /* Actually allocate the memory from kernel-space. Mapped, same_va, no
-         * special flags */
-
-        screen->driver->allocate_slab(screen, mem, slab_size / 4096, true, 0, 0, 0);
-
-        return &mem->slab;
-}
-
-static bool
-panfrost_slab_can_reclaim(void *priv, struct pb_slab_entry *entry)
-{
-        struct panfrost_memory_entry *p_entry = (struct panfrost_memory_entry *) entry;
-        return p_entry->freed;
-}
-
-static void
-panfrost_slab_free(void *priv, struct pb_slab *slab)
-{
-        /* STUB */
-        //struct panfrost_memory *mem = (struct panfrost_memory *) slab;
-        printf("stub: Tried to free slab\n");
-}
-
 static void
 panfrost_setup_hardware(struct panfrost_context *ctx)
 {
         struct pipe_context *gallium = (struct pipe_context *) ctx;
         struct panfrost_screen *screen = pan_screen(gallium->screen);
-
-        pb_slabs_init(&ctx->slabs,
-                        MIN_SLAB_ENTRY_SIZE,
-                        MAX_SLAB_ENTRY_SIZE,
-
-                        3, /* Number of heaps */
-
-                        ctx,
-
-                        panfrost_slab_can_reclaim,
-                        panfrost_slab_alloc,
-                        panfrost_slab_free);
 
         for (int i = 0; i < ARRAY_SIZE(ctx->transient_pools); ++i) {
                 /* Allocate the beginning of the transient pool */
@@ -2697,7 +2637,7 @@ panfrost_setup_hardware(struct panfrost_context *ctx)
                 ctx->transient_pools[i].entry_size = entry_size;
                 ctx->transient_pools[i].entry_count = 1;
 
-                ctx->transient_pools[i].entries[0] = (struct panfrost_memory_entry *) pb_slab_alloc(&ctx->slabs, entry_size, HEAP_TRANSIENT);
+                ctx->transient_pools[i].entries[0] = (struct panfrost_memory_entry *) pb_slab_alloc(&screen->slabs, entry_size, HEAP_TRANSIENT);
         }
 
         screen->driver->allocate_slab(screen, &ctx->scratchpad, 64, false, 0, 0, 0);
@@ -2717,11 +2657,6 @@ panfrost_create_context(struct pipe_screen *screen, void *priv, unsigned flags)
         struct panfrost_context *ctx = CALLOC_STRUCT(panfrost_context);
         memset(ctx, 0, sizeof(*ctx));
         struct pipe_context *gallium = (struct pipe_context *) ctx;
-
-        struct panfrost_screen *pscreen = (struct panfrost_screen *) screen;
-
-        if (!pscreen->any_context)
-                pscreen->any_context = ctx;
 
         gallium->screen = screen;
 

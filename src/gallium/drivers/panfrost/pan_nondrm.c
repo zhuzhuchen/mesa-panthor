@@ -133,7 +133,7 @@ panfrost_nondrm_create_bo(struct panfrost_screen *screen, const struct pipe_reso
                 } else {
                         /* But for linear, we can! */
 
-                        struct pb_slab_entry *entry = pb_slab_alloc(&screen->any_context->slabs, sz, HEAP_TEXTURE);
+                        struct pb_slab_entry *entry = pb_slab_alloc(&screen->slabs, sz, HEAP_TEXTURE);
                         struct panfrost_memory_entry *p_entry = (struct panfrost_memory_entry *) entry;
                         struct panfrost_memory *backing = (struct panfrost_memory *) entry->slab;
                         bo->base.entry[0] = p_entry;
@@ -220,7 +220,7 @@ panfrost_nondrm_map_bo(struct panfrost_context *ctx, struct pipe_transfer *trans
 }
 
 static void
-panfrost_tile_texture(struct panfrost_context *ctx, struct panfrost_resource *rsrc, int level)
+panfrost_tile_texture(struct panfrost_screen *screen, struct panfrost_resource *rsrc, int level)
 {
 	struct panfrost_nondrm_bo *bo = (struct panfrost_nondrm_bo *)rsrc->bo;
         int bytes_per_pixel = util_format_get_blocksize(rsrc->base.format);
@@ -235,7 +235,7 @@ panfrost_tile_texture(struct panfrost_context *ctx, struct panfrost_resource *rs
         int swizzled_sz = panfrost_swizzled_size(width, height, bytes_per_pixel);
 
         /* Allocate the transfer given that known size but do not copy */
-        struct pb_slab_entry *entry = pb_slab_alloc(&ctx->slabs, swizzled_sz, HEAP_TEXTURE);
+        struct pb_slab_entry *entry = pb_slab_alloc(&screen->slabs, swizzled_sz, HEAP_TEXTURE);
         struct panfrost_memory_entry *p_entry = (struct panfrost_memory_entry *) entry;
         struct panfrost_memory *backing = (struct panfrost_memory *) entry->slab;
         uint8_t *swizzled = backing->cpu + p_entry->offset;
@@ -245,7 +245,7 @@ panfrost_tile_texture(struct panfrost_context *ctx, struct panfrost_resource *rs
 
         if (bo->base.entry[level] != NULL) {
                 bo->base.entry[level]->freed = true;
-                pb_slab_free(&ctx->slabs, &bo->base.entry[level]->base);
+                pb_slab_free(&screen->slabs, &bo->base.entry[level]->base);
         }
 
         bo->base.entry[level] = p_entry;
@@ -271,7 +271,9 @@ panfrost_nondrm_unmap_bo(struct panfrost_context *ctx,
                         if (bo->base.has_afbc) {
                                 printf("Warning: writes to afbc surface can't possibly work out well for you...\n");
                         } else if (bo->base.tiled) {
-                                panfrost_tile_texture(ctx, prsrc, transfer->level);
+                                struct pipe_context *gallium = (struct pipe_context *) ctx;
+                                struct panfrost_screen *screen = pan_screen(gallium->screen);
+                                panfrost_tile_texture(screen, prsrc, transfer->level);
                         }
                 }
         }
@@ -280,7 +282,6 @@ panfrost_nondrm_unmap_bo(struct panfrost_context *ctx,
 static void
 panfrost_nondrm_destroy_bo(struct panfrost_screen *screen, struct panfrost_bo *pbo)
 {
-        struct panfrost_context *ctx = screen->any_context;
 	struct panfrost_nondrm_bo *bo = (struct panfrost_nondrm_bo *)pbo;
 
         if (bo->base.tiled) {
@@ -291,7 +292,7 @@ panfrost_nondrm_destroy_bo(struct panfrost_screen *screen, struct panfrost_bo *p
                 }
         } else if (bo->base.entry[0] != NULL) {
                 bo->base.entry[0]->freed = true;
-                pb_slab_free(&ctx->slabs, &bo->base.entry[0]->base);
+                pb_slab_free(&screen->slabs, &bo->base.entry[0]->base);
         } else {
                 printf("--leaking main allocation--\n");
         }
