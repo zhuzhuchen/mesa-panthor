@@ -212,7 +212,6 @@ if with_dri_i915 and with_gallium_i915
 endif
 if with_gallium_kmsro and not (with_gallium_vc4 or with_gallium_etnaviv or with_gallium_freedreno or with_gallium_panfrost)
   error('kmsro driver requires one or more renderonly drivers (vc4, etnaviv, freedreno, panfrost)')
->>>>>>> upstream/master
 endif
 if with_gallium_tegra and not with_gallium_nouveau
   error('tegra driver requires nouveau driver')
