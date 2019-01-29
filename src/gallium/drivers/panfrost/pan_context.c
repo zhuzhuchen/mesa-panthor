@@ -44,6 +44,10 @@
 #include "pan_blend_shaders.h"
 #include "pan_wallpaper.h"
 
+#ifdef DUMP_PERFORMANCE_COUNTERS
+static int performance_counter_number = 0;
+#endif
+
 /* Do not actually send anything to the GPU; merely generate the cmdstream as fast as possible. Disables framebuffer writes */
 //#define DRY_RUN
 
@@ -96,7 +100,7 @@ panfrost_enable_afbc(struct panfrost_context *ctx, struct panfrost_resource *rsr
         rsrc->bo->afbc_metadata_size = tile_w * tile_h * 16;
 
         /* Allocate the AFBC slab itself, large enough to hold the above */
-        screen->driver->allocate_slab(ctx, &rsrc->bo->afbc_slab,
+        screen->driver->allocate_slab(screen, &rsrc->bo->afbc_slab,
                                (rsrc->bo->afbc_metadata_size + main_size + 4095) / 4096,
                                true, 0, 0, 0);
 
@@ -123,7 +127,7 @@ panfrost_enable_checksum(struct panfrost_context *ctx, struct panfrost_resource 
         /* 8 byte checksum per tile */
         rsrc->bo->checksum_stride = tile_w * 8;
         int pages = (((rsrc->bo->checksum_stride * tile_h) + 4095) / 4096);
-        screen->driver->allocate_slab(ctx, &rsrc->bo->checksum_slab, pages, false, 0, 0, 0);
+        screen->driver->allocate_slab(screen, &rsrc->bo->checksum_slab, pages, false, 0, 0, 0);
 
         rsrc->bo->has_checksum = true;
 }
@@ -620,10 +624,10 @@ translate_tex_filter(enum pipe_tex_filter f)
 {
         switch (f) {
         case PIPE_TEX_FILTER_NEAREST:
-                return MALI_GL_NEAREST;
+                return MALI_NEAREST;
 
         case PIPE_TEX_FILTER_LINEAR:
-                return MALI_GL_LINEAR;
+                return MALI_LINEAR;
 
         default:
                 assert(0);
@@ -634,7 +638,7 @@ translate_tex_filter(enum pipe_tex_filter f)
 static unsigned
 translate_mip_filter(enum pipe_tex_mipfilter f)
 {
-        return (f == PIPE_TEX_MIPFILTER_LINEAR) ? MALI_GL_MIP_LINEAR : 0;
+        return (f == PIPE_TEX_MIPFILTER_LINEAR) ? MALI_MIP_LINEAR : 0;
 }
 
 static unsigned
@@ -1034,7 +1038,7 @@ panfrost_emit_for_draw(struct panfrost_context *ctx, bool with_vertex_data)
         }
 
         if (ctx->occlusion_query) {
-                ctx->payload_tiler.gl_enables |= MALI_GL_OCCLUSION_BOOLEAN;
+                ctx->payload_tiler.gl_enables |= MALI_OCCLUSION_BOOLEAN;
                 ctx->payload_tiler.postfix.occlusion_counter = ctx->occlusion_query->transfer.gpu;
         }
 
@@ -1067,7 +1071,7 @@ panfrost_emit_for_draw(struct panfrost_context *ctx, bool with_vertex_data)
                 assert(ctx->vs);
                 struct panfrost_shader_state *vs = &ctx->vs->variants[ctx->vs->active_variant];
 
-                bool needs_gl_point_size = vs->writes_point_size && ctx->payload_tiler.prefix.draw_mode == MALI_GL_POINTS;
+                bool needs_gl_point_size = vs->writes_point_size && ctx->payload_tiler.prefix.draw_mode == MALI_POINTS;
 
                 if (!needs_gl_point_size) {
                         /* If the size is constant, write it out. Otherwise,
@@ -1499,6 +1503,15 @@ panfrost_submit_frame(struct panfrost_context *ctx, bool flush_immediate)
         /* If readback, flush now (hurts the pipelined performance) */
         if (panfrost_is_scanout(ctx) && flush_immediate)
                 screen->driver->force_flush_fragment(ctx);
+
+#ifdef DUMP_PERFORMANCE_COUNTERS
+        char filename[128];
+        snprintf(filename, sizeof(filename), "/dev/shm/frame%d.mdgprf", ++performance_counter_number);
+        FILE *fp = fopen(filename, "wb");
+        fwrite(screen->perf_counters.cpu,  4096, sizeof(uint32_t), fp);
+        fclose(fp);
+#endif
+
 #endif
 }
 
@@ -1539,7 +1552,7 @@ panfrost_flush(
         panfrost_invalidate_frame(ctx);
 }
 
-#define DEFINE_CASE(c) case PIPE_PRIM_##c: return MALI_GL_##c;
+#define DEFINE_CASE(c) case PIPE_PRIM_##c: return MALI_##c;
 
 static int
 g2m_draw_mode(enum pipe_prim_type mode)
@@ -1552,11 +1565,14 @@ g2m_draw_mode(enum pipe_prim_type mode)
                 DEFINE_CASE(TRIANGLES);
                 DEFINE_CASE(TRIANGLE_STRIP);
                 DEFINE_CASE(TRIANGLE_FAN);
+                DEFINE_CASE(QUADS);
+                DEFINE_CASE(QUAD_STRIP);
+                DEFINE_CASE(POLYGON);
 
         default:
                 printf("Illegal draw mode %d\n", mode);
                 assert(0);
-                return MALI_GL_LINE_LOOP;
+                return MALI_LINE_LOOP;
         }
 }
 
@@ -1637,7 +1653,11 @@ panfrost_draw_vbo(
 
         int mode = info->mode;
 
+#if 0
         /* Fallback for non-ES draw modes */
+        /* Primconvert not needed on Midgard anymore due to native
+         * QUADS/POLYGONS. Bifrost/desktop-GL may need it though so not
+         * removing */
 
         if (info->mode >= PIPE_PRIM_QUADS) {
                 if (info->mode == PIPE_PRIM_QUADS && info->count == 4 && ctx->rasterizer && !ctx->rasterizer->base.flatshade) {
@@ -1653,6 +1673,7 @@ panfrost_draw_vbo(
                         return;
                 }
         }
+#endif
 
         ctx->payload_tiler.prefix.draw_mode = g2m_draw_mode(mode);
 
@@ -1769,14 +1790,14 @@ panfrost_create_rasterizer_state(
         so->tiler_gl_enables = 0x105;
 #endif
 
-        so->tiler_gl_enables |= MALI_GL_FRONT_FACE(
-                                        cso->front_ccw ? MALI_GL_CCW : MALI_GL_CW);
+        so->tiler_gl_enables |= MALI_FRONT_FACE(
+                                        cso->front_ccw ? MALI_CCW : MALI_CW);
 
         if (cso->cull_face & PIPE_FACE_FRONT)
-                so->tiler_gl_enables |= MALI_GL_CULL_FACE_FRONT;
+                so->tiler_gl_enables |= MALI_CULL_FACE_FRONT;
 
         if (cso->cull_face & PIPE_FACE_BACK)
-                so->tiler_gl_enables |= MALI_GL_CULL_FACE_BACK;
+                so->tiler_gl_enables |= MALI_CULL_FACE_BACK;
 
         return so;
 }
@@ -1894,8 +1915,8 @@ panfrost_create_sampler_state(
         /* sampler_state corresponds to mali_sampler_descriptor, which we can generate entirely here */
 
         struct mali_sampler_descriptor sampler_descriptor = {
-                .filter_mode = MALI_GL_TEX_MIN(translate_tex_filter(cso->min_img_filter))
-                | MALI_GL_TEX_MAG(translate_tex_filter(cso->mag_img_filter))
+                .filter_mode = MALI_TEX_MIN(translate_tex_filter(cso->min_img_filter))
+                | MALI_TEX_MAG(translate_tex_filter(cso->mag_img_filter))
                 | translate_mip_filter(cso->min_mip_filter)
                 | 0x20,
 
@@ -2607,71 +2628,11 @@ panfrost_get_query_result(struct pipe_context *pipe,
         return true;
 }
 
-static struct pb_slab *
-panfrost_slab_alloc(void *priv, unsigned heap, unsigned entry_size, unsigned group_index)
-{
-        struct panfrost_context *ctx = (struct panfrost_context *) priv;
-        struct panfrost_memory *mem = CALLOC_STRUCT(panfrost_memory);
-        struct pipe_context *gallium = (struct pipe_context *) ctx;
-        struct panfrost_screen *screen = pan_screen(gallium->screen);
-
-        size_t slab_size = (1 << (MAX_SLAB_ENTRY_SIZE + 1));
-
-        mem->slab.num_entries = slab_size / entry_size;
-        mem->slab.num_free = mem->slab.num_entries;
-
-        LIST_INITHEAD(&mem->slab.free);
-        for (unsigned i = 0; i < mem->slab.num_entries; ++i) {
-                /* Create a slab entry */
-                struct panfrost_memory_entry *entry = CALLOC_STRUCT(panfrost_memory_entry);
-                entry->offset = entry_size * i;
-
-                entry->base.slab = &mem->slab;
-                entry->base.group_index = group_index;
-
-                LIST_ADDTAIL(&entry->base.head, &mem->slab.free);
-        }
-
-        /* Actually allocate the memory from kernel-space. Mapped, same_va, no
-         * special flags */
-
-        screen->driver->allocate_slab(ctx, mem, slab_size / 4096, true, 0, 0, 0);
-
-        return &mem->slab;
-}
-
-static bool
-panfrost_slab_can_reclaim(void *priv, struct pb_slab_entry *entry)
-{
-        struct panfrost_memory_entry *p_entry = (struct panfrost_memory_entry *) entry;
-        return p_entry->freed;
-}
-
-static void
-panfrost_slab_free(void *priv, struct pb_slab *slab)
-{
-        /* STUB */
-        //struct panfrost_memory *mem = (struct panfrost_memory *) slab;
-        printf("stub: Tried to free slab\n");
-}
-
 static void
 panfrost_setup_hardware(struct panfrost_context *ctx)
 {
         struct pipe_context *gallium = (struct pipe_context *) ctx;
         struct panfrost_screen *screen = pan_screen(gallium->screen);
-
-        pb_slabs_init(&ctx->slabs,
-                        MIN_SLAB_ENTRY_SIZE,
-                        MAX_SLAB_ENTRY_SIZE,
-
-                        3, /* Number of heaps */
-
-                        ctx,
-
-                        panfrost_slab_can_reclaim,
-                        panfrost_slab_alloc,
-                        panfrost_slab_free);
 
         for (int i = 0; i < ARRAY_SIZE(ctx->transient_pools); ++i) {
                 /* Allocate the beginning of the transient pool */
@@ -2680,14 +2641,15 @@ panfrost_setup_hardware(struct panfrost_context *ctx)
                 ctx->transient_pools[i].entry_size = entry_size;
                 ctx->transient_pools[i].entry_count = 1;
 
-                ctx->transient_pools[i].entries[0] = (struct panfrost_memory_entry *) pb_slab_alloc(&ctx->slabs, entry_size, HEAP_TRANSIENT);
+                ctx->transient_pools[i].entries[0] = (struct panfrost_memory_entry *) pb_slab_alloc(&screen->slabs, entry_size, HEAP_TRANSIENT);
         }
 
-        screen->driver->allocate_slab(ctx, &ctx->scratchpad, 64, false, 0, 0, 0);
-        screen->driver->allocate_slab(ctx, &ctx->varying_mem, 16384, false, 0, 0, 0);
-        screen->driver->allocate_slab(ctx, &ctx->shaders, 4096, true, BASE_MEM_PROT_GPU_EX, 0, 0);
-        screen->driver->allocate_slab(ctx, &ctx->tiler_heap, 32768, false, BASE_MEM_GROW_ON_GPF, 1, 128);
-        screen->driver->allocate_slab(ctx, &ctx->misc_0, 128, false, BASE_MEM_GROW_ON_GPF, 1, 128);
+        screen->driver->allocate_slab(screen, &ctx->scratchpad, 64, false, 0, 0, 0);
+        screen->driver->allocate_slab(screen, &ctx->varying_mem, 16384, false, 0, 0, 0);
+        screen->driver->allocate_slab(screen, &ctx->shaders, 4096, true, BASE_MEM_PROT_GPU_EX, 0, 0);
+        screen->driver->allocate_slab(screen, &ctx->tiler_heap, 32768, false, BASE_MEM_GROW_ON_GPF, 1, 128);
+        screen->driver->allocate_slab(screen, &ctx->misc_0, 128, false, BASE_MEM_GROW_ON_GPF, 1, 128);
+
 }
 
 /* New context creation, which also does hardware initialisation since I don't
@@ -2699,11 +2661,6 @@ panfrost_create_context(struct pipe_screen *screen, void *priv, unsigned flags)
         struct panfrost_context *ctx = CALLOC_STRUCT(panfrost_context);
         memset(ctx, 0, sizeof(*ctx));
         struct pipe_context *gallium = (struct pipe_context *) ctx;
-
-        struct panfrost_screen *pscreen = (struct panfrost_screen *) screen;
-
-        if (!pscreen->any_context)
-                pscreen->any_context = ctx;
 
         gallium->screen = screen;
 

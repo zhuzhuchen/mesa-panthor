@@ -46,7 +46,7 @@
 		panwrap_prop("%s = %s_%d_p", #p, #p, no); \
 }
 
-#define FLAG_INFO(flag) { MALI_GL_##flag, "MALI_GL_" #flag }
+#define FLAG_INFO(flag) { MALI_##flag, "MALI_" #flag }
 static const struct panwrap_flag_info gl_enable_flag_info[] = {
         FLAG_INFO(CULL_FACE_FRONT),
         FLAG_INFO(CULL_FACE_BACK),
@@ -133,22 +133,25 @@ panwrap_job_type_name(enum mali_job_type type)
 }
 
 static char *
-panwrap_gl_mode_name(enum mali_gl_mode mode)
+panwrap_draw_mode_name(enum mali_draw_mode mode)
 {
 #define DEFINE_CASE(name) case MALI_ ## name: return "MALI_" #name
 
         switch (mode) {
-                DEFINE_CASE(GL_NONE);
-                DEFINE_CASE(GL_POINTS);
-                DEFINE_CASE(GL_LINES);
-                DEFINE_CASE(GL_TRIANGLES);
-                DEFINE_CASE(GL_TRIANGLE_STRIP);
-                DEFINE_CASE(GL_TRIANGLE_FAN);
-                DEFINE_CASE(GL_LINE_STRIP);
-                DEFINE_CASE(GL_LINE_LOOP);
+                DEFINE_CASE(DRAW_NONE);
+                DEFINE_CASE(POINTS);
+                DEFINE_CASE(LINES);
+                DEFINE_CASE(TRIANGLES);
+                DEFINE_CASE(TRIANGLE_STRIP);
+                DEFINE_CASE(TRIANGLE_FAN);
+                DEFINE_CASE(LINE_STRIP);
+                DEFINE_CASE(LINE_LOOP);
+                DEFINE_CASE(POLYGON);
+                DEFINE_CASE(QUADS);
+                DEFINE_CASE(QUAD_STRIP);
 
         default:
-                return "MALI_GL_TRIANGLES /* XXX: Unknown GL mode, check dump */";
+                return "MALI_TRIANGLES /* XXX: Unknown GL mode, check dump */";
         }
 
 #undef DEFINE_CASE
@@ -920,7 +923,7 @@ panwrap_replay_vertex_tiler_prefix(struct mali_vertex_tiler_prefix *p, int job_n
         panwrap_prop("unknown_draw = 0x%" PRIx32, p->unknown_draw);
         panwrap_prop("workgroups_x_shift_3 = 0x%" PRIx32, p->workgroups_x_shift_3);
 
-        panwrap_prop("draw_mode = %s", panwrap_gl_mode_name(p->draw_mode));
+        panwrap_prop("draw_mode = %s", panwrap_draw_mode_name(p->draw_mode));
 
         /* Index count only exists for tiler jobs anyway */
 
@@ -1466,9 +1469,9 @@ panwrap_replay_vertex_tiler_postfix_pre(const struct mali_vertex_tiler_postfix *
                                 panwrap_indent++;
 
                                 /* Only the lower two bits are understood right now; the rest we display as hex */
-                                panwrap_log(".filter_mode = MALI_GL_TEX_MIN(%s) | MALI_GL_TEX_MAG(%s) | 0x%" PRIx32",\n",
-                                            MALI_FILTER_NAME(s->filter_mode & MALI_GL_TEX_MIN_MASK),
-                                            MALI_FILTER_NAME(s->filter_mode & MALI_GL_TEX_MAG_MASK),
+                                panwrap_log(".filter_mode = MALI_TEX_MIN(%s) | MALI_TEX_MAG(%s) | 0x%" PRIx32",\n",
+                                            MALI_FILTER_NAME(s->filter_mode & MALI_TEX_MIN_MASK),
+                                            MALI_FILTER_NAME(s->filter_mode & MALI_TEX_MAG_MASK),
                                             s->filter_mode & ~3);
 
                                 panwrap_prop("min_lod = FIXED_16(%f)", DECODE_FIXED_16(s->min_lod));
@@ -1651,10 +1654,10 @@ panwrap_replay_gl_enables(uint32_t gl_enables, int job_type)
         panwrap_log(".gl_enables = ");
 
         if (job_type == JOB_TYPE_TILER) {
-                panwrap_log_cont("MALI_GL_FRONT_FACE(MALI_GL_%s) | ",
-                                 gl_enables & MALI_GL_FRONT_FACE(MALI_GL_CW) ? "CW" : "CCW");
+                panwrap_log_cont("MALI_FRONT_FACE(MALI_%s) | ",
+                                 gl_enables & MALI_FRONT_FACE(MALI_CW) ? "CW" : "CCW");
 
-                gl_enables &= ~(MALI_GL_FRONT_FACE(1));
+                gl_enables &= ~(MALI_FRONT_FACE(1));
         }
 
         panwrap_log_decoded_flags(gl_enable_flag_info, gl_enables);

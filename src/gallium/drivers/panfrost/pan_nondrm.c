@@ -111,7 +111,7 @@ panfrost_nondrm_create_bo(struct panfrost_screen *screen, const struct pipe_reso
 
 		/* Allocate the framebuffer as its own slab of GPU-accessible memory */
 		struct panfrost_memory slab;
-		screen->driver->allocate_slab(screen->any_context, &slab, (sz / 4096) + 1, false, 0, 0, 0);
+		screen->driver->allocate_slab(screen, &slab, (sz / 4096) + 1, false, 0, 0, 0);
 
 		/* Make the resource out of the slab */
 		bo->base.cpu[0] = slab.cpu;
@@ -133,7 +133,7 @@ panfrost_nondrm_create_bo(struct panfrost_screen *screen, const struct pipe_reso
                 } else {
                         /* But for linear, we can! */
 
-                        struct pb_slab_entry *entry = pb_slab_alloc(&screen->any_context->slabs, sz, HEAP_TEXTURE);
+                        struct pb_slab_entry *entry = pb_slab_alloc(&screen->slabs, sz, HEAP_TEXTURE);
                         struct panfrost_memory_entry *p_entry = (struct panfrost_memory_entry *) entry;
                         struct panfrost_memory *backing = (struct panfrost_memory *) entry->slab;
                         bo->base.entry[0] = p_entry;
@@ -220,7 +220,7 @@ panfrost_nondrm_map_bo(struct panfrost_context *ctx, struct pipe_transfer *trans
 }
 
 static void
-panfrost_tile_texture(struct panfrost_context *ctx, struct panfrost_resource *rsrc, int level)
+panfrost_tile_texture(struct panfrost_screen *screen, struct panfrost_resource *rsrc, int level)
 {
 	struct panfrost_nondrm_bo *bo = (struct panfrost_nondrm_bo *)rsrc->bo;
         int bytes_per_pixel = util_format_get_blocksize(rsrc->base.format);
@@ -235,7 +235,7 @@ panfrost_tile_texture(struct panfrost_context *ctx, struct panfrost_resource *rs
         int swizzled_sz = panfrost_swizzled_size(width, height, bytes_per_pixel);
 
         /* Allocate the transfer given that known size but do not copy */
-        struct pb_slab_entry *entry = pb_slab_alloc(&ctx->slabs, swizzled_sz, HEAP_TEXTURE);
+        struct pb_slab_entry *entry = pb_slab_alloc(&screen->slabs, swizzled_sz, HEAP_TEXTURE);
         struct panfrost_memory_entry *p_entry = (struct panfrost_memory_entry *) entry;
         struct panfrost_memory *backing = (struct panfrost_memory *) entry->slab;
         uint8_t *swizzled = backing->cpu + p_entry->offset;
@@ -245,7 +245,7 @@ panfrost_tile_texture(struct panfrost_context *ctx, struct panfrost_resource *rs
 
         if (bo->base.entry[level] != NULL) {
                 bo->base.entry[level]->freed = true;
-                pb_slab_free(&ctx->slabs, &bo->base.entry[level]->base);
+                pb_slab_free(&screen->slabs, &bo->base.entry[level]->base);
         }
 
         bo->base.entry[level] = p_entry;
@@ -271,7 +271,9 @@ panfrost_nondrm_unmap_bo(struct panfrost_context *ctx,
                         if (bo->base.has_afbc) {
                                 printf("Warning: writes to afbc surface can't possibly work out well for you...\n");
                         } else if (bo->base.tiled) {
-                                panfrost_tile_texture(ctx, prsrc, transfer->level);
+                                struct pipe_context *gallium = (struct pipe_context *) ctx;
+                                struct panfrost_screen *screen = pan_screen(gallium->screen);
+                                panfrost_tile_texture(screen, prsrc, transfer->level);
                         }
                 }
         }
@@ -280,7 +282,6 @@ panfrost_nondrm_unmap_bo(struct panfrost_context *ctx,
 static void
 panfrost_nondrm_destroy_bo(struct panfrost_screen *screen, struct panfrost_bo *pbo)
 {
-        struct panfrost_context *ctx = screen->any_context;
 	struct panfrost_nondrm_bo *bo = (struct panfrost_nondrm_bo *)pbo;
 
         if (bo->base.tiled) {
@@ -291,7 +292,7 @@ panfrost_nondrm_destroy_bo(struct panfrost_screen *screen, struct panfrost_bo *p
                 }
         } else if (bo->base.entry[0] != NULL) {
                 bo->base.entry[0]->freed = true;
-                pb_slab_free(&ctx->slabs, &bo->base.entry[0]->base);
+                pb_slab_free(&screen->slabs, &bo->base.entry[0]->base);
         } else {
                 printf("--leaking main allocation--\n");
         }
@@ -322,6 +323,14 @@ panfrost_nondrm_submit_job(struct panfrost_context *ctx, mali_ptr addr, int nr_a
 
         if (pandev_ioctl(nondrm->fd, KBASE_IOCTL_JOB_SUBMIT, &submit))
                 printf("Error submitting\n");
+
+#ifdef DUMP_PERFORMANCE_COUNTERS
+        /* Dump the performance counters as soon as we submit work */
+        if (pandev_ioctl(nondrm->fd, KBASE_IOCTL_HWCNT_DUMP, NULL)) {
+                fprintf(stderr, "Error dumping counters\n");
+                return;
+        }
+#endif
 }
 
 /* Forces a flush, to make sure everything is consistent.
@@ -356,7 +365,7 @@ panfrost_nondrm_force_flush_fragment(struct panfrost_context *ctx)
 }
 
 static void
-panfrost_nondrm_allocate_slab(struct panfrost_context *ctx,
+panfrost_nondrm_allocate_slab(struct panfrost_screen *screen,
 		              struct panfrost_memory *mem,
 		              size_t pages,
 		              bool same_va,
@@ -364,8 +373,6 @@ panfrost_nondrm_allocate_slab(struct panfrost_context *ctx,
 		              int commit_count,
 		              int extent)
 {
-        struct pipe_context *gallium = (struct pipe_context *) ctx;
-        struct panfrost_screen *screen = panfrost_screen(gallium->screen);
 	struct panfrost_nondrm *nondrm = (struct panfrost_nondrm *)screen->driver;
         int flags = BASE_MEM_PROT_CPU_RD | BASE_MEM_PROT_CPU_WR |
                     BASE_MEM_PROT_GPU_RD | BASE_MEM_PROT_GPU_WR |
@@ -406,6 +413,25 @@ panfrost_nondrm_allocate_slab(struct panfrost_context *ctx,
         mem->stack_bottom = 0;
 }
 
+static void
+panfrost_nondrm_enable_counters(struct panfrost_screen *screen)
+{
+	struct panfrost_nondrm *nondrm = (struct panfrost_nondrm *) screen->driver;
+
+        struct kbase_ioctl_hwcnt_enable enable_flags = {
+                .dump_buffer = screen->perf_counters.gpu,
+                .jm_bm = ~0,
+                .shader_bm = ~0,
+                .tiler_bm = ~0,
+                .mmu_l2_bm = ~0
+        };
+
+        if (pandev_ioctl(nondrm->fd, KBASE_IOCTL_HWCNT_ENABLE, &enable_flags)) {
+                fprintf(stderr, "Error enabling performance counters\n");
+                return;
+        }
+}
+
 struct panfrost_driver *
 panfrost_create_nondrm_driver(int fd)
 {
@@ -424,6 +450,7 @@ panfrost_create_nondrm_driver(int fd)
 	driver->base.submit_job = panfrost_nondrm_submit_job;
 	driver->base.force_flush_fragment = panfrost_nondrm_force_flush_fragment;
 	driver->base.allocate_slab = panfrost_nondrm_allocate_slab;
+	driver->base.enable_counters = panfrost_nondrm_enable_counters;
 
         ret = ioctl(fd, KBASE_IOCTL_VERSION_CHECK, &version);
         if (ret != 0) {

@@ -322,6 +322,53 @@ panfrost_transfer_unmap(struct pipe_context *pctx,
         free(transfer);
 }
 
+
+static struct pb_slab *
+panfrost_slab_alloc(void *priv, unsigned heap, unsigned entry_size, unsigned group_index)
+{
+        struct panfrost_screen *screen = (struct panfrost_screen *) priv;
+        struct panfrost_memory *mem = CALLOC_STRUCT(panfrost_memory);
+
+        size_t slab_size = (1 << (MAX_SLAB_ENTRY_SIZE + 1));
+
+        mem->slab.num_entries = slab_size / entry_size;
+        mem->slab.num_free = mem->slab.num_entries;
+
+        LIST_INITHEAD(&mem->slab.free);
+        for (unsigned i = 0; i < mem->slab.num_entries; ++i) {
+                /* Create a slab entry */
+                struct panfrost_memory_entry *entry = CALLOC_STRUCT(panfrost_memory_entry);
+                entry->offset = entry_size * i;
+
+                entry->base.slab = &mem->slab;
+                entry->base.group_index = group_index;
+
+                LIST_ADDTAIL(&entry->base.head, &mem->slab.free);
+        }
+
+        /* Actually allocate the memory from kernel-space. Mapped, same_va, no
+         * special flags */
+
+        screen->driver->allocate_slab(screen, mem, slab_size / 4096, true, 0, 0, 0);
+
+        return &mem->slab;
+}
+
+static bool
+panfrost_slab_can_reclaim(void *priv, struct pb_slab_entry *entry)
+{
+        struct panfrost_memory_entry *p_entry = (struct panfrost_memory_entry *) entry;
+        return p_entry->freed;
+}
+
+static void
+panfrost_slab_free(void *priv, struct pb_slab *slab)
+{
+        /* STUB */
+        //struct panfrost_memory *mem = (struct panfrost_memory *) slab;
+        printf("stub: Tried to free slab\n");
+}
+
 static void
 panfrost_invalidate_resource(struct pipe_context *pctx, struct pipe_resource *prsc)
 {
@@ -351,6 +398,18 @@ panfrost_resource_screen_init(struct panfrost_screen *pscreen)
         pscreen->base.transfer_helper = u_transfer_helper_create(&transfer_vtbl,
                                                             true, true,
                                                             true, true);
+
+        pb_slabs_init(&pscreen->slabs,
+                        MIN_SLAB_ENTRY_SIZE,
+                        MAX_SLAB_ENTRY_SIZE,
+
+                        3, /* Number of heaps */
+
+                        pscreen,
+
+                        panfrost_slab_can_reclaim,
+                        panfrost_slab_alloc,
+                        panfrost_slab_free);
 }
 
 void

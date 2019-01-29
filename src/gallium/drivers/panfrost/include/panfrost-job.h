@@ -57,32 +57,38 @@ enum mali_job_type {
         JOB_TYPE_CACHE_FLUSH = 3,
         JOB_TYPE_COMPUTE = 4,
         JOB_TYPE_VERTEX = 5,
+        JOB_TYPE_GEOMETRY = 6,
         JOB_TYPE_TILER = 7,
         JOB_TYPE_FUSED = 8,
         JOB_TYPE_FRAGMENT = 9,
 };
 
-enum mali_gl_mode {
-        MALI_GL_NONE           = 0x0,
-        MALI_GL_POINTS         = 0x1,
-        MALI_GL_LINES          = 0x2,
-        MALI_GL_LINE_STRIP     = 0x4,
-        MALI_GL_LINE_LOOP      = 0x6,
-        MALI_GL_TRIANGLES      = 0x8,
-        MALI_GL_TRIANGLE_STRIP = 0xA,
-        MALI_GL_TRIANGLE_FAN   = 0xC,
+enum mali_draw_mode {
+        MALI_DRAW_NONE      = 0x0,
+        MALI_POINTS         = 0x1,
+        MALI_LINES          = 0x2,
+        MALI_LINE_STRIP     = 0x4,
+        MALI_LINE_LOOP      = 0x6,
+        MALI_TRIANGLES      = 0x8,
+        MALI_TRIANGLE_STRIP = 0xA,
+        MALI_TRIANGLE_FAN   = 0xC,
+        MALI_POLYGON        = 0xD,
+        MALI_QUADS          = 0xE,
+        MALI_QUAD_STRIP     = 0xF,
+
+        /* All other modes invalid */
 };
 
 /* Applies to tiler_gl_enables */
 
-#define MALI_GL_CULL_FACE_BACK  0x80
-#define MALI_GL_CULL_FACE_FRONT 0x40
+#define MALI_CULL_FACE_BACK  0x80
+#define MALI_CULL_FACE_FRONT 0x40
 
-#define MALI_GL_FRONT_FACE(v) (v << 5)
-#define MALI_GL_CCW (0)
-#define MALI_GL_CW  (1)
+#define MALI_FRONT_FACE(v) (v << 5)
+#define MALI_CCW (0)
+#define MALI_CW  (1)
 
-#define MALI_GL_OCCLUSION_BOOLEAN 0x8
+#define MALI_OCCLUSION_BOOLEAN 0x8
 
 /* TODO: Might this actually be a finer bitfield? */
 #define MALI_DEPTH_STENCIL_ENABLE 0x6400
@@ -1129,19 +1135,19 @@ struct mali_texture_descriptor {
 
 /* Used as part of filter_mode */
 
-#define MALI_GL_LINEAR 0
-#define MALI_GL_NEAREST 1
-#define MALI_GL_MIP_LINEAR (0x18)
+#define MALI_LINEAR 0
+#define MALI_NEAREST 1
+#define MALI_MIP_LINEAR (0x18)
 
 /* Used to construct low bits of filter_mode */
 
-#define MALI_GL_TEX_MAG(mode) (((mode) & 1) << 0)
-#define MALI_GL_TEX_MIN(mode) (((mode) & 1) << 1)
+#define MALI_TEX_MAG(mode) (((mode) & 1) << 0)
+#define MALI_TEX_MIN(mode) (((mode) & 1) << 1)
 
-#define MALI_GL_TEX_MAG_MASK (1)
-#define MALI_GL_TEX_MIN_MASK (2)
+#define MALI_TEX_MAG_MASK (1)
+#define MALI_TEX_MIN_MASK (2)
 
-#define MALI_FILTER_NAME(filter) (filter ? "MALI_GL_NEAREST" : "MALI_GL_LINEAR")
+#define MALI_FILTER_NAME(filter) (filter ? "MALI_NEAREST" : "MALI_LINEAR")
 
 /* Used for lod encoding. Thanks @urjaman for pointing out these routines can
  * be cleaned up a lot. */
