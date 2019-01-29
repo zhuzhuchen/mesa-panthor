@@ -682,7 +682,7 @@ optimise_nir(nir_shader *nir)
                 NIR_PASS(progress, nir, nir_opt_loop_unroll,
                          nir_var_shader_in |
                          nir_var_shader_out |
-                         nir_var_local);
+                         nir_var_function_temp);
         } while (progress);
 
         /* Must be run at the end to prevent creation of fsin/fcos ops */
