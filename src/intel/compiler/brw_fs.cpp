@@ -315,6 +315,24 @@ fs_inst::has_source_and_destination_hazard() const
        * may stomp all over it.
        */
       return true;
+   case SHADER_OPCODE_QUAD_SWIZZLE:
+      switch (src[1].ud) {
+      case BRW_SWIZZLE_XXXX:
+      case BRW_SWIZZLE_YYYY:
+      case BRW_SWIZZLE_ZZZZ:
+      case BRW_SWIZZLE_WWWW:
+      case BRW_SWIZZLE_XXZZ:
+      case BRW_SWIZZLE_YYWW:
+      case BRW_SWIZZLE_XYXY:
+      case BRW_SWIZZLE_ZWZW:
+         /* These can be implemented as a single Align1 region on all
+          * platforms, so there's never a hazard between source and
+          * destination.  C.f. fs_generator::generate_quad_swizzle().
+          */
+         return false;
+      default:
+         return !is_uniform(src[0]);
+      }
    default:
       /* The SIMD16 compressed instruction
        *
@@ -381,7 +399,7 @@ fs_inst::is_copy_payload(const brw::simple_allocator &grf_alloc) const
 }
 
 bool
-fs_inst::can_do_source_mods(const struct gen_device_info *devinfo)
+fs_inst::can_do_source_mods(const struct gen_device_info *devinfo) const
 {
    if (devinfo->gen == 6 && is_math())
       return false;
@@ -2376,8 +2394,6 @@ fs_visitor::lower_constant_loads()
          inst->src[i].nr = dst.nr;
          inst->src[i].offset = (base & (block_sz - 1)) +
                                inst->src[i].offset % 4;
-
-         brw_mark_surface_used(prog_data, index);
       }
 
       if (inst->opcode == SHADER_OPCODE_MOV_INDIRECT &&
@@ -2391,8 +2407,6 @@ fs_visitor::lower_constant_loads()
                                     inst->src[1],
                                     pull_index * 4);
          inst->remove(block);
-
-         brw_mark_surface_used(prog_data, index);
       }
    }
    invalidate_live_intervals();
@@ -2403,9 +2417,35 @@ fs_visitor::opt_algebraic()
 {
    bool progress = false;
 
-   foreach_block_and_inst(block, fs_inst, inst, cfg) {
+   foreach_block_and_inst_safe(block, fs_inst, inst, cfg) {
       switch (inst->opcode) {
       case BRW_OPCODE_MOV:
+         if (!devinfo->has_64bit_types &&
+             (inst->dst.type == BRW_REGISTER_TYPE_DF ||
+              inst->dst.type == BRW_REGISTER_TYPE_UQ ||
+              inst->dst.type == BRW_REGISTER_TYPE_Q)) {
+            assert(inst->dst.type == inst->src[0].type);
+            assert(!inst->saturate);
+            assert(!inst->src[0].abs);
+            assert(!inst->src[0].negate);
+            const brw::fs_builder ibld(this, block, inst);
+
+            if (inst->src[0].file == IMM) {
+               ibld.MOV(subscript(inst->dst, BRW_REGISTER_TYPE_UD, 1),
+                        brw_imm_ud(inst->src[0].u64 >> 32));
+               ibld.MOV(subscript(inst->dst, BRW_REGISTER_TYPE_UD, 0),
+                        brw_imm_ud(inst->src[0].u64));
+            } else {
+               ibld.MOV(subscript(inst->dst, BRW_REGISTER_TYPE_UD, 1),
+                        subscript(inst->src[0], BRW_REGISTER_TYPE_UD, 1));
+               ibld.MOV(subscript(inst->dst, BRW_REGISTER_TYPE_UD, 0),
+                        subscript(inst->src[0], BRW_REGISTER_TYPE_UD, 0));
+            }
+
+            inst->remove(block);
+            progress = true;
+         }
+
          if ((inst->conditional_mod == BRW_CONDITIONAL_Z ||
               inst->conditional_mod == BRW_CONDITIONAL_NZ) &&
              inst->dst.is_null() &&
@@ -2531,6 +2571,28 @@ fs_visitor::opt_algebraic()
          }
          break;
       case BRW_OPCODE_SEL:
+         if (!devinfo->has_64bit_types &&
+             (inst->dst.type == BRW_REGISTER_TYPE_DF ||
+              inst->dst.type == BRW_REGISTER_TYPE_UQ ||
+              inst->dst.type == BRW_REGISTER_TYPE_Q)) {
+            assert(inst->dst.type == inst->src[0].type);
+            assert(!inst->saturate);
+            assert(!inst->src[0].abs && !inst->src[0].negate);
+            assert(!inst->src[1].abs && !inst->src[1].negate);
+            const brw::fs_builder ibld(this, block, inst);
+
+            set_predicate(inst->predicate,
+                          ibld.SEL(subscript(inst->dst, BRW_REGISTER_TYPE_UD, 0),
+                                   subscript(inst->src[0], BRW_REGISTER_TYPE_UD, 0),
+                                   subscript(inst->src[1], BRW_REGISTER_TYPE_UD, 0)));
+            set_predicate(inst->predicate,
+                          ibld.SEL(subscript(inst->dst, BRW_REGISTER_TYPE_UD, 1),
+                                   subscript(inst->src[0], BRW_REGISTER_TYPE_UD, 1),
+                                   subscript(inst->src[1], BRW_REGISTER_TYPE_UD, 1)));
+
+            inst->remove(block);
+            progress = true;
+         }
          if (inst->src[0].equals(inst->src[1])) {
             inst->opcode = BRW_OPCODE_MOV;
             inst->src[1] = reg_undef;
@@ -2808,8 +2870,8 @@ fs_visitor::opt_register_renaming()
    bool progress = false;
    int depth = 0;
 
-   int remap[alloc.count];
-   memset(remap, -1, sizeof(int) * alloc.count);
+   unsigned remap[alloc.count];
+   memset(remap, ~0u, sizeof(unsigned) * alloc.count);
 
    foreach_block_and_inst(block, fs_inst, inst, cfg) {
       if (inst->opcode == BRW_OPCODE_IF || inst->opcode == BRW_OPCODE_DO) {
@@ -2822,20 +2884,20 @@ fs_visitor::opt_register_renaming()
       /* Rewrite instruction sources. */
       for (int i = 0; i < inst->sources; i++) {
          if (inst->src[i].file == VGRF &&
-             remap[inst->src[i].nr] != -1 &&
+             remap[inst->src[i].nr] != ~0u &&
              remap[inst->src[i].nr] != inst->src[i].nr) {
             inst->src[i].nr = remap[inst->src[i].nr];
             progress = true;
          }
       }
 
-      const int dst = inst->dst.nr;
+      const unsigned dst = inst->dst.nr;
 
       if (depth == 0 &&
           inst->dst.file == VGRF &&
           alloc.sizes[inst->dst.nr] * REG_SIZE == inst->size_written &&
           !inst->is_partial_write()) {
-         if (remap[dst] == -1) {
+         if (remap[dst] == ~0u) {
             remap[dst] = dst;
          } else {
             remap[dst] = alloc.allocate(regs_written(inst));
@@ -2843,7 +2905,7 @@ fs_visitor::opt_register_renaming()
             progress = true;
          }
       } else if (inst->dst.file == VGRF &&
-                 remap[dst] != -1 &&
+                 remap[dst] != ~0u &&
                  remap[dst] != dst) {
          inst->dst.nr = remap[dst];
          progress = true;
@@ -2854,7 +2916,7 @@ fs_visitor::opt_register_renaming()
       invalidate_live_intervals();
 
       for (unsigned i = 0; i < ARRAY_SIZE(delta_xy); i++) {
-         if (delta_xy[i].file == VGRF && remap[delta_xy[i].nr] != -1) {
+         if (delta_xy[i].file == VGRF && remap[delta_xy[i].nr] != ~0u) {
             delta_xy[i].nr = remap[delta_xy[i].nr];
          }
       }
@@ -3542,7 +3604,7 @@ void
 fs_visitor::insert_gen4_post_send_dependency_workarounds(bblock_t *block, fs_inst *inst)
 {
    int write_len = regs_written(inst);
-   int first_write_grf = inst->dst.nr;
+   unsigned first_write_grf = inst->dst.nr;
    bool needs_dep[BRW_MAX_MRF(devinfo->gen)];
    assert(write_len < (int)sizeof(needs_dep) - 1);
 
@@ -3862,6 +3924,9 @@ fs_visitor::lower_integer_multiplication()
             high.offset = inst->dst.offset % REG_SIZE;
 
             if (devinfo->gen >= 7) {
+               if (inst->src[1].abs)
+                  lower_src_modifiers(this, block, inst, 1);
+
                if (inst->src[1].file == IMM) {
                   ibld.MUL(low, inst->src[0],
                            brw_imm_uw(inst->src[1].ud & 0xffff));
@@ -3874,6 +3939,9 @@ fs_visitor::lower_integer_multiplication()
                            subscript(inst->src[1], BRW_REGISTER_TYPE_UW, 1));
                }
             } else {
+               if (inst->src[0].abs)
+                  lower_src_modifiers(this, block, inst, 0);
+
                ibld.MUL(low, subscript(inst->src[0], BRW_REGISTER_TYPE_UW, 0),
                         inst->src[1]);
                ibld.MUL(high, subscript(inst->src[0], BRW_REGISTER_TYPE_UW, 1),
@@ -3891,6 +3959,18 @@ fs_visitor::lower_integer_multiplication()
          }
 
       } else if (inst->opcode == SHADER_OPCODE_MULH) {
+         /* According to the BDW+ BSpec page for the "Multiply Accumulate
+          * High" instruction:
+          *
+          *  "An added preliminary mov is required for source modification on
+          *   src1:
+          *      mov (8) r3.0<1>:d -r3<8;8,1>:d
+          *      mul (8) acc0:d r2.0<8;8,1>:d r3.0<16;8,2>:uw
+          *      mach (8) r5.0<1>:d r2.0<8;8,1>:d r3.0<8;8,1>:d"
+          */
+         if (devinfo->gen >= 8 && (inst->src[1].negate || inst->src[1].abs))
+            lower_src_modifiers(this, block, inst, 1);
+
          /* Should have been lowered to 8-wide. */
          assert(inst->exec_size <= get_lowered_simd_width(devinfo, inst));
          const fs_reg acc = retype(brw_acc_reg(inst->exec_size),
@@ -3906,8 +3986,6 @@ fs_visitor::lower_integer_multiplication()
              * On Gen8, the multiply instruction does a full 32x32-bit
              * multiply, but in order to do a 64-bit multiply we can simulate
              * the previous behavior and then use a MACH instruction.
-             *
-             * FINISHME: Don't use source modifiers on src1.
              */
             assert(mul->src[1].type == BRW_REGISTER_TYPE_D ||
                    mul->src[1].type == BRW_REGISTER_TYPE_UD);
@@ -4701,7 +4779,7 @@ lower_sampler_logical_send_gen7(const fs_builder &bld, fs_inst *inst, opcode op,
       bld.MOV(sources[length++], min_lod);
    }
 
-   int mlen;
+   unsigned mlen;
    if (reg_width == 2)
       mlen = length * reg_width - header_size;
    else
@@ -5441,8 +5519,6 @@ get_lowered_simd_width(const struct gen_device_info *devinfo,
    case FS_OPCODE_UNIFORM_PULL_CONSTANT_LOAD:
    case FS_OPCODE_VARYING_PULL_CONSTANT_LOAD_GEN7:
    case FS_OPCODE_PACK_HALF_2x16_SPLIT:
-   case FS_OPCODE_UNPACK_HALF_2x16_SPLIT_X:
-   case FS_OPCODE_UNPACK_HALF_2x16_SPLIT_Y:
    case FS_OPCODE_INTERPOLATE_AT_SAMPLE:
    case FS_OPCODE_INTERPOLATE_AT_SHARED_OFFSET:
    case FS_OPCODE_INTERPOLATE_AT_PER_SLOT_OFFSET:
@@ -5563,9 +5639,14 @@ get_lowered_simd_width(const struct gen_device_info *devinfo,
    case SHADER_OPCODE_URB_WRITE_SIMD8_MASKED_PER_SLOT:
       return MIN2(8, inst->exec_size);
 
-   case SHADER_OPCODE_QUAD_SWIZZLE:
-      return 8;
-
+   case SHADER_OPCODE_QUAD_SWIZZLE: {
+      const unsigned swiz = inst->src[1].ud;
+      return (is_uniform(inst->src[0]) ?
+                 get_fpu_lowered_simd_width(devinfo, inst) :
+              devinfo->gen < 11 && type_sz(inst->src[0].type) == 4 ? 8 :
+              swiz == BRW_SWIZZLE_XYXY || swiz == BRW_SWIZZLE_ZWZW ? 4 :
+              get_fpu_lowered_simd_width(devinfo, inst));
+   }
    case SHADER_OPCODE_MOV_INDIRECT: {
       /* From IVB and HSW PRMs:
        *
@@ -5630,8 +5711,10 @@ needs_src_copy(const fs_builder &lbld, const fs_inst *inst, unsigned i)
 static fs_reg
 emit_unzip(const fs_builder &lbld, fs_inst *inst, unsigned i)
 {
+   assert(lbld.group() >= inst->group);
+
    /* Specified channel group from the source region. */
-   const fs_reg src = horiz_offset(inst->src[i], lbld.group());
+   const fs_reg src = horiz_offset(inst->src[i], lbld.group() - inst->group);
 
    if (needs_src_copy(lbld, inst, i)) {
       /* Builder of the right width to perform the copy avoiding uninitialized
@@ -5720,9 +5803,10 @@ emit_zip(const fs_builder &lbld_before, const fs_builder &lbld_after,
 {
    assert(lbld_before.dispatch_width() == lbld_after.dispatch_width());
    assert(lbld_before.group() == lbld_after.group());
+   assert(lbld_after.group() >= inst->group);
 
    /* Specified channel group from the destination region. */
-   const fs_reg dst = horiz_offset(inst->dst, lbld_after.group());
+   const fs_reg dst = horiz_offset(inst->dst, lbld_after.group() - inst->group);
    const unsigned dst_size = inst->size_written /
       inst->dst.component_size(inst->exec_size);
 
@@ -6436,7 +6520,7 @@ fs_visitor::optimize()
       OPT(dead_code_eliminate);
    }
 
-   if (OPT(lower_conversions)) {
+   if (OPT(lower_regioning)) {
       OPT(opt_copy_propagation);
       OPT(dead_code_eliminate);
       OPT(lower_simd_width);

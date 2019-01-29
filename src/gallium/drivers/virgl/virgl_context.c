@@ -229,6 +229,11 @@ static struct pipe_surface *virgl_create_surface(struct pipe_context *ctx,
    if (!surf)
       return NULL;
 
+   assert(ctx->screen->get_param(ctx->screen,
+                                 PIPE_CAP_DEST_SURFACE_SRGB_CONTROL) ||
+          (util_format_is_srgb(templ->format) ==
+           util_format_is_srgb(resource->format)));
+
    res->clean = FALSE;
    handle = virgl_object_assign_handle();
    pipe_reference_init(&surf->base.reference, 1);
@@ -322,19 +327,27 @@ static void *virgl_create_rasterizer_state(struct pipe_context *ctx,
                                                    const struct pipe_rasterizer_state *rs_state)
 {
    struct virgl_context *vctx = virgl_context(ctx);
-   uint32_t handle;
-   handle = virgl_object_assign_handle();
+   struct virgl_rasterizer_state *vrs = CALLOC_STRUCT(virgl_rasterizer_state);
 
-   virgl_encode_rasterizer_state(vctx, handle, rs_state);
-   return (void *)(unsigned long)handle;
+   if (!vrs)
+      return NULL;
+   vrs->rs = *rs_state;
+   vrs->handle = virgl_object_assign_handle();
+
+   virgl_encode_rasterizer_state(vctx, vrs->handle, rs_state);
+   return (void *)vrs;
 }
 
 static void virgl_bind_rasterizer_state(struct pipe_context *ctx,
                                                 void *rs_state)
 {
    struct virgl_context *vctx = virgl_context(ctx);
-   uint32_t handle = (unsigned long)rs_state;
-
+   uint32_t handle = 0;
+   if (rs_state) {
+      struct virgl_rasterizer_state *vrs = rs_state;
+      vctx->rs_state = *vrs;
+      handle = vrs->handle;
+   }
    virgl_encode_bind_object(vctx, handle, VIRGL_OBJECT_RASTERIZER);
 }
 
@@ -342,8 +355,9 @@ static void virgl_delete_rasterizer_state(struct pipe_context *ctx,
                                          void *rs_state)
 {
    struct virgl_context *vctx = virgl_context(ctx);
-   uint32_t handle = (unsigned long)rs_state;
-   virgl_encode_delete_object(vctx, handle, VIRGL_OBJECT_RASTERIZER);
+   struct virgl_rasterizer_state *vrs = rs_state;
+   virgl_encode_delete_object(vctx, vrs->handle, VIRGL_OBJECT_RASTERIZER);
+   FREE(vrs);
 }
 
 static void virgl_set_framebuffer_state(struct pipe_context *ctx,
@@ -695,6 +709,7 @@ static void virgl_draw_vbo(struct pipe_context *ctx,
       return;
 
    if (!(rs->caps.caps.v1.prim_mask & (1 << dinfo->mode))) {
+      util_primconvert_save_rasterizer_state(vctx->primconvert, &vctx->rs_state.rs);
       util_primconvert_draw_vbo(vctx->primconvert, dinfo);
       return;
    }
@@ -979,6 +994,11 @@ static void virgl_blit(struct pipe_context *ctx,
    struct virgl_context *vctx = virgl_context(ctx);
    struct virgl_resource *dres = virgl_resource(blit->dst.resource);
    struct virgl_resource *sres = virgl_resource(blit->src.resource);
+
+   assert(ctx->screen->get_param(ctx->screen,
+                                 PIPE_CAP_DEST_SURFACE_SRGB_CONTROL) ||
+          (util_format_is_srgb(blit->dst.resource->format) ==
+            util_format_is_srgb(blit->dst.format)));
 
    dres->clean = FALSE;
    virgl_encode_blit(vctx, dres, sres,

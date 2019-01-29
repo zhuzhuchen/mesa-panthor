@@ -106,8 +106,7 @@ create_vars_written(struct copy_prop_var_state *state)
 {
    struct vars_written *written =
       linear_zalloc_child(state->lin_ctx, sizeof(struct vars_written));
-   written->derefs = _mesa_hash_table_create(state->mem_ctx, _mesa_hash_pointer,
-                                             _mesa_key_pointer_equal);
+   written->derefs = _mesa_pointer_hash_table_create(state->mem_ctx);
    return written;
 }
 
@@ -134,10 +133,10 @@ gather_vars_written(struct copy_prop_var_state *state,
       nir_foreach_instr(instr, block) {
          if (instr->type == nir_instr_type_call) {
             written->modes |= nir_var_shader_out |
-                              nir_var_global |
-                              nir_var_local |
-                              nir_var_shader_storage |
-                              nir_var_shared;
+                              nir_var_shader_temp |
+                              nir_var_function_temp |
+                              nir_var_mem_ssbo |
+                              nir_var_mem_shared;
             continue;
          }
 
@@ -149,8 +148,8 @@ gather_vars_written(struct copy_prop_var_state *state,
          case nir_intrinsic_barrier:
          case nir_intrinsic_memory_barrier:
             written->modes |= nir_var_shader_out |
-                              nir_var_shader_storage |
-                              nir_var_shared;
+                              nir_var_mem_ssbo |
+                              nir_var_mem_shared;
             break;
 
          case nir_intrinsic_emit_vertex:
@@ -158,9 +157,19 @@ gather_vars_written(struct copy_prop_var_state *state,
             written->modes = nir_var_shader_out;
             break;
 
+         case nir_intrinsic_deref_atomic_add:
+         case nir_intrinsic_deref_atomic_imin:
+         case nir_intrinsic_deref_atomic_umin:
+         case nir_intrinsic_deref_atomic_imax:
+         case nir_intrinsic_deref_atomic_umax:
+         case nir_intrinsic_deref_atomic_and:
+         case nir_intrinsic_deref_atomic_or:
+         case nir_intrinsic_deref_atomic_xor:
+         case nir_intrinsic_deref_atomic_exchange:
+         case nir_intrinsic_deref_atomic_comp_swap:
          case nir_intrinsic_store_deref:
          case nir_intrinsic_copy_deref: {
-            /* Destination in _both_ store_deref and copy_deref is src[0]. */
+            /* Destination in all of store_deref, copy_deref and the atomics is src[0]. */
             nir_deref_instr *dst = nir_src_as_deref(intrin->src[0]);
 
             uintptr_t mask = intrin->intrinsic == nir_intrinsic_store_deref ?
@@ -615,10 +624,10 @@ copy_prop_vars_block(struct copy_prop_var_state *state,
    nir_foreach_instr_safe(instr, block) {
       if (instr->type == nir_instr_type_call) {
          apply_barrier_for_modes(copies, nir_var_shader_out |
-                                         nir_var_global |
-                                         nir_var_local |
-                                         nir_var_shader_storage |
-                                         nir_var_shared);
+                                         nir_var_shader_temp |
+                                         nir_var_function_temp |
+                                         nir_var_mem_ssbo |
+                                         nir_var_mem_shared);
          continue;
       }
 
@@ -630,8 +639,8 @@ copy_prop_vars_block(struct copy_prop_var_state *state,
       case nir_intrinsic_barrier:
       case nir_intrinsic_memory_barrier:
          apply_barrier_for_modes(copies, nir_var_shader_out |
-                                         nir_var_shader_storage |
-                                         nir_var_shared);
+                                         nir_var_mem_ssbo |
+                                         nir_var_mem_shared);
          break;
 
       case nir_intrinsic_emit_vertex:
@@ -742,9 +751,9 @@ copy_prop_vars_block(struct copy_prop_var_state *state,
             lookup_entry_for_deref(copies, src, nir_derefs_a_contains_b_bit);
          struct value value;
          if (try_load_from_entry(state, src_entry, b, intrin, src, &value)) {
+            /* If load works, intrin (the copy_deref) is removed. */
             if (value.is_ssa) {
                nir_store_deref(b, dst, value.ssa[0], 0xf);
-               intrin = nir_instr_as_intrinsic(nir_builder_last_instr(b));
             } else {
                /* If this would be a no-op self-copy, don't bother. */
                if (nir_compare_derefs(value.deref, dst) & nir_derefs_equal_bit)
@@ -770,6 +779,19 @@ copy_prop_vars_block(struct copy_prop_var_state *state,
          store_to_entry(state, dst_entry, &value, 0xf);
          break;
       }
+
+      case nir_intrinsic_deref_atomic_add:
+      case nir_intrinsic_deref_atomic_imin:
+      case nir_intrinsic_deref_atomic_umin:
+      case nir_intrinsic_deref_atomic_imax:
+      case nir_intrinsic_deref_atomic_umax:
+      case nir_intrinsic_deref_atomic_and:
+      case nir_intrinsic_deref_atomic_or:
+      case nir_intrinsic_deref_atomic_xor:
+      case nir_intrinsic_deref_atomic_exchange:
+      case nir_intrinsic_deref_atomic_comp_swap:
+         kill_aliases(copies, nir_src_as_deref(intrin->src[0]), 0xf);
+         break;
 
       default:
          break;
@@ -865,8 +887,7 @@ nir_copy_prop_vars_impl(nir_function_impl *impl)
       .mem_ctx = mem_ctx,
       .lin_ctx = linear_zalloc_parent(mem_ctx, 0),
 
-      .vars_written_map = _mesa_hash_table_create(mem_ctx, _mesa_hash_pointer,
-                                                  _mesa_key_pointer_equal),
+      .vars_written_map = _mesa_pointer_hash_table_create(mem_ctx),
    };
 
    gather_vars_written(&state, NULL, &impl->cf_node);
@@ -876,6 +897,10 @@ nir_copy_prop_vars_impl(nir_function_impl *impl)
    if (state.progress) {
       nir_metadata_preserve(impl, nir_metadata_block_index |
                                   nir_metadata_dominance);
+   } else {
+#ifndef NDEBUG
+      impl->valid_metadata &= ~nir_metadata_not_properly_reset;
+#endif
    }
 
    ralloc_free(mem_ctx);

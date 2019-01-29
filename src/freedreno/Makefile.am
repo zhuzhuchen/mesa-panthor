@@ -37,7 +37,7 @@ include Makefile.sources
 lib_LTLIBRARIES =
 check_LTLIBRARIES =
 noinst_DATA =
-noinst_HEADERS =
+noinst_HEADERS = $(registers_FILES)
 noinst_LTLIBRARIES =
 noinst_PROGRAMS =
 check_PROGRAMS =
@@ -46,6 +46,7 @@ BUILT_SOURCES =
 CLEANFILES =
 EXTRA_DIST = \
 	drm/meson.build \
+	ir3/ir3_nir_trig.py \
 	ir3/meson.build
 
 MKDIR_GEN = $(AM_V_at)$(MKDIR_P) $(@D)

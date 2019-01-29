@@ -148,6 +148,13 @@ v3d_predraw_check_stage_inputs(struct pipe_context *pctx,
                 if (cb->buffer)
                         v3d_flush_jobs_writing_resource(v3d, cb->buffer);
         }
+
+        /* Flush writes to our image views */
+        foreach_bit(i, v3d->shaderimg[s].enabled_mask) {
+                struct v3d_image_view *view = &v3d->shaderimg[s].si[i];
+
+                v3d_flush_jobs_writing_resource(v3d, view->base.resource);
+        }
 }
 
 static void
@@ -310,7 +317,7 @@ v3d_emit_gl_shader_state(struct v3d_context *v3d,
                         attr.maximum_index = 0xffffff;
 #endif
                 }
-                STATIC_ASSERT(sizeof(vtx->attrs) >= VC5_MAX_ATTRIBUTES * size);
+                STATIC_ASSERT(sizeof(vtx->attrs) >= V3D_MAX_VS_INPUTS / 4 * size);
         }
 
         if (vtx->num_elements == 0) {
@@ -476,6 +483,23 @@ v3d_draw_vbo(struct pipe_context *pctx, const struct pipe_draw_info *info)
                 perf_debug("Blocking binner on last render "
                            "due to vertex texturing.\n");
                 job->submit.in_sync_bcl = v3d->out_sync;
+        }
+
+        /* Mark SSBOs as being written.  We don't actually know which ones are
+         * read vs written, so just assume the worst
+         */
+        for (int s = 0; s < PIPE_SHADER_TYPES; s++) {
+                foreach_bit(i, v3d->ssbo[s].enabled_mask) {
+                        v3d_job_add_write_resource(job,
+                                                   v3d->ssbo[s].sb[i].buffer);
+                        job->tmu_dirty_rcl = true;
+                }
+
+                foreach_bit(i, v3d->shaderimg[s].enabled_mask) {
+                        v3d_job_add_write_resource(job,
+                                                   v3d->shaderimg[s].si[i].base.resource);
+                        job->tmu_dirty_rcl = true;
+                }
         }
 
         /* Get space to emit our draw call into the BCL, using a branch to
@@ -676,7 +700,7 @@ v3d_draw_vbo(struct pipe_context *pctx, const struct pipe_draw_info *info)
                 rsc->initialized_buffers |= PIPE_CLEAR_STENCIL;
         }
 
-        for (int i = 0; i < VC5_MAX_DRAW_BUFFERS; i++) {
+        for (int i = 0; i < V3D_MAX_DRAW_BUFFERS; i++) {
                 uint32_t bit = PIPE_CLEAR_COLOR0 << i;
                 int blend_rt = v3d->blend->base.independent_blend_enable ? i : 0;
 
@@ -756,7 +780,7 @@ v3d_tlb_clear(struct v3d_job *job, unsigned buffers,
                 buffers &= ~PIPE_CLEAR_DEPTHSTENCIL;
         }
 
-        for (int i = 0; i < VC5_MAX_DRAW_BUFFERS; i++) {
+        for (int i = 0; i < V3D_MAX_DRAW_BUFFERS; i++) {
                 uint32_t bit = PIPE_CLEAR_COLOR0 << i;
                 if (!(buffers & bit))
                         continue;

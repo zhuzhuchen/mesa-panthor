@@ -119,7 +119,7 @@ public:
    void setup_payload_interference(struct ra_graph *g, int payload_reg_count,
                                    int first_payload_node);
    int choose_spill_reg(struct ra_graph *g);
-   void spill_reg(int spill_reg);
+   void spill_reg(unsigned spill_reg);
    void split_virtual_grfs();
    bool compact_virtual_grfs();
    void assign_constant_locations();
@@ -164,7 +164,7 @@ public:
    void lower_uniform_pull_constant_loads();
    bool lower_load_payload();
    bool lower_pack();
-   bool lower_conversions();
+   bool lower_regioning();
    bool lower_logical_sends();
    bool lower_integer_multiplication();
    bool lower_minmax();
@@ -461,9 +461,6 @@ private:
                                       struct brw_reg dst,
                                       struct brw_reg x,
                                       struct brw_reg y);
-   void generate_unpack_half_2x16_split(fs_inst *inst,
-                                        struct brw_reg dst,
-                                        struct brw_reg src);
 
    void generate_shader_time_add(fs_inst *inst,
                                  struct brw_reg payload,
@@ -479,6 +476,10 @@ private:
                          struct brw_reg dst,
                          struct brw_reg src,
                          struct brw_reg idx);
+
+   void generate_quad_swizzle(const fs_inst *inst,
+                              struct brw_reg dst, struct brw_reg src,
+                              unsigned swiz);
 
    bool patch_discard_jumps_to_fb_writes();
 
@@ -531,6 +532,9 @@ namespace brw {
          return fs_reg(retype(brw_vec8_grf(regs[0], 0), type));
       }
    }
+
+   bool
+   lower_src_modifiers(fs_visitor *v, bblock_t *block, fs_inst *inst, unsigned i);
 }
 
 void shuffle_from_32bit_read(const brw::fs_builder &bld,

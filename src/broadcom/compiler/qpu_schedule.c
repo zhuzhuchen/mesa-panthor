@@ -236,6 +236,16 @@ process_waddr_deps(struct schedule_state *state, struct schedule_node *n,
                         add_write_dep(state, &state->last_tlb, n);
                         break;
 
+                case V3D_QPU_WADDR_SYNC:
+                case V3D_QPU_WADDR_SYNCB:
+                case V3D_QPU_WADDR_SYNCU:
+                        /* For CS barrier(): Sync against any other memory
+                         * accesses.  There doesn't appear to be any need for
+                         * barriers to affect ALU operations.
+                         */
+                        add_write_dep(state, &state->last_tmu_write, n);
+                        break;
+
                 case V3D_QPU_WADDR_NOP:
                         break;
 
@@ -244,30 +254,6 @@ process_waddr_deps(struct schedule_state *state, struct schedule_node *n,
                         abort();
                 }
         }
-}
-
-static void
-process_cond_deps(struct schedule_state *state, struct schedule_node *n,
-                  enum v3d_qpu_cond cond)
-{
-        if (cond != V3D_QPU_COND_NONE)
-                add_read_dep(state, state->last_sf, n);
-}
-
-static void
-process_pf_deps(struct schedule_state *state, struct schedule_node *n,
-                enum v3d_qpu_pf pf)
-{
-        if (pf != V3D_QPU_PF_NONE)
-                add_write_dep(state, &state->last_sf, n);
-}
-
-static void
-process_uf_deps(struct schedule_state *state, struct schedule_node *n,
-                enum v3d_qpu_uf uf)
-{
-        if (uf != V3D_QPU_UF_NONE)
-                add_write_dep(state, &state->last_sf, n);
 }
 
 /**
@@ -348,19 +334,6 @@ calculate_deps(struct schedule_state *state, struct schedule_node *n)
         case V3D_QPU_A_SETMSF:
         case V3D_QPU_A_SETREVF:
                 add_write_dep(state, &state->last_tlb, n);
-                break;
-
-        case V3D_QPU_A_FLAPUSH:
-        case V3D_QPU_A_FLBPUSH:
-        case V3D_QPU_A_VFLA:
-        case V3D_QPU_A_VFLNA:
-        case V3D_QPU_A_VFLB:
-        case V3D_QPU_A_VFLNB:
-                add_read_dep(state, state->last_sf, n);
-                break;
-
-        case V3D_QPU_A_FLPOP:
-                add_write_dep(state, &state->last_sf, n);
                 break;
 
         default:
@@ -445,12 +418,10 @@ calculate_deps(struct schedule_state *state, struct schedule_node *n)
         if (qinst->uniform != ~0)
                 add_write_dep(state, &state->last_unif, n);
 
-        process_cond_deps(state, n, inst->flags.ac);
-        process_cond_deps(state, n, inst->flags.mc);
-        process_pf_deps(state, n, inst->flags.apf);
-        process_pf_deps(state, n, inst->flags.mpf);
-        process_uf_deps(state, n, inst->flags.auf);
-        process_uf_deps(state, n, inst->flags.muf);
+        if (v3d_qpu_reads_flags(inst))
+                add_read_dep(state, state->last_sf, n);
+        if (v3d_qpu_writes_flags(inst))
+                add_write_dep(state, &state->last_sf, n);
 }
 
 static void

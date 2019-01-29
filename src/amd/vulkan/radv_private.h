@@ -285,7 +285,6 @@ struct radv_physical_device {
 
 	struct radeon_winsys *ws;
 	struct radeon_info rad_info;
-	char                                        path[20];
 	char                                        name[VK_MAX_PHYSICAL_DEVICE_NAME_SIZE];
 	uint8_t                                     driver_uuid[VK_UUID_SIZE];
 	uint8_t                                     device_uuid[VK_UUID_SIZE];
@@ -1056,6 +1055,8 @@ struct radv_cmd_state {
 	/* Conditional rendering info. */
 	int predication_type; /* -1: disabled, 0: normal, 1: inverted */
 	uint64_t predication_va;
+
+	bool context_roll_without_scissor_emitted;
 };
 
 struct radv_cmd_pool {
@@ -1115,8 +1116,7 @@ struct radv_cmd_buffer {
 
 	VkResult record_result;
 
-	uint32_t gfx9_fence_offset;
-	struct radeon_winsys_bo *gfx9_fence_bo;
+	uint64_t gfx9_fence_va;
 	uint32_t gfx9_fence_idx;
 	uint64_t gfx9_eop_bug_va;
 
@@ -1151,7 +1151,6 @@ void si_cs_emit_write_event_eop(struct radeon_cmdbuf *cs,
 				unsigned event, unsigned event_flags,
 				unsigned data_sel,
 				uint64_t va,
-				uint32_t old_fence,
 				uint32_t new_fence,
 				uint64_t gfx9_eop_bug_va);
 
@@ -1366,6 +1365,8 @@ struct radv_pipeline {
 	VkShaderStageFlags                           active_stages;
 
 	struct radeon_cmdbuf                      cs;
+	uint32_t                                  ctx_cs_hash;
+	struct radeon_cmdbuf                      ctx_cs;
 
 	struct radv_vertex_elements_info             vertex_elements;
 
@@ -1888,7 +1889,7 @@ void
 radv_update_descriptor_set_with_template(struct radv_device *device,
                                          struct radv_cmd_buffer *cmd_buffer,
                                          struct radv_descriptor_set *set,
-                                         VkDescriptorUpdateTemplateKHR descriptorUpdateTemplate,
+                                         VkDescriptorUpdateTemplate descriptorUpdateTemplate,
                                          const void *pData);
 
 void radv_meta_push_descriptor_set(struct radv_cmd_buffer *cmd_buffer,
@@ -1985,7 +1986,7 @@ RADV_DEFINE_NONDISP_HANDLE_CASTS(radv_buffer_view, VkBufferView)
 RADV_DEFINE_NONDISP_HANDLE_CASTS(radv_descriptor_pool, VkDescriptorPool)
 RADV_DEFINE_NONDISP_HANDLE_CASTS(radv_descriptor_set, VkDescriptorSet)
 RADV_DEFINE_NONDISP_HANDLE_CASTS(radv_descriptor_set_layout, VkDescriptorSetLayout)
-RADV_DEFINE_NONDISP_HANDLE_CASTS(radv_descriptor_update_template, VkDescriptorUpdateTemplateKHR)
+RADV_DEFINE_NONDISP_HANDLE_CASTS(radv_descriptor_update_template, VkDescriptorUpdateTemplate)
 RADV_DEFINE_NONDISP_HANDLE_CASTS(radv_device_memory, VkDeviceMemory)
 RADV_DEFINE_NONDISP_HANDLE_CASTS(radv_fence, VkFence)
 RADV_DEFINE_NONDISP_HANDLE_CASTS(radv_event, VkEvent)

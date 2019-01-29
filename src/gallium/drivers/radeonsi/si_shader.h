@@ -600,8 +600,8 @@ struct si_shader {
 	struct si_shader_part		*epilog;
 
 	struct si_pm4_state		*pm4;
-	struct r600_resource		*bo;
-	struct r600_resource		*scratch_bo;
+	struct si_resource		*bo;
+	struct si_resource		*scratch_bo;
 	struct si_shader_key		key;
 	struct util_queue_fence		ready;
 	bool				compilation_failed;
@@ -708,7 +708,6 @@ const char *si_get_shader_name(const struct si_shader *shader, unsigned processo
 void si_nir_scan_shader(const struct nir_shader *nir,
 			struct tgsi_shader_info *info);
 void si_nir_scan_tess_ctrl(const struct nir_shader *nir,
-			   const struct tgsi_shader_info *info,
 			   struct tgsi_tessctrl_info *out);
 void si_lower_nir(struct si_shader_selector *sel);
 

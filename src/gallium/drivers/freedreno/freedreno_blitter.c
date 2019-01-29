@@ -82,7 +82,7 @@ default_src_texture(struct pipe_sampler_view *src_templ,
 	src_templ->swizzle_a = PIPE_SWIZZLE_W;
 }
 
-void
+bool
 fd_blitter_blit(struct fd_context *ctx, const struct pipe_blit_info *info)
 {
 	struct pipe_resource *dst = info->dst.resource;
@@ -90,6 +90,16 @@ fd_blitter_blit(struct fd_context *ctx, const struct pipe_blit_info *info)
 	struct pipe_context *pipe = &ctx->base;
 	struct pipe_surface *dst_view, dst_templ;
 	struct pipe_sampler_view src_templ, *src_view;
+	bool discard = false;
+
+	if (!info->scissor_enable && !info->alpha_blend) {
+		discard = util_texrange_covers_whole_level(info->dst.resource,
+				info->dst.level, info->dst.box.x, info->dst.box.y,
+				info->dst.box.z, info->dst.box.width,
+				info->dst.box.height, info->dst.box.depth);
+	}
+
+	fd_blitter_pipe_begin(ctx, info->render_condition_enable, discard, FD_STAGE_BLIT);
 
 	/* Initialize the surface. */
 	default_dst_texture(&dst_templ, dst, info->dst.level,
@@ -111,6 +121,11 @@ fd_blitter_blit(struct fd_context *ctx, const struct pipe_blit_info *info)
 
 	pipe_surface_reference(&dst_view, NULL);
 	pipe_sampler_view_reference(&src_view, NULL);
+
+	fd_blitter_pipe_end(ctx);
+
+	/* The fallback blitter must never fail: */
+	return true;
 }
 
 /**
@@ -157,6 +172,33 @@ fd_resource_copy_region(struct pipe_context *pctx,
 		const struct pipe_box *src_box)
 {
 	struct fd_context *ctx = fd_context(pctx);
+
+	if (ctx->blit) {
+		struct pipe_blit_info info;
+
+		memset(&info, 0, sizeof info);
+		info.dst.resource = dst;
+		info.dst.level = dst_level;
+		info.dst.box.x = dstx;
+		info.dst.box.y = dsty;
+		info.dst.box.z = dstz;
+		info.dst.box.width = src_box->width;
+		info.dst.box.height = src_box->height;
+		assert(info.dst.box.width >= 0);
+		assert(info.dst.box.height >= 0);
+		info.dst.box.depth = 1;
+		info.dst.format = dst->format;
+		info.src.resource = src;
+		info.src.level = src_level;
+		info.src.box = *src_box;
+		info.src.format = src->format;
+		info.mask = util_format_get_mask(src->format);
+		info.filter = PIPE_TEX_FILTER_NEAREST;
+		info.scissor_enable = 0;
+
+		if (ctx->blit(ctx, &info))
+			return;
+	}
 
 	/* TODO if we have 2d core, or other DMA engine that could be used
 	 * for simple copies and reasonably easily synchronized with the 3d

@@ -430,7 +430,7 @@ schedule_node::set_latency_gen7(bool is_haswell)
 class instruction_scheduler {
 public:
    instruction_scheduler(backend_shader *s, int grf_count,
-                         int hw_reg_count, int block_count,
+                         unsigned hw_reg_count, int block_count,
                          instruction_scheduler_mode mode)
    {
       this->bs = s;
@@ -511,7 +511,7 @@ public:
    bool post_reg_alloc;
    int instructions_to_schedule;
    int grf_count;
-   int hw_reg_count;
+   unsigned hw_reg_count;
    int reg_pressure;
    int block_idx;
    exec_list instructions;
@@ -665,7 +665,7 @@ fs_instruction_scheduler::setup_liveness(cfg_t *cfg)
    int payload_last_use_ip[hw_reg_count];
    v->calculate_payload_ranges(hw_reg_count, payload_last_use_ip);
 
-   for (int i = 0; i < hw_reg_count; i++) {
+   for (unsigned i = 0; i < hw_reg_count; i++) {
       if (payload_last_use_ip[i] == -1)
          continue;
 
@@ -973,7 +973,7 @@ fs_instruction_scheduler::calculate_deps()
     * After register allocation, reg_offsets are gone and we track individual
     * GRF registers.
     */
-   schedule_node *last_grf_write[grf_count * 16];
+   schedule_node **last_grf_write;
    schedule_node *last_mrf_write[BRW_MAX_MRF(v->devinfo->gen)];
    schedule_node *last_conditional_mod[8] = {};
    schedule_node *last_accumulator_write = NULL;
@@ -984,7 +984,7 @@ fs_instruction_scheduler::calculate_deps()
     */
    schedule_node *last_fixed_grf_write = NULL;
 
-   memset(last_grf_write, 0, sizeof(last_grf_write));
+   last_grf_write = (schedule_node **)calloc(sizeof(schedule_node *), grf_count * 16);
    memset(last_mrf_write, 0, sizeof(last_mrf_write));
 
    /* top-to-bottom dependencies: RAW and WAW. */
@@ -1111,7 +1111,7 @@ fs_instruction_scheduler::calculate_deps()
    }
 
    /* bottom-to-top dependencies: WAR */
-   memset(last_grf_write, 0, sizeof(last_grf_write));
+   memset(last_grf_write, 0, sizeof(schedule_node *) * grf_count * 16);
    memset(last_mrf_write, 0, sizeof(last_mrf_write));
    memset(last_conditional_mod, 0, sizeof(last_conditional_mod));
    last_accumulator_write = NULL;
@@ -1227,6 +1227,8 @@ fs_instruction_scheduler::calculate_deps()
          last_accumulator_write = n;
       }
    }
+
+   free(last_grf_write);
 }
 
 void

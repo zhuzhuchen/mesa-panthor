@@ -102,15 +102,6 @@ can_do_blit(const struct pipe_blit_info *info)
 	fail_if(util_format_is_compressed(info->src.format) &&
 			info->src.format != info->dst.format);
 
-	/* hw ignores {SRC,DST}_INFO.COLOR_SWAP if {SRC,DST}_INFO.TILE_MODE
-	 * is set (not linear).  We can kind of get around that when tiling/
-	 * untiling by setting both src and dst COLOR_SWAP=WZYX, but that
-	 * means the formats must match:
-	 */
-	fail_if((fd_resource(info->dst.resource)->tile_mode ||
-			 fd_resource(info->src.resource)->tile_mode) &&
-			info->dst.format != info->src.format);
-
 	/* src box can be inverted, which we don't support.. dst box cannot: */
 	fail_if((info->src.box.width < 0) || (info->src.box.height < 0));
 
@@ -358,8 +349,8 @@ emit_blit_texture(struct fd_ringbuffer *ring, const struct pipe_blit_info *info)
 	dtile = fd_resource_level_linear(info->dst.resource, info->dst.level) ?
 			TILE6_LINEAR : dst->tile_mode;
 
-	sswap = fd6_pipe2swap(info->src.format);
-	dswap = fd6_pipe2swap(info->dst.format);
+	sswap = stile ? WZYX : fd6_pipe2swap(info->src.format);
+	dswap = dtile ? WZYX : fd6_pipe2swap(info->dst.format);
 
 	if (util_format_is_compressed(info->src.format)) {
 		debug_assert(info->src.format == info->dst.format);
@@ -385,16 +376,6 @@ emit_blit_texture(struct fd_ringbuffer *ring, const struct pipe_blit_info *info)
 
 	uint32_t width = DIV_ROUND_UP(u_minify(src->base.width0, info->src.level), blockwidth) * nelements;
 	uint32_t height = DIV_ROUND_UP(u_minify(src->base.height0, info->src.level), blockheight);
-
-	/* if dtile, then dswap ignored by hw, and likewise if stile then sswap
-	 * ignored by hw.. but in this case we have already rejected the blit
-	 * if src and dst formats differ, so juse use WZYX for both src and
-	 * dst swap mode (so we don't change component order)
-	 */
-	if (stile || dtile) {
-		debug_assert(info->src.format == info->dst.format);
-		sswap = dswap = WZYX;
-	}
 
 	OUT_PKT7(ring, CP_SET_MARKER, 1);
 	OUT_RING(ring, A2XX_CP_SET_MARKER_0_MODE(RM6_BLIT2DSCALE));
@@ -512,12 +493,11 @@ emit_blit_texture(struct fd_ringbuffer *ring, const struct pipe_blit_info *info)
 }
 
 static void
-emit_blit(struct pipe_context *pctx, const struct pipe_blit_info *info)
+emit_blit(struct fd_context *ctx, const struct pipe_blit_info *info)
 {
-	struct fd_context *ctx = fd_context(pctx);
 	struct fd_batch *batch;
 
-	fd_fence_ref(pctx->screen, &ctx->last_fence, NULL);
+	fd_fence_ref(ctx->base.screen, &ctx->last_fence, NULL);
 
 	batch = fd_bc_alloc_batch(&ctx->screen->batch_cache, ctx, true);
 
@@ -556,62 +536,16 @@ emit_blit(struct pipe_context *pctx, const struct pipe_blit_info *info)
 	fd_batch_reference(&batch, NULL);
 }
 
-static void
-fd6_blit(struct pipe_context *pctx, const struct pipe_blit_info *info)
+static bool
+fd6_blit(struct fd_context *ctx, const struct pipe_blit_info *info)
 {
-	struct fd_context *ctx = fd_context(pctx);
-
 	if (!can_do_blit(info)) {
-		fd_blitter_pipe_begin(ctx, info->render_condition_enable, false, FD_STAGE_BLIT);
-		fd_blitter_blit(ctx, info);
-		fd_blitter_pipe_end(ctx);
-		return;
+		return false;
 	}
 
-	emit_blit(pctx, info);
-}
+	emit_blit(ctx, info);
 
-static void
-fd6_resource_copy_region(struct pipe_context *pctx,
-		struct pipe_resource *dst,
-		unsigned dst_level,
-		unsigned dstx, unsigned dsty, unsigned dstz,
-		struct pipe_resource *src,
-		unsigned src_level,
-		const struct pipe_box *src_box)
-{
-	struct pipe_blit_info info;
-
-	debug_assert(src->format == dst->format);
-
-	memset(&info, 0, sizeof info);
-	info.dst.resource = dst;
-	info.dst.level = dst_level;
-	info.dst.box.x = dstx;
-	info.dst.box.y = dsty;
-	info.dst.box.z = dstz;
-	info.dst.box.width = src_box->width;
-	info.dst.box.height = src_box->height;
-	assert(info.dst.box.width >= 0);
-	assert(info.dst.box.height >= 0);
-	info.dst.box.depth = 1;
-	info.dst.format = dst->format;
-	info.src.resource = src;
-	info.src.level = src_level;
-	info.src.box = *src_box;
-	info.src.format = src->format;
-	info.mask = util_format_get_mask(src->format);
-	info.filter = PIPE_TEX_FILTER_NEAREST;
-	info.scissor_enable = 0;
-
-	if (!can_do_blit(&info)) {
-		fd_resource_copy_region(pctx,
-				dst, dst_level, dstx, dsty, dstz,
-				src, src_level, src_box);
-		return;
-	}
-
-	emit_blit(pctx, &info);
+	return true;
 }
 
 void
@@ -620,8 +554,7 @@ fd6_blitter_init(struct pipe_context *pctx)
 	if (fd_mesa_debug & FD_DBG_NOBLIT)
 		return;
 
-	pctx->resource_copy_region = fd6_resource_copy_region;
-	pctx->blit = fd6_blit;
+	fd_context(pctx)->blit = fd6_blit;
 }
 
 unsigned
@@ -630,5 +563,8 @@ fd6_tile_mode(const struct pipe_resource *tmpl)
 	/* basically just has to be a format we can blit, so uploads/downloads
 	 * via linear staging buffer works:
 	 */
-	return TILE6_3;
+	if (ok_format(tmpl->format))
+		return TILE6_3;
+
+	return TILE6_LINEAR;
 }

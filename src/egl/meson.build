@@ -1,4 +1,4 @@
-# Copyright © 2017 Intel Corporation
+# Copyright Â© 2017 Intel Corporation
 
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -62,28 +62,28 @@ files_egl = files(
 g_egldispatchstubs_c = custom_target(
   'g_egldispatchstubs.c',
   input : [
-    'generate/gen_egl_dispatch.py', 'generate/eglFunctionList.py',
+    'generate/gen_egl_dispatch.py',
     'generate/egl.xml', 'generate/egl_other.xml'
   ],
   output : 'g_egldispatchstubs.c',
   command : [
-    prog_python, '@INPUT0@', 'source', '@INPUT1@', '@INPUT2@', '@INPUT3@'
+    prog_python, '@INPUT0@', 'source', '@INPUT1@', '@INPUT2@',
   ],
-  depend_files : files('generate/genCommon.py'),
+  depend_files : [ files('generate/eglFunctionList.py'), genCommon_py, ],
   capture : true,
 )
 
 g_egldispatchstubs_h = custom_target(
   'g_egldispatchstubs.h',
   input : [
-    'generate/gen_egl_dispatch.py', 'generate/eglFunctionList.py',
+    'generate/gen_egl_dispatch.py',
     'generate/egl.xml', 'generate/egl_other.xml'
   ],
   output : 'g_egldispatchstubs.h',
   command : [
-    prog_python, '@INPUT0@', 'header', '@INPUT1@', '@INPUT2@', '@INPUT3@'
+    prog_python, '@INPUT0@', 'header', '@INPUT1@', '@INPUT2@',
   ],
-  depend_files : files('generate/genCommon.py'),
+  depend_files : [ files('generate/eglFunctionList.py'), genCommon_py, ],
   capture : true,
 )
 

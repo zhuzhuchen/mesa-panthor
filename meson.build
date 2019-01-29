@@ -1,4 +1,4 @@
-# Copyright © 2017-2018 Intel Corporation
+# Copyright © 2017-2019 Intel Corporation
 
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -131,7 +131,7 @@ if _drivers.contains('auto')
       ]
     elif ['arm', 'aarch64'].contains(host_machine.cpu_family())
       _drivers = [
-        'kmsro', 'v3d', 'vc4', 'freedreno', 'etnaviv', 'imx', 'nouveau',
+        'kmsro', 'v3d', 'vc4', 'freedreno', 'etnaviv', 'nouveau',
         'tegra', 'virgl', 'swrast', 'panfrost'
       ]
     else
@@ -156,12 +156,19 @@ with_gallium_vc4 = _drivers.contains('vc4')
 with_gallium_v3d = _drivers.contains('v3d')
 with_gallium_panfrost = _drivers.contains('panfrost')
 with_gallium_etnaviv = _drivers.contains('etnaviv')
-with_gallium_imx = _drivers.contains('imx')
 with_gallium_tegra = _drivers.contains('tegra')
 with_gallium_i915 = _drivers.contains('i915')
 with_gallium_svga = _drivers.contains('svga')
 with_gallium_virgl = _drivers.contains('virgl')
 with_gallium_swr = _drivers.contains('swr')
+
+if cc.get_id() == 'intel'
+  if meson.version().version_compare('< 0.49.0')
+    error('Meson does not have sufficient support of ICC before 0.49.0 to compile mesa')
+  elif with_gallium_swr and meson.version().version_compare('== 0.49.0')
+    warning('Meson as of 0.49.0 is sufficient for compiling mesa with ICC, but there are some caveats with SWR. 0.49.1 should resolve all of these')
+  endif
+endif
 
 with_gallium = _drivers.length() != 0 and _drivers != ['']
 
@@ -203,11 +210,9 @@ endif
 if with_dri_i915 and with_gallium_i915
   error('Only one i915 provider can be built')
 endif
-if with_gallium_imx and not with_gallium_etnaviv
-  error('IMX driver requires etnaviv driver')
-endif
-if with_gallium_kmsro and not (with_gallium_vc4 or with_gallium_etnaviv or with_gallium_panfrost)
-  error('kmsro driver requires one or more renderonly drivers (vc4, etnaviv)')
+if with_gallium_kmsro and not (with_gallium_vc4 or with_gallium_etnaviv or with_gallium_freedreno or with_gallium_panfrost)
+  error('kmsro driver requires one or more renderonly drivers (vc4, etnaviv, freedreno, panfrost)')
+>>>>>>> upstream/master
 endif
 if with_gallium_tegra and not with_gallium_nouveau
   error('tegra driver requires nouveau driver')
@@ -383,8 +388,8 @@ if with_any_vk and (with_platform_x11 and not with_dri3)
   error('Vulkan drivers require dri3 for X11 support')
 endif
 if with_dri
-  if with_glx == 'disabled' and not with_egl and not with_gbm
-    error('building dri drivers require at least one windowing system')
+  if with_glx == 'disabled' and not with_egl and not with_gbm and with_osmesa != 'classic'
+    error('building dri drivers require at least one windowing system or classic osmesa')
   endif
 endif
 
@@ -649,6 +654,7 @@ if get_option('power8') != 'false'
 endif
 
 _opencl = get_option('gallium-opencl')
+clover_cpp_std = []
 if _opencl != 'disabled'
   if not with_gallium
     error('OpenCL Clover implementation requires at least one gallium driver.')
@@ -657,10 +663,18 @@ if _opencl != 'disabled'
   dep_clc = dependency('libclc')
   with_gallium_opencl = true
   with_opencl_icd = _opencl == 'icd'
+
+  if host_machine.cpu_family().startswith('ppc') and cpp.compiles('''
+      #if !defined(__VEC__) || !defined(__ALTIVEC__)
+      #error "AltiVec not enabled"
+      #endif''',
+      name : 'Altivec')
+    clover_cpp_std += ['cpp_std=gnu++11']
+  endif
 else
   dep_clc = null_dep
   with_gallium_opencl = false
-  with_gallium_icd = false
+  with_opencl_icd = false
 endif
 
 gl_pkgconfig_c_flags = []
@@ -1101,7 +1115,7 @@ dep_libdrm_nouveau = null_dep
 dep_libdrm_etnaviv = null_dep
 dep_libdrm_intel = null_dep
 
-_drm_amdgpu_ver = '2.4.95'
+_drm_amdgpu_ver = '2.4.97'
 _drm_radeon_ver = '2.4.71'
 _drm_nouveau_ver = '2.4.66'
 _drm_etnaviv_ver = '2.4.89'
@@ -1223,6 +1237,9 @@ if with_llvm
   # programs, so we need to build all C++ code in mesa without rtti as well to
   # ensure that linking works.
   if dep_llvm.get_configtool_variable('has-rtti') == 'NO'
+    if with_gallium_nouveau
+      error('The Nouveau driver requires rtti. You either need to turn off nouveau or use an LLVM built with LLVM_ENABLE_RTTI.')
+    endif
     cpp_args += '-fno-rtti'
   endif
 elif with_amd_vk or with_gallium_radeonsi or with_gallium_swr
@@ -1354,7 +1371,7 @@ if with_platform_x11
     dep_x11 = dependency('x11')
     dep_xext = dependency('xext')
   endif
-  if (with_any_vk or with_glx == 'dri' or
+  if (with_any_vk or with_glx == 'dri' or with_egl or
        (with_gallium_vdpau or with_gallium_xvmc or with_gallium_va or
         with_gallium_omx != 'disabled'))
     dep_xcb = dependency('xcb')

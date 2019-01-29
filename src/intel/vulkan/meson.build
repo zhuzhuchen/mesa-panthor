@@ -227,12 +227,14 @@ if with_tests
   )
 
   foreach t : ['block_pool_no_free', 'state_pool_no_free',
-               'state_pool_free_list_only', 'state_pool']
+               'state_pool_free_list_only', 'state_pool',
+               'state_pool_padding']
     test(
       'anv_@0@'.format(t),
       executable(
         t,
         ['tests/@0@.c'.format(t), anv_entrypoints[0], anv_extensions_h],
+        c_args : [ c_sse2_args ],
         link_with : libvulkan_intel_test,
         dependencies : [dep_libdrm, dep_thread, dep_m, dep_valgrind],
         include_directories : [

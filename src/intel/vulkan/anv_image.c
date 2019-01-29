@@ -858,7 +858,7 @@ void anv_GetImageSubresourceLayout(
    ANV_FROM_HANDLE(anv_image, image, _image);
 
    const struct anv_surface *surface;
-   if (subresource->aspectMask == VK_IMAGE_ASPECT_PLANE_1_BIT_KHR &&
+   if (subresource->aspectMask == VK_IMAGE_ASPECT_PLANE_1_BIT &&
        image->drm_format_mod != DRM_FORMAT_MOD_INVALID &&
        isl_drm_modifier_has_aux(image->drm_format_mod))
       surface = &image->planes[0].aux_surface;
@@ -1327,8 +1327,6 @@ anv_image_fill_surface_state(struct anv_device *device,
       }
    }
 
-   anv_state_flush(device, state_inout->state);
-
    if (image_param_out) {
       assert(view_usage == ISL_SURF_USAGE_STORAGE_BIT);
       isl_surf_fill_image_param(&device->isl_dev, image_param_out,
@@ -1438,7 +1436,7 @@ anv_CreateImageView(VkDevice _device,
     * VK_IMAGE_ASPECT_COLOR_BIT will be converted to
     * VK_IMAGE_ASPECT_PLANE_0_BIT | VK_IMAGE_ASPECT_PLANE_1_BIT |
     * VK_IMAGE_ASPECT_PLANE_2_BIT for an image of format
-    * VK_FORMAT_G8_B8_R8_3PLANE_420_UNORM_KHR.
+    * VK_FORMAT_G8_B8_R8_3PLANE_420_UNORM.
     */
    VkImageAspectFlags expanded_aspects =
       anv_image_expand_aspects(image, range->aspectMask);

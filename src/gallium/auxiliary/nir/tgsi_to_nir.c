@@ -181,8 +181,8 @@ ttn_emit_declaration(struct ttn_compile *c)
          /* for arrays, we create variables instead of registers: */
          nir_variable *var = rzalloc(b->shader, nir_variable);
 
-         var->type = glsl_array_type(glsl_vec4_type(), array_size);
-         var->data.mode = nir_var_global;
+         var->type = glsl_array_type(glsl_vec4_type(), array_size, 0);
+         var->data.mode = nir_var_shader_temp;
          var->name = ralloc_asprintf(var, "arr_%d", decl->Array.ArrayID);
 
          exec_list_push_tail(&b->shader->globals, &var->node);
@@ -265,7 +265,7 @@ ttn_emit_declaration(struct ttn_compile *c)
 
          var->type = glsl_vec4_type();
          if (is_array)
-            var->type = glsl_array_type(var->type, array_size);
+            var->type = glsl_array_type(var->type, array_size, 0);
 
          switch (file) {
          case TGSI_FILE_INPUT:
@@ -516,8 +516,7 @@ ttn_src_for_file_and_index(struct ttn_compile *c, unsigned file, unsigned index,
           c->scan->input_semantic_name[index] == TGSI_SEMANTIC_FACE) {
          nir_ssa_def *tgsi_frontface[4] = {
             nir_bcsel(&c->build,
-                      nir_load_system_value(&c->build,
-                                            nir_intrinsic_load_front_face, 0),
+                      nir_load_front_face(&c->build, 1),
                       nir_imm_float(&c->build, 1.0),
                       nir_imm_float(&c->build, -1.0)),
             nir_imm_float(&c->build, 0.0),

@@ -125,11 +125,11 @@ nir_shader_add_variable(nir_shader *shader, nir_variable *var)
       assert(!"invalid mode");
       break;
 
-   case nir_var_local:
+   case nir_var_function_temp:
       assert(!"nir_shader_add_variable cannot be used for local variables");
       break;
 
-   case nir_var_global:
+   case nir_var_shader_temp:
       exec_list_push_tail(&shader->globals, &var->node);
       break;
 
@@ -142,13 +142,18 @@ nir_shader_add_variable(nir_shader *shader, nir_variable *var)
       break;
 
    case nir_var_uniform:
-   case nir_var_shader_storage:
+   case nir_var_mem_ubo:
+   case nir_var_mem_ssbo:
       exec_list_push_tail(&shader->uniforms, &var->node);
       break;
 
-   case nir_var_shared:
-      assert(shader->info.stage == MESA_SHADER_COMPUTE);
+   case nir_var_mem_shared:
+      assert(gl_shader_stage_is_compute(shader->info.stage));
       exec_list_push_tail(&shader->shared, &var->node);
+      break;
+
+   case nir_var_mem_global:
+      assert(!"nir_shader_add_variable cannot be used for global memory");
       break;
 
    case nir_var_system_value:
@@ -188,7 +193,7 @@ nir_local_variable_create(nir_function_impl *impl,
    nir_variable *var = rzalloc(impl->function->shader, nir_variable);
    var->name = ralloc_strdup(var, name);
    var->type = type;
-   var->data.mode = nir_var_local;
+   var->data.mode = nir_var_function_temp;
 
    nir_function_impl_add_variable(impl, var);
 
@@ -207,6 +212,7 @@ nir_function_create(nir_shader *shader, const char *name)
    func->num_params = 0;
    func->params = NULL;
    func->impl = NULL;
+   func->is_entrypoint = false;
 
    return func;
 }
@@ -328,8 +334,7 @@ nir_block_create(nir_shader *shader)
    cf_init(&block->cf_node, nir_cf_node_block);
 
    block->successors[0] = block->successors[1] = NULL;
-   block->predecessors = _mesa_set_create(block, _mesa_hash_pointer,
-                                          _mesa_key_pointer_equal);
+   block->predecessors = _mesa_pointer_set_create(block);
    block->imm_dom = NULL;
    /* XXX maybe it would be worth it to defer allocation?  This
     * way it doesn't get allocated for shader refs that never run
@@ -339,8 +344,7 @@ nir_block_create(nir_shader *shader)
     * which is later used to do state specific lowering and futher
     * opt.  Do any of the references not need dominance metadata?
     */
-   block->dom_frontier = _mesa_set_create(block, _mesa_hash_pointer,
-                                          _mesa_key_pointer_equal);
+   block->dom_frontier = _mesa_pointer_set_create(block);
 
    exec_list_make_empty(&block->instr_list);
 
@@ -459,7 +463,8 @@ nir_deref_instr_create(nir_shader *shader, nir_deref_type deref_type)
    if (deref_type != nir_deref_type_var)
       src_init(&instr->parent);
 
-   if (deref_type == nir_deref_type_array)
+   if (deref_type == nir_deref_type_array ||
+       deref_type == nir_deref_type_ptr_as_array)
       src_init(&instr->arr.index);
 
    dest_init(&instr->dest);
@@ -1066,7 +1071,8 @@ visit_deref_instr_src(nir_deref_instr *instr,
          return false;
    }
 
-   if (instr->deref_type == nir_deref_type_array) {
+   if (instr->deref_type == nir_deref_type_array ||
+       instr->deref_type == nir_deref_type_ptr_as_array) {
       if (!visit_src(&instr->arr.index, cb, state))
          return false;
    }

@@ -35,6 +35,7 @@
 #include "v3d_context.h"
 #include "v3d_tiling.h"
 #include "broadcom/common/v3d_macros.h"
+#include "broadcom/compiler/v3d_compiler.h"
 #include "broadcom/cle/v3dx_pack.h"
 
 static void
@@ -78,7 +79,7 @@ static void
 v3d_set_sample_mask(struct pipe_context *pctx, unsigned sample_mask)
 {
         struct v3d_context *v3d = v3d_context(pctx);
-        v3d->sample_mask = sample_mask & ((1 << VC5_MAX_SAMPLES) - 1);
+        v3d->sample_mask = sample_mask & ((1 << V3D_MAX_SAMPLES) - 1);
         v3d->dirty |= VC5_DIRTY_SAMPLE_STATE;
 }
 
@@ -131,7 +132,7 @@ v3d_create_blend_state(struct pipe_context *pctx,
         so->base = *cso;
 
         if (cso->independent_blend_enable) {
-                for (int i = 0; i < VC5_MAX_DRAW_BUFFERS; i++) {
+                for (int i = 0; i < V3D_MAX_DRAW_BUFFERS; i++) {
                         so->blend_enables |= cso->rt[i].blend_enable << i;
 
                         /* V3D 4.x is when we got independent blend enables. */
@@ -140,7 +141,7 @@ v3d_create_blend_state(struct pipe_context *pctx,
                 }
         } else {
                 if (cso->rt[0].blend_enable)
-                        so->blend_enables = (1 << VC5_MAX_DRAW_BUFFERS) - 1;
+                        so->blend_enables = (1 << V3D_MAX_DRAW_BUFFERS) - 1;
         }
 
         return so;
@@ -407,10 +408,10 @@ v3d_vertex_state_create(struct pipe_context *pctx, unsigned num_elements,
          */
         uint32_t *attrs;
         u_upload_alloc(v3d->state_uploader, 0,
-                       VC5_MAX_ATTRIBUTES * 4 * sizeof(float), 16,
+                       V3D_MAX_VS_INPUTS * sizeof(float), 16,
                        &so->defaults_offset, &so->defaults, (void **)&attrs);
 
-        for (int i = 0; i < VC5_MAX_ATTRIBUTES; i++) {
+        for (int i = 0; i < V3D_MAX_VS_INPUTS / 4; i++) {
                 attrs[i * 4 + 0] = 0;
                 attrs[i * 4 + 1] = 0;
                 attrs[i * 4 + 2] = 0;
@@ -502,46 +503,34 @@ v3d_set_framebuffer_state(struct pipe_context *pctx,
         v3d->dirty |= VC5_DIRTY_FRAMEBUFFER;
 }
 
-static uint32_t translate_wrap(uint32_t pipe_wrap, bool using_nearest)
+static enum V3DX(Wrap_Mode)
+translate_wrap(uint32_t pipe_wrap, bool using_nearest)
 {
         switch (pipe_wrap) {
         case PIPE_TEX_WRAP_REPEAT:
-                return 0;
+                return V3D_WRAP_MODE_REPEAT;
         case PIPE_TEX_WRAP_CLAMP_TO_EDGE:
-                return 1;
+                return V3D_WRAP_MODE_CLAMP;
         case PIPE_TEX_WRAP_MIRROR_REPEAT:
-                return 2;
+                return V3D_WRAP_MODE_MIRROR;
         case PIPE_TEX_WRAP_CLAMP_TO_BORDER:
-                return 3;
+                return V3D_WRAP_MODE_BORDER;
         case PIPE_TEX_WRAP_CLAMP:
-                return (using_nearest ? 1 : 3);
+                return (using_nearest ?
+                        V3D_WRAP_MODE_CLAMP :
+                        V3D_WRAP_MODE_BORDER);
         default:
                 unreachable("Unknown wrap mode");
         }
 }
 
-
-static void *
-v3d_create_sampler_state(struct pipe_context *pctx,
-                         const struct pipe_sampler_state *cso)
-{
-        MAYBE_UNUSED struct v3d_context *v3d = v3d_context(pctx);
-        struct v3d_sampler_state *so = CALLOC_STRUCT(v3d_sampler_state);
-
-        if (!so)
-                return NULL;
-
-        memcpy(so, cso, sizeof(*cso));
-
-        bool either_nearest =
-                (cso->mag_img_filter == PIPE_TEX_MIPFILTER_NEAREST ||
-                 cso->min_img_filter == PIPE_TEX_MIPFILTER_NEAREST);
-
 #if V3D_VERSION >= 40
-        so->bo = v3d_bo_alloc(v3d->screen, cl_packet_length(SAMPLER_STATE),
-                              "sampler");
-        void *map = v3d_bo_map(so->bo);
-
+static void
+v3d_upload_sampler_state_variant(void *map,
+                                 const struct pipe_sampler_state *cso,
+                                 enum v3d_sampler_state_variant variant,
+                                 bool either_nearest)
+{
         v3dx_pack(map, SAMPLER_STATE, sampler) {
                 sampler.wrap_i_border = false;
 
@@ -587,29 +576,190 @@ v3d_create_sampler_state(struct pipe_context *pctx,
                                 sampler.maximum_anisotropy = 1;
                 }
 
-                sampler.border_color_mode = V3D_BORDER_COLOR_FOLLOWS;
-                /* XXX: The border color field is in the TMU blending format
-                 * (32, f16, or i16), and we need to customize it based on
-                 * that.
-                 *
-                 * XXX: for compat alpha formats, we need the alpha field to
-                 * be in the red channel.
-                 */
-                sampler.border_color_red =
-                        util_float_to_half(cso->border_color.f[0]);
-                sampler.border_color_green =
-                        util_float_to_half(cso->border_color.f[1]);
-                sampler.border_color_blue =
-                        util_float_to_half(cso->border_color.f[2]);
-                sampler.border_color_alpha =
-                        util_float_to_half(cso->border_color.f[3]);
+                if (variant == V3D_SAMPLER_STATE_BORDER_0) {
+                        sampler.border_color_mode = V3D_BORDER_COLOR_0000;
+                } else {
+                        sampler.border_color_mode = V3D_BORDER_COLOR_FOLLOWS;
+
+                        union pipe_color_union border;
+
+                        /* First, reswizzle the border color for any
+                         * mismatching we're doing between the texture's
+                         * channel order in hardware (R) versus what it is at
+                         * the GL level (ALPHA)
+                         */
+                        switch (variant) {
+                        case V3D_SAMPLER_STATE_F16_BGRA:
+                        case V3D_SAMPLER_STATE_F16_BGRA_UNORM:
+                        case V3D_SAMPLER_STATE_F16_BGRA_SNORM:
+                                border.i[0] = cso->border_color.i[2];
+                                border.i[1] = cso->border_color.i[1];
+                                border.i[2] = cso->border_color.i[0];
+                                border.i[3] = cso->border_color.i[3];
+                                break;
+
+                        case V3D_SAMPLER_STATE_F16_A:
+                        case V3D_SAMPLER_STATE_F16_A_UNORM:
+                        case V3D_SAMPLER_STATE_F16_A_SNORM:
+                        case V3D_SAMPLER_STATE_32_A:
+                        case V3D_SAMPLER_STATE_32_A_UNORM:
+                        case V3D_SAMPLER_STATE_32_A_SNORM:
+                                border.i[0] = cso->border_color.i[3];
+                                border.i[1] = 0;
+                                border.i[2] = 0;
+                                border.i[3] = 0;
+                                break;
+
+                        case V3D_SAMPLER_STATE_F16_LA:
+                        case V3D_SAMPLER_STATE_F16_LA_UNORM:
+                        case V3D_SAMPLER_STATE_F16_LA_SNORM:
+                                border.i[0] = cso->border_color.i[0];
+                                border.i[1] = cso->border_color.i[3];
+                                border.i[2] = 0;
+                                border.i[3] = 0;
+                                break;
+
+                        default:
+                                border = cso->border_color;
+                        }
+
+                        /* Perform any clamping. */
+                        switch (variant) {
+                        case V3D_SAMPLER_STATE_F16_UNORM:
+                        case V3D_SAMPLER_STATE_F16_BGRA_UNORM:
+                        case V3D_SAMPLER_STATE_F16_A_UNORM:
+                        case V3D_SAMPLER_STATE_F16_LA_UNORM:
+                        case V3D_SAMPLER_STATE_32_UNORM:
+                        case V3D_SAMPLER_STATE_32_A_UNORM:
+                                for (int i = 0; i < 4; i++)
+                                        border.f[i] = CLAMP(border.f[i], 0, 1);
+                                break;
+
+                        case V3D_SAMPLER_STATE_F16_SNORM:
+                        case V3D_SAMPLER_STATE_F16_BGRA_SNORM:
+                        case V3D_SAMPLER_STATE_F16_A_SNORM:
+                        case V3D_SAMPLER_STATE_F16_LA_SNORM:
+                        case V3D_SAMPLER_STATE_32_SNORM:
+                        case V3D_SAMPLER_STATE_32_A_SNORM:
+                                for (int i = 0; i < 4; i++)
+                                        border.f[i] = CLAMP(border.f[i], -1, 1);
+                                break;
+
+                        case V3D_SAMPLER_STATE_1010102U:
+                                border.ui[0] = CLAMP(border.ui[0],
+                                                     0, (1 << 10) - 1);
+                                border.ui[1] = CLAMP(border.ui[1],
+                                                     0, (1 << 10) - 1);
+                                border.ui[2] = CLAMP(border.ui[2],
+                                                     0, (1 << 10) - 1);
+                                border.ui[3] = CLAMP(border.ui[3],
+                                                     0, 3);
+                                break;
+
+                        case V3D_SAMPLER_STATE_16U:
+                                for (int i = 0; i < 4; i++)
+                                        border.ui[i] = CLAMP(border.ui[i],
+                                                             0, 0xffff);
+                                break;
+
+                        case V3D_SAMPLER_STATE_16I:
+                                for (int i = 0; i < 4; i++)
+                                        border.i[i] = CLAMP(border.i[i],
+                                                            -32768, 32767);
+                                break;
+
+                        case V3D_SAMPLER_STATE_8U:
+                                for (int i = 0; i < 4; i++)
+                                        border.ui[i] = CLAMP(border.ui[i],
+                                                             0, 0xff);
+                                break;
+
+                        case V3D_SAMPLER_STATE_8I:
+                                for (int i = 0; i < 4; i++)
+                                        border.i[i] = CLAMP(border.i[i],
+                                                            -128, 127);
+                                break;
+
+                        default:
+                                break;
+                        }
+
+                        if (variant >= V3D_SAMPLER_STATE_32) {
+                                sampler.border_color_word_0 = border.ui[0];
+                                sampler.border_color_word_1 = border.ui[1];
+                                sampler.border_color_word_2 = border.ui[2];
+                                sampler.border_color_word_3 = border.ui[3];
+                        } else {
+                                sampler.border_color_word_0 =
+                                        util_float_to_half(border.f[0]);
+                                sampler.border_color_word_1 =
+                                        util_float_to_half(border.f[1]);
+                                sampler.border_color_word_2 =
+                                        util_float_to_half(border.f[2]);
+                                sampler.border_color_word_3 =
+                                        util_float_to_half(border.f[3]);
+                        }
+                }
+        }
+}
+#endif
+
+static void *
+v3d_create_sampler_state(struct pipe_context *pctx,
+                         const struct pipe_sampler_state *cso)
+{
+        MAYBE_UNUSED struct v3d_context *v3d = v3d_context(pctx);
+        struct v3d_sampler_state *so = CALLOC_STRUCT(v3d_sampler_state);
+
+        if (!so)
+                return NULL;
+
+        memcpy(so, cso, sizeof(*cso));
+
+        bool either_nearest =
+                (cso->mag_img_filter == PIPE_TEX_MIPFILTER_NEAREST ||
+                 cso->min_img_filter == PIPE_TEX_MIPFILTER_NEAREST);
+
+        enum V3DX(Wrap_Mode) wrap_s = translate_wrap(cso->wrap_s,
+                                                     either_nearest);
+        enum V3DX(Wrap_Mode) wrap_t = translate_wrap(cso->wrap_t,
+                                                     either_nearest);
+        enum V3DX(Wrap_Mode) wrap_r = translate_wrap(cso->wrap_r,
+                                                     either_nearest);
+
+        bool uses_border_color = (wrap_s == V3D_WRAP_MODE_BORDER ||
+                                  wrap_t == V3D_WRAP_MODE_BORDER ||
+                                  wrap_r == V3D_WRAP_MODE_BORDER);
+        so->border_color_variants = (uses_border_color &&
+                                     (cso->border_color.ui[0] != 0 ||
+                                      cso->border_color.ui[1] != 0 ||
+                                      cso->border_color.ui[2] != 0 ||
+                                      cso->border_color.ui[3] != 0));
+
+#if V3D_VERSION >= 40
+        void *map;
+        int sampler_align = so->border_color_variants ? 32 : 8;
+        int sampler_size = align(cl_packet_length(SAMPLER_STATE), sampler_align);
+        int num_variants = (so->border_color_variants ? ARRAY_SIZE(so->sampler_state_offset) : 1);
+        u_upload_alloc(v3d->state_uploader, 0,
+                       sampler_size * num_variants,
+                       sampler_align,
+                       &so->sampler_state_offset[0],
+                       &so->sampler_state,
+                       &map);
+
+        for (int i = 0; i < num_variants; i++) {
+                so->sampler_state_offset[i] =
+                        so->sampler_state_offset[0] + i * sampler_size;
+                v3d_upload_sampler_state_variant(map + i * sampler_size,
+                                                 cso, i, either_nearest);
         }
 
 #else /* V3D_VERSION < 40 */
         v3dx_pack(&so->p0, TEXTURE_UNIFORM_PARAMETER_0_CFG_MODE1, p0) {
-                p0.s_wrap_mode = translate_wrap(cso->wrap_s, either_nearest);
-                p0.t_wrap_mode = translate_wrap(cso->wrap_t, either_nearest);
-                p0.r_wrap_mode = translate_wrap(cso->wrap_r, either_nearest);
+                p0.s_wrap_mode = wrap_s;
+                p0.t_wrap_mode = wrap_t;
+                p0.r_wrap_mode = wrap_r;
         }
 
         v3dx_pack(&so->texture_shader_state, TEXTURE_SHADER_STATE, tex) {
@@ -652,7 +802,7 @@ v3d_sampler_state_delete(struct pipe_context *pctx,
         struct pipe_sampler_state *psampler = hwcso;
         struct v3d_sampler_state *sampler = v3d_sampler_state(psampler);
 
-        v3d_bo_unreference(&sampler->bo);
+        pipe_resource_reference(&sampler->sampler_state, NULL);
         free(psampler);
 }
 
@@ -773,6 +923,84 @@ v3d_create_sampler_view(struct pipe_context *pctx, struct pipe_resource *prsc,
         so->base.reference.count = 1;
         so->base.context = pctx;
 
+        if (rsc->separate_stencil &&
+            cso->format == PIPE_FORMAT_X32_S8X24_UINT) {
+                rsc = rsc->separate_stencil;
+                prsc = &rsc->base;
+        }
+
+        /* If we're sampling depth from depth/stencil, demote the format to
+         * just depth.  u_format will end up giving the answers for the
+         * stencil channel, otherwise.
+         */
+        enum pipe_format sample_format = cso->format;
+        if (sample_format == PIPE_FORMAT_S8_UINT_Z24_UNORM)
+                sample_format = PIPE_FORMAT_X8Z24_UNORM;
+
+#if V3D_VERSION >= 40
+        const struct util_format_description *desc =
+                util_format_description(sample_format);
+
+        if (util_format_is_pure_integer(sample_format) &&
+            !util_format_has_depth(desc)) {
+                int chan = util_format_get_first_non_void_channel(sample_format);
+                if (util_format_is_pure_uint(sample_format)) {
+                        switch (desc->channel[chan].size) {
+                        case 32:
+                                so->sampler_variant = V3D_SAMPLER_STATE_32;
+                                break;
+                        case 16:
+                                so->sampler_variant = V3D_SAMPLER_STATE_16U;
+                                break;
+                        case 10:
+                                so->sampler_variant = V3D_SAMPLER_STATE_1010102U;
+                                break;
+                        case 8:
+                                so->sampler_variant = V3D_SAMPLER_STATE_8U;
+                                break;
+                        }
+                } else {
+                        switch (desc->channel[chan].size) {
+                        case 32:
+                                so->sampler_variant = V3D_SAMPLER_STATE_32;
+                                break;
+                        case 16:
+                                so->sampler_variant = V3D_SAMPLER_STATE_16I;
+                                break;
+                        case 8:
+                                so->sampler_variant = V3D_SAMPLER_STATE_8I;
+                                break;
+                        }
+                }
+        } else {
+                if (v3d_get_tex_return_size(&screen->devinfo, sample_format,
+                                           PIPE_TEX_COMPARE_NONE) == 32) {
+                        if (util_format_is_alpha(sample_format))
+                                so->sampler_variant = V3D_SAMPLER_STATE_32_A;
+                        else
+                                so->sampler_variant = V3D_SAMPLER_STATE_32;
+                } else {
+                        if (util_format_is_luminance_alpha(sample_format))
+                                so->sampler_variant = V3D_SAMPLER_STATE_F16_LA;
+                        else if (util_format_is_alpha(sample_format))
+                                so->sampler_variant = V3D_SAMPLER_STATE_F16_A;
+                        else if (fmt_swizzle[0] == PIPE_SWIZZLE_Z)
+                                so->sampler_variant = V3D_SAMPLER_STATE_F16_BGRA;
+                        else
+                                so->sampler_variant = V3D_SAMPLER_STATE_F16;
+
+                }
+
+                if (util_format_is_unorm(sample_format)) {
+                        so->sampler_variant += (V3D_SAMPLER_STATE_F16_UNORM -
+                                                V3D_SAMPLER_STATE_F16);
+                } else if (util_format_is_snorm(sample_format)){
+                        so->sampler_variant += (V3D_SAMPLER_STATE_F16_SNORM -
+                                                V3D_SAMPLER_STATE_F16);
+                }
+        }
+#endif
+
         /* V3D still doesn't support sampling from raster textures, so we will
          * have to copy to a temporary tiled texture.
          */
@@ -884,7 +1112,7 @@ v3d_create_sampler_view(struct pipe_context *pctx, struct pipe_resource *prsc,
                         tex.srgb = false;
                 } else {
                         tex.texture_type = v3d_get_tex_format(&screen->devinfo,
-                                                               cso->format);
+                                                              cso->format);
                 }
         };
 
@@ -986,6 +1214,144 @@ v3d_set_stream_output_targets(struct pipe_context *pctx,
         ctx->dirty |= VC5_DIRTY_STREAMOUT;
 }
 
+static void
+v3d_set_shader_buffers(struct pipe_context *pctx,
+                       enum pipe_shader_type shader,
+                       unsigned start, unsigned count,
+                       const struct pipe_shader_buffer *buffers)
+{
+        struct v3d_context *v3d = v3d_context(pctx);
+        struct v3d_ssbo_stateobj *so = &v3d->ssbo[shader];
+        unsigned mask = 0;
+
+        if (buffers) {
+                for (unsigned i = 0; i < count; i++) {
+                        unsigned n = i + start;
+                        struct pipe_shader_buffer *buf = &so->sb[n];
+
+                        if ((buf->buffer == buffers[i].buffer) &&
+                            (buf->buffer_offset == buffers[i].buffer_offset) &&
+                            (buf->buffer_size == buffers[i].buffer_size))
+                                continue;
+
+                        mask |= 1 << n;
+
+                        buf->buffer_offset = buffers[i].buffer_offset;
+                        buf->buffer_size = buffers[i].buffer_size;
+                        pipe_resource_reference(&buf->buffer, buffers[i].buffer);
+
+                        if (buf->buffer)
+                                so->enabled_mask |= 1 << n;
+                        else
+                                so->enabled_mask &= ~(1 << n);
+                }
+        } else {
+                mask = ((1 << count) - 1) << start;
+
+                for (unsigned i = 0; i < count; i++) {
+                        unsigned n = i + start;
+                        struct pipe_shader_buffer *buf = &so->sb[n];
+
+                        pipe_resource_reference(&buf->buffer, NULL);
+                }
+
+                so->enabled_mask &= ~mask;
+        }
+
+        v3d->dirty |= VC5_DIRTY_SSBO;
+}
+
+static void
+v3d_create_image_view_texture_shader_state(struct v3d_context *v3d,
+                                           struct v3d_shaderimg_stateobj *so,
+                                           int img)
+{
+#if V3D_VERSION >= 40
+        struct v3d_image_view *iview = &so->si[img];
+
+        void *map;
+        u_upload_alloc(v3d->uploader, 0, cl_packet_length(TEXTURE_SHADER_STATE),
+                       32,
+                       &iview->tex_state_offset,
+                       &iview->tex_state,
+                       &map);
+
+        struct pipe_resource *prsc = iview->base.resource;
+
+        v3dx_pack(map, TEXTURE_SHADER_STATE, tex) {
+                v3d_setup_texture_shader_state(&tex, prsc,
+                                               iview->base.u.tex.level,
+                                               iview->base.u.tex.level,
+                                               iview->base.u.tex.first_layer,
+                                               iview->base.u.tex.last_layer);
+
+                tex.swizzle_r = translate_swizzle(PIPE_SWIZZLE_X);
+                tex.swizzle_g = translate_swizzle(PIPE_SWIZZLE_Y);
+                tex.swizzle_b = translate_swizzle(PIPE_SWIZZLE_Z);
+                tex.swizzle_a = translate_swizzle(PIPE_SWIZZLE_W);
+
+                tex.texture_type = v3d_get_tex_format(&v3d->screen->devinfo,
+                                                      iview->base.format);
+        };
+#else /* V3D_VERSION < 40 */
+        /* V3D 3.x doesn't use support shader image load/store operations on
+         * textures, so it would get lowered in the shader to general memory
+         * acceses.
+         */
+#endif
+}
+
+static void
+v3d_set_shader_images(struct pipe_context *pctx,
+                      enum pipe_shader_type shader,
+                      unsigned start, unsigned count,
+                      const struct pipe_image_view *images)
+{
+        struct v3d_context *v3d = v3d_context(pctx);
+        struct v3d_shaderimg_stateobj *so = &v3d->shaderimg[shader];
+
+        if (images) {
+                for (unsigned i = 0; i < count; i++) {
+                        unsigned n = i + start;
+                        struct v3d_image_view *iview = &so->si[n];
+
+                        if ((iview->base.resource == images[i].resource) &&
+                            (iview->base.format == images[i].format) &&
+                            (iview->base.access == images[i].access) &&
+                            !memcmp(&iview->base.u, &images[i].u,
+                                    sizeof(iview->base.u)))
+                                continue;
+
+                        util_copy_image_view(&iview->base, &images[i]);
+
+                        if (iview->base.resource) {
+                                so->enabled_mask |= 1 << n;
+                                v3d_create_image_view_texture_shader_state(v3d,
+                                                                           so,
+                                                                           n);
+                        } else {
+                                so->enabled_mask &= ~(1 << n);
+                                pipe_resource_reference(&iview->tex_state, NULL);
+                        }
+                }
+        } else {
+                for (unsigned i = 0; i < count; i++) {
+                        unsigned n = i + start;
+                        struct v3d_image_view *iview = &so->si[n];
+
+                        pipe_resource_reference(&iview->base.resource, NULL);
+                        pipe_resource_reference(&iview->tex_state, NULL);
+                }
+
+                if (count == 32)
+                        so->enabled_mask = 0;
+                else
+                        so->enabled_mask &= ~(((1 << count) - 1) << start);
+        }
+
+        v3d->dirty |= VC5_DIRTY_SHADER_IMAGE;
+}
+
 void
 v3dX(state_init)(struct pipe_context *pctx)
 {
@@ -1024,6 +1390,9 @@ v3dX(state_init)(struct pipe_context *pctx)
         pctx->create_sampler_view = v3d_create_sampler_view;
         pctx->sampler_view_destroy = v3d_sampler_view_destroy;
         pctx->set_sampler_views = v3d_set_sampler_views;
+
+        pctx->set_shader_buffers = v3d_set_shader_buffers;
+        pctx->set_shader_images = v3d_set_shader_images;
 
         pctx->create_stream_output_target = v3d_create_stream_output_target;
         pctx->stream_output_target_destroy = v3d_stream_output_target_destroy;

@@ -86,6 +86,8 @@ static void si_build_ps_prolog_function(struct si_shader_context *ctx,
 					union si_shader_part_key *key);
 static void si_build_ps_epilog_function(struct si_shader_context *ctx,
 					union si_shader_part_key *key);
+static void si_fix_resource_usage(struct si_screen *sscreen,
+				  struct si_shader *shader);
 
 /* Ideally pass the sample mask input to the PS epilog as v14, which
  * is its usual location, so that the shader doesn't have to add v_mov.
@@ -561,6 +563,14 @@ void si_llvm_load_input_vs(
 
 	/* Do multiple loads for special formats. */
 	switch (fix_fetch) {
+	case SI_FIX_FETCH_RG_64_FLOAT:
+		num_fetches = 1; /* 1 2-dword or 4-dword load */
+		fetch_stride = 0;
+		if (util_last_bit(info->input_usage_mask[input_index]) >= 2)
+			num_channels = 4; /* 2 doubles in 4 dwords */
+		else
+			num_channels = 2; /* 1 double in 2 dwords */
+		break;
 	case SI_FIX_FETCH_RGB_64_FLOAT:
 		num_fetches = 3; /* 3 2-dword loads */
 		fetch_stride = 8;
@@ -3254,9 +3264,7 @@ si_insert_input_ptr(struct si_shader_context *ctx, LLVMValueRef ret,
 		    unsigned param, unsigned return_index)
 {
 	LLVMBuilderRef builder = ctx->ac.builder;
-	LLVMValueRef ptr, lo, hi;
-
-	ptr = LLVMGetParam(ctx->main_fn, param);
+	LLVMValueRef ptr = LLVMGetParam(ctx->main_fn, param);
 	ptr = LLVMBuildPtrToInt(builder, ptr, ctx->i32, "");
 	return LLVMBuildInsertValue(builder, ret, ptr, return_index, "");
 }
@@ -5234,7 +5242,7 @@ int si_shader_binary_upload(struct si_screen *sscreen, struct si_shader *shader)
 	       !mainb->rodata_size);
 	assert(!epilog || !epilog->rodata_size);
 
-	r600_resource_reference(&shader->bo, NULL);
+	si_resource_reference(&shader->bo, NULL);
 	shader->bo = si_aligned_buffer_create(&sscreen->b,
 					      sscreen->cpdma_prefetch_writes_memory ?
 						0 : SI_RESOURCE_FLAG_READ_ONLY,
@@ -5783,6 +5791,8 @@ si_generate_gs_copy_shader(struct si_screen *sscreen,
 	if (r != 0) {
 		FREE(shader);
 		shader = NULL;
+	} else {
+		si_fix_resource_usage(sscreen, shader);
 	}
 	return shader;
 }
@@ -8108,9 +8118,9 @@ int si_shader_create(struct si_screen *sscreen, struct ac_llvm_compiler *compile
 void si_shader_destroy(struct si_shader *shader)
 {
 	if (shader->scratch_bo)
-		r600_resource_reference(&shader->scratch_bo, NULL);
+		si_resource_reference(&shader->scratch_bo, NULL);
 
-	r600_resource_reference(&shader->bo, NULL);
+	si_resource_reference(&shader->bo, NULL);
 
 	if (!shader->is_binary_shared)
 		ac_shader_binary_clean(&shader->binary);

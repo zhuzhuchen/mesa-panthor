@@ -52,6 +52,19 @@ mingw*)
     ;;
 esac
 
+AC_ARG_ENABLE(autotools,
+   [AS_HELP_STRING([--enable-autotools],
+                   [Enable the use of this autotools based build configuration])],
+   [enable_autotools=$enableval], [enable_autotools=no])
+
+if test "x$enable_autotools" != "xyes" ; then
+    AC_MSG_ERROR([the autotools build system has been deprecated in favour of
+    meson and will be removed eventually. For instructions on how to use meson
+    see https://www.mesa3d.org/meson.html.
+    If you still want to use the autotools build, then add --enable-autotools
+    to the configure command line.])
+fi
+
 # Support silent build rules, requires at least automake-1.11. Disable
 # by either passing --disable-silent-rules to configure or passing V=1
 # to make
@@ -74,7 +87,7 @@ AC_SUBST([OPENCL_VERSION])
 # in the first entry.
 LIBDRM_REQUIRED=2.4.75
 LIBDRM_RADEON_REQUIRED=2.4.71
-LIBDRM_AMDGPU_REQUIRED=2.4.95
+LIBDRM_AMDGPU_REQUIRED=2.4.97
 LIBDRM_INTEL_REQUIRED=2.4.75
 LIBDRM_NVVIEUX_REQUIRED=2.4.66
 LIBDRM_NOUVEAU_REQUIRED=2.4.66
@@ -1395,7 +1408,7 @@ GALLIUM_DRIVERS_DEFAULT="r300,r600,svga,swrast"
 AC_ARG_WITH([gallium-drivers],
     [AS_HELP_STRING([--with-gallium-drivers@<:@=DIRS...@:>@],
         [comma delimited Gallium drivers list, e.g.
-        "i915,nouveau,r300,r600,radeonsi,freedreno,kmsro,svga,swrast,swr,tegra,v3d,vc4,virgl,etnaviv,imx"
+        "i915,nouveau,r300,r600,radeonsi,freedreno,kmsro,svga,swrast,swr,tegra,v3d,vc4,virgl,etnaviv"
         @<:@default=r300,r600,svga,swrast@:>@])],
     [with_gallium_drivers="$withval"],
     [with_gallium_drivers="$GALLIUM_DRIVERS_DEFAULT"])
@@ -1864,6 +1877,7 @@ for plat in $platforms; do
         ;;
 
     drm)
+        test "x$enable_egl" = "xyes" &&
         test "x$enable_gbm" = "xno" &&
                 AC_MSG_ERROR([EGL platform drm needs gbm])
         DEFINES="$DEFINES -DHAVE_DRM_PLATFORM"
@@ -2727,9 +2741,6 @@ if test -n "$with_gallium_drivers"; then
             PKG_CHECK_MODULES([ETNAVIV], [libdrm >= $LIBDRM_ETNAVIV_REQUIRED libdrm_etnaviv >= $LIBDRM_ETNAVIV_REQUIRED])
             require_libdrm "etnaviv"
             ;;
-       ximx)
-            HAVE_GALLIUM_IMX=yes
-            ;;
         xtegra)
             HAVE_GALLIUM_TEGRA=yes
             require_libdrm "tegra"
@@ -2850,10 +2861,6 @@ AM_CONDITIONAL(HAVE_SWR_BUILTIN, test "x$HAVE_SWR_BUILTIN" = xyes)
 
 dnl We need to validate some needed dependencies for renderonly drivers.
 
-if test "x$HAVE_GALLIUM_ETNAVIV" != xyes -a "x$HAVE_GALLIUM_IMX" = xyes  ; then
-    AC_MSG_ERROR([Building with imx requires etnaviv])
-fi
-
 if test "x$HAVE_GALLIUM_VC4" != xyes -a "x$HAVE_GALLIUM_KMSRO" = xyes  ; then
     AC_MSG_ERROR([Building with kmsro requires vc4])
 fi
@@ -2938,7 +2945,7 @@ if test "x$enable_llvm" = xyes; then
     fi
 
     dnl The gallium-xlib GLX and gallium OSMesa targets directly embed the
-    dnl swr/llvmpipe driver into the final binary.  Adding LLVM_LIBS results in 
+    dnl swr/llvmpipe driver into the final binary.  Adding LLVM_LIBS results in
     dnl the LLVM library propagated in the Libs.private of the respective .pc
     dnl file which ensures complete dependency information when statically
     dnl linking.
@@ -2959,7 +2966,6 @@ AM_CONDITIONAL(HAVE_GALLIUM_RADEONSI, test "x$HAVE_GALLIUM_RADEONSI" = xyes)
 AM_CONDITIONAL(HAVE_GALLIUM_NOUVEAU, test "x$HAVE_GALLIUM_NOUVEAU" = xyes)
 AM_CONDITIONAL(HAVE_GALLIUM_FREEDRENO, test "x$HAVE_GALLIUM_FREEDRENO" = xyes)
 AM_CONDITIONAL(HAVE_GALLIUM_ETNAVIV, test "x$HAVE_GALLIUM_ETNAVIV" = xyes)
-AM_CONDITIONAL(HAVE_GALLIUM_IMX, test "x$HAVE_GALLIUM_IMX" = xyes)
 AM_CONDITIONAL(HAVE_GALLIUM_TEGRA, test "x$HAVE_GALLIUM_TEGRA" = xyes)
 AM_CONDITIONAL(HAVE_GALLIUM_SOFTPIPE, test "x$HAVE_GALLIUM_SOFTPIPE" = xyes)
 AM_CONDITIONAL(HAVE_GALLIUM_LLVMPIPE, test "x$HAVE_GALLIUM_LLVMPIPE" = xyes)
@@ -3111,7 +3117,6 @@ AC_CONFIG_FILES([Makefile
                  src/gallium/drivers/swr/Makefile
                  src/gallium/drivers/tegra/Makefile
                  src/gallium/drivers/etnaviv/Makefile
-                 src/gallium/drivers/imx/Makefile
                  src/gallium/drivers/v3d/Makefile
                  src/gallium/drivers/vc4/Makefile
                  src/gallium/drivers/virgl/Makefile
@@ -3146,7 +3151,6 @@ AC_CONFIG_FILES([Makefile
                  src/gallium/tests/trivial/Makefile
                  src/gallium/tests/unit/Makefile
                  src/gallium/winsys/etnaviv/drm/Makefile
-                 src/gallium/winsys/imx/drm/Makefile
                  src/gallium/winsys/freedreno/drm/Makefile
                  src/gallium/winsys/i915/drm/Makefile
                  src/gallium/winsys/nouveau/drm/Makefile

@@ -2721,7 +2721,7 @@ is_allowed_invariant(ir_variable *var, struct _mesa_glsl_parse_state *state)
     * "Only variables output from a vertex shader can be candidates
     * for invariance".
     */
-   if (!state->is_version(130, 0))
+   if (!state->is_version(130, 100))
       return false;
 
    /*
@@ -4940,7 +4940,8 @@ ast_declarator_list::hir(exec_list *instructions,
              && process_qualifier_constant(state, &loc, "offset",
                                         type->qualifier.offset,
                                         &qual_offset)) {
-            state->atomic_counter_offsets[qual_binding] = qual_offset;
+            if (qual_binding < ARRAY_SIZE(state->atomic_counter_offsets))
+               state->atomic_counter_offsets[qual_binding] = qual_offset;
          }
       }
 
@@ -7396,7 +7397,7 @@ ast_process_struct_or_iface_block_members(exec_list *instructions,
                                       "alignment of %s", field_type->name);
                   }
                   fields[i].offset = qual_offset;
-                  next_offset = glsl_align(qual_offset + size, align);
+                  next_offset = qual_offset + size;
                } else {
                   _mesa_glsl_error(&loc, state, "offset can only be used "
                                    "with std430 and std140 layouts");
@@ -7417,19 +7418,19 @@ ast_process_struct_or_iface_block_members(exec_list *instructions,
                   if (member_align == 0 ||
                       member_align & (member_align - 1)) {
                      _mesa_glsl_error(&loc, state, "align layout qualifier "
-                                      "in not a power of 2");
+                                      "is not a power of 2");
                   } else {
                      fields[i].offset = glsl_align(offset, member_align);
-                     next_offset = glsl_align(fields[i].offset + size, align);
+                     next_offset = fields[i].offset + size;
                   }
                }
             } else {
                fields[i].offset = glsl_align(offset, expl_align);
-               next_offset = glsl_align(fields[i].offset + size, align);
+               next_offset = fields[i].offset + size;
             }
          } else if (!qual->flags.q.explicit_offset) {
             if (align != 0 && size != 0)
-               next_offset = glsl_align(next_offset + size, align);
+               next_offset = glsl_align(next_offset, align) + size;
          }
 
          /* From the ARB_enhanced_layouts spec:

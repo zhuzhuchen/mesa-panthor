@@ -30,6 +30,11 @@ import re
 import sys
 import xml.etree.cElementTree as etree
 
+import os
+GLAPI = os.path.join(os.path.dirname(__file__), "..", "glapi", "gen")
+sys.path.insert(0, GLAPI)
+import static_data
+
 MAPI_TABLE_NUM_DYNAMIC = 4096
 
 _LIBRARY_FEATURE_NAMES = {
@@ -44,7 +49,7 @@ _LIBRARY_FEATURE_NAMES = {
     )),
     "glesv1" : frozenset(("GL_VERSION_ES_CM_1_0", "GL_OES_point_size_array")),
     "glesv2" : frozenset(("GL_ES_VERSION_2_0", "GL_ES_VERSION_3_0",
-            "GL_ES_VERSION_3_1" "GL_ES_VERSION_3_2",
+            "GL_ES_VERSION_3_1", "GL_ES_VERSION_3_2",
     )),
 }
 
@@ -68,11 +73,24 @@ def getFunctionsFromRoots(roots):
     # Sort the function list by name.
     functions = sorted(functions, key=lambda f: f.name)
 
+    # Lookup for fixed offset/slot functions and use it if available.
     # Assign a slot number to each function. This isn't strictly necessary,
     # since you can just look at the index in the list, but it makes it easier
     # to include the slot when formatting output.
+
+    next_slot = 0
     for i in range(len(functions)):
-        functions[i] = functions[i]._replace(slot=i)
+        name = functions[i].name[2:]
+
+        if name in static_data.offsets:
+            functions[i] = functions[i]._replace(slot=static_data.offsets[name])
+        elif not name.endswith("ARB") and name + "ARB" in static_data.offsets:
+            functions[i] = functions[i]._replace(slot=static_data.offsets[name + "ARB"])
+        elif not name.endswith("EXT") and name + "EXT" in static_data.offsets:
+            functions[i] = functions[i]._replace(slot=static_data.offsets[name + "EXT"])
+        else:
+            functions[i] = functions[i]._replace(slot=next_slot)
+            next_slot += 1
 
     return functions
 
@@ -205,7 +223,7 @@ def _fixupTypeName(typeName):
     # Remove the vendor suffixes from types that have a suffix-less version.
     rv = re.sub(r"\b(GLhalf|GLintptr|GLsizeiptr|GLint64|GLuint64)(?:ARB|EXT|NV|ATI)\b", r"\1", rv)
 
-    rv = re.sub(r"\bGLvoid\b", "void", rv)
+    rv = re.sub(r"\bGLDEBUGPROCKHR\b", "GLDEBUGPROC", rv)
 
     # Clear out any leading and trailing whitespace.
     rv = rv.strip()

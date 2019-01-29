@@ -175,11 +175,11 @@ static void si_cp_dma_prepare(struct si_context *sctx, struct pipe_resource *dst
 	if (!(user_flags & SI_CPDMA_SKIP_BO_LIST_UPDATE)) {
 		if (dst)
 			radeon_add_to_buffer_list(sctx, sctx->gfx_cs,
-						  r600_resource(dst),
+						  si_resource(dst),
 						  RADEON_USAGE_WRITE, RADEON_PRIO_CP_DMA);
 		if (src)
 			radeon_add_to_buffer_list(sctx, sctx->gfx_cs,
-						  r600_resource(src),
+						  si_resource(src),
 						  RADEON_USAGE_READ, RADEON_PRIO_CP_DMA);
 	}
 
@@ -212,8 +212,8 @@ void si_cp_dma_clear_buffer(struct si_context *sctx, struct radeon_cmdbuf *cs,
 			    uint64_t size, unsigned value, unsigned user_flags,
 			    enum si_coherency coher, enum si_cache_policy cache_policy)
 {
-	struct r600_resource *rdst = r600_resource(dst);
-	uint64_t va = (rdst ? rdst->gpu_address : 0) + offset;
+	struct si_resource *sdst = si_resource(dst);
+	uint64_t va = (sdst ? sdst->gpu_address : 0) + offset;
 	bool is_first = true;
 
 	assert(size && size % 4 == 0);
@@ -221,11 +221,11 @@ void si_cp_dma_clear_buffer(struct si_context *sctx, struct radeon_cmdbuf *cs,
 	/* Mark the buffer range of destination as valid (initialized),
 	 * so that transfer_map knows it should wait for the GPU when mapping
 	 * that range. */
-	if (rdst)
-		util_range_add(&rdst->valid_buffer_range, offset, offset + size);
+	if (sdst)
+		util_range_add(&sdst->valid_buffer_range, offset, offset + size);
 
 	/* Flush the caches. */
-	if (rdst && !(user_flags & SI_CPDMA_SKIP_GFX_SYNC)) {
+	if (sdst && !(user_flags & SI_CPDMA_SKIP_GFX_SYNC)) {
 		sctx->flags |= SI_CONTEXT_PS_PARTIAL_FLUSH |
 			       SI_CONTEXT_CS_PARTIAL_FLUSH |
 			       si_get_flush_flags(sctx, coher, cache_policy);
@@ -233,7 +233,7 @@ void si_cp_dma_clear_buffer(struct si_context *sctx, struct radeon_cmdbuf *cs,
 
 	while (size) {
 		unsigned byte_count = MIN2(size, cp_dma_max_byte_count(sctx));
-		unsigned dma_flags = CP_DMA_CLEAR | (rdst ? 0 : CP_DMA_DST_IS_GDS);
+		unsigned dma_flags = CP_DMA_CLEAR | (sdst ? 0 : CP_DMA_DST_IS_GDS);
 
 		si_cp_dma_prepare(sctx, dst, NULL, byte_count, size, user_flags,
 				  coher, &is_first, &dma_flags);
@@ -245,8 +245,8 @@ void si_cp_dma_clear_buffer(struct si_context *sctx, struct radeon_cmdbuf *cs,
 		va += byte_count;
 	}
 
-	if (rdst && cache_policy != L2_BYPASS)
-		rdst->TC_L2_dirty = true;
+	if (sdst && cache_policy != L2_BYPASS)
+		sdst->TC_L2_dirty = true;
 
 	/* If it's not a framebuffer fast clear... */
 	if (coher == SI_COHERENCY_SHADER)
@@ -275,7 +275,7 @@ static void si_cp_dma_realign_engine(struct si_context *sctx, unsigned size,
 	 */
 	if (!sctx->scratch_buffer ||
 	    sctx->scratch_buffer->b.b.width0 < scratch_size) {
-		r600_resource_reference(&sctx->scratch_buffer, NULL);
+		si_resource_reference(&sctx->scratch_buffer, NULL);
 		sctx->scratch_buffer =
 			si_aligned_buffer_create(&sctx->screen->b,
 						   SI_RESOURCE_FLAG_UNMAPPABLE,
@@ -323,14 +323,14 @@ void si_cp_dma_copy_buffer(struct si_context *sctx,
 			/* Mark the buffer range of destination as valid (initialized),
 			 * so that transfer_map knows it should wait for the GPU when mapping
 			 * that range. */
-			util_range_add(&r600_resource(dst)->valid_buffer_range, dst_offset,
+			util_range_add(&si_resource(dst)->valid_buffer_range, dst_offset,
 				       dst_offset + size);
 		}
 
-		dst_offset += r600_resource(dst)->gpu_address;
+		dst_offset += si_resource(dst)->gpu_address;
 	}
 	if (src)
-		src_offset += r600_resource(src)->gpu_address;
+		src_offset += si_resource(src)->gpu_address;
 
 	/* The workarounds aren't needed on Fiji and beyond. */
 	if (sctx->family <= CHIP_CARRIZO ||
@@ -402,7 +402,7 @@ void si_cp_dma_copy_buffer(struct si_context *sctx,
 	}
 
 	if (dst && cache_policy != L2_BYPASS)
-		r600_resource(dst)->TC_L2_dirty = true;
+		si_resource(dst)->TC_L2_dirty = true;
 
 	/* If it's not a prefetch or GDS copy... */
 	if (dst && src && (dst != src || dst_offset != src_offset))
@@ -580,4 +580,29 @@ void si_test_gds(struct si_context *sctx)
 	pipe_resource_reference(&src, NULL);
 	pipe_resource_reference(&dst, NULL);
 	exit(0);
+}
+
+void si_cp_write_data(struct si_context *sctx, struct si_resource *buf,
+		      unsigned offset, unsigned size, unsigned dst_sel,
+		      unsigned engine, const void *data)
+{
+	struct radeon_cmdbuf *cs = sctx->gfx_cs;
+
+	assert(offset % 4 == 0);
+	assert(size % 4 == 0);
+
+	if (sctx->chip_class == SI && dst_sel == V_370_MEM)
+		dst_sel = V_370_MEM_GRBM;
+
+	radeon_add_to_buffer_list(sctx, cs, buf,
+				  RADEON_USAGE_WRITE, RADEON_PRIO_CP_DMA);
+	uint64_t va = buf->gpu_address + offset;
+
+	radeon_emit(cs, PKT3(PKT3_WRITE_DATA, 2 + size/4, 0));
+	radeon_emit(cs, S_370_DST_SEL(dst_sel) |
+		    S_370_WR_CONFIRM(1) |
+		    S_370_ENGINE_SEL(engine));
+	radeon_emit(cs, va);
+	radeon_emit(cs, va >> 32);
+	radeon_emit_array(cs, (const uint32_t*)data, size/4);
 }

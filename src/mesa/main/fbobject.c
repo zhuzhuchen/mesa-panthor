@@ -1003,6 +1003,7 @@ _mesa_test_framebuffer_completeness(struct gl_context *ctx,
    fb->_HasSNormOrFloatColorBuffer = GL_FALSE;
    fb->_HasAttachments = true;
    fb->_IntegerBuffers = 0;
+   fb->_RGBBuffers = 0;
 
    /* Start at -2 to more easily loop over all attachment points.
     *  -2: depth buffer
@@ -1148,6 +1149,9 @@ _mesa_test_framebuffer_completeness(struct gl_context *ctx,
          /* check if integer color */
          if (_mesa_is_format_integer_color(attFormat))
             fb->_IntegerBuffers |= (1 << i);
+
+         if (f == GL_RGB)
+            fb->_RGBBuffers |= (1 << i);
 
          fb->_AllColorBuffersFixedPoint =
             fb->_AllColorBuffersFixedPoint &&
@@ -4270,7 +4274,7 @@ get_framebuffer_attachment_parameter(struct gl_context *ctx,
          }
       }
       else {
-         if (ctx->Extensions.EXT_framebuffer_sRGB) {
+         if (ctx->Extensions.EXT_sRGB) {
             *params =
                _mesa_get_format_color_encoding(att->Renderbuffer->Format);
          }

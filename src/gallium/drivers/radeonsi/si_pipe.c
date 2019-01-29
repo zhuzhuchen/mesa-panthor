@@ -163,11 +163,11 @@ static void si_destroy_context(struct pipe_context *context)
 	pipe_resource_reference(&sctx->tess_rings, NULL);
 	pipe_resource_reference(&sctx->null_const_buf.buffer, NULL);
 	pipe_resource_reference(&sctx->sample_pos_buffer, NULL);
-	r600_resource_reference(&sctx->border_color_buffer, NULL);
+	si_resource_reference(&sctx->border_color_buffer, NULL);
 	free(sctx->border_color_table);
-	r600_resource_reference(&sctx->scratch_buffer, NULL);
-	r600_resource_reference(&sctx->compute_scratch_buffer, NULL);
-	r600_resource_reference(&sctx->wait_mem_scratch, NULL);
+	si_resource_reference(&sctx->scratch_buffer, NULL);
+	si_resource_reference(&sctx->compute_scratch_buffer, NULL);
+	si_resource_reference(&sctx->wait_mem_scratch, NULL);
 
 	si_pm4_free_state(sctx, sctx->init_config, ~0);
 	if (sctx->init_config_gs_rings)
@@ -201,6 +201,10 @@ static void si_destroy_context(struct pipe_context *context)
 		sctx->b.delete_compute_state(&sctx->b, sctx->cs_clear_buffer);
 	if (sctx->cs_copy_buffer)
 		sctx->b.delete_compute_state(&sctx->b, sctx->cs_copy_buffer);
+	if (sctx->cs_copy_image)
+		sctx->b.delete_compute_state(&sctx->b, sctx->cs_copy_image);
+	if (sctx->cs_copy_image_1d_array)
+		sctx->b.delete_compute_state(&sctx->b, sctx->cs_copy_image_1d_array);
 
 	if (sctx->blitter)
 		util_blitter_destroy(sctx->blitter);
@@ -242,7 +246,7 @@ static void si_destroy_context(struct pipe_context *context)
 
 	sctx->ws->fence_reference(&sctx->last_gfx_fence, NULL);
 	sctx->ws->fence_reference(&sctx->last_sdma_fence, NULL);
-	r600_resource_reference(&sctx->eop_bug_scratch, NULL);
+	si_resource_reference(&sctx->eop_bug_scratch, NULL);
 
 	si_destroy_compiler(&sctx->compiler);
 
@@ -414,7 +418,7 @@ static struct pipe_context *si_create_context(struct pipe_screen *screen,
 	if (sctx->chip_class == CIK ||
 	    sctx->chip_class == VI ||
 	    sctx->chip_class == GFX9) {
-		sctx->eop_bug_scratch = r600_resource(
+		sctx->eop_bug_scratch = si_resource(
 			pipe_buffer_create(&sscreen->b, 0, PIPE_USAGE_DEFAULT,
 					   16 * sscreen->info.num_render_backends));
 		if (!sctx->eop_bug_scratch)
@@ -483,7 +487,7 @@ static struct pipe_context *si_create_context(struct pipe_screen *screen,
 	if (!sctx->border_color_table)
 		goto fail;
 
-	sctx->border_color_buffer = r600_resource(
+	sctx->border_color_buffer = si_resource(
 		pipe_buffer_create(screen, 0, PIPE_USAGE_DEFAULT,
 				   SI_MAX_BORDER_COLORS *
 				   sizeof(*sctx->border_color_table)));
@@ -510,14 +514,6 @@ static struct pipe_context *si_create_context(struct pipe_screen *screen,
 	if (sscreen->debug_flags & DBG(FORCE_DMA))
 		sctx->b.resource_copy_region = sctx->dma_copy;
 
-	bool dst_stream_policy = SI_COMPUTE_DST_CACHE_POLICY != L2_LRU;
-	sctx->cs_clear_buffer = si_create_dma_compute_shader(&sctx->b,
-					     SI_COMPUTE_CLEAR_DW_PER_THREAD,
-					     dst_stream_policy, false);
-	sctx->cs_copy_buffer = si_create_dma_compute_shader(&sctx->b,
-					     SI_COMPUTE_COPY_DW_PER_THREAD,
-					     dst_stream_policy, true);
-
 	sctx->blitter = util_blitter_create(&sctx->b);
 	if (sctx->blitter == NULL)
 		goto fail;
@@ -528,22 +524,14 @@ static struct pipe_context *si_create_context(struct pipe_screen *screen,
 	sctx->sample_mask = 0xffff;
 
 	if (sctx->chip_class >= GFX9) {
-		sctx->wait_mem_scratch = r600_resource(
+		sctx->wait_mem_scratch = si_resource(
 			pipe_buffer_create(screen, 0, PIPE_USAGE_DEFAULT, 4));
 		if (!sctx->wait_mem_scratch)
 			goto fail;
 
 		/* Initialize the memory. */
-		struct radeon_cmdbuf *cs = sctx->gfx_cs;
-		radeon_emit(cs, PKT3(PKT3_WRITE_DATA, 3, 0));
-		radeon_emit(cs, S_370_DST_SEL(V_370_MEMORY_SYNC) |
-			    S_370_WR_CONFIRM(1) |
-			    S_370_ENGINE_SEL(V_370_ME));
-		radeon_emit(cs, sctx->wait_mem_scratch->gpu_address);
-		radeon_emit(cs, sctx->wait_mem_scratch->gpu_address >> 32);
-		radeon_emit(cs, sctx->wait_mem_number);
-		radeon_add_to_buffer_list(sctx, cs, sctx->wait_mem_scratch,
-					  RADEON_USAGE_WRITE, RADEON_PRIO_FENCE);
+		si_cp_write_data(sctx, sctx->wait_mem_scratch, 0, 4,
+				 V_370_MEM, V_370_ME, &sctx->wait_mem_number);
 	}
 
 	/* CIK cannot unbind a constant buffer (S_BUFFER_LOAD doesn't skip loads
@@ -737,7 +725,7 @@ static void si_test_vmfault(struct si_screen *sscreen)
 		exit(1);
 	}
 
-	r600_resource(buf)->gpu_address = 0; /* cause a VM fault */
+	si_resource(buf)->gpu_address = 0; /* cause a VM fault */
 
 	if (sscreen->debug_flags & DBG(TEST_VMFAULT_CP)) {
 		si_cp_dma_copy_buffer(sctx, buf, buf, 0, 4, 4, 0,

@@ -39,6 +39,7 @@
 
 #include "util/os_time.h"
 
+#include <drm_fourcc.h>
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -58,6 +59,7 @@
 
 
 #include "ir3/ir3_nir.h"
+#include "a2xx/ir2.h"
 
 /* XXX this should go away */
 #include "state_tracker/drm_driver.h"
@@ -144,6 +146,9 @@ fd_screen_destroy(struct pipe_screen *pscreen)
 
 	if (screen->dev)
 		fd_device_del(screen->dev);
+
+	if (screen->ro)
+		FREE(screen->ro);
 
 	fd_bc_fini(&screen->batch_cache);
 
@@ -496,16 +501,9 @@ fd_screen_get_shader_param(struct pipe_screen *pscreen,
 	case PIPE_SHADER_CAP_MAX_SAMPLER_VIEWS:
 		return 16;
 	case PIPE_SHADER_CAP_PREFERRED_IR:
-		if (is_ir3(screen))
-			return PIPE_SHADER_IR_NIR;
-		return PIPE_SHADER_IR_TGSI;
+		return PIPE_SHADER_IR_NIR;
 	case PIPE_SHADER_CAP_SUPPORTED_IRS:
-		if (is_ir3(screen)) {
-			return (1 << PIPE_SHADER_IR_NIR) | (1 << PIPE_SHADER_IR_TGSI);
-		} else {
-			return (1 << PIPE_SHADER_IR_TGSI);
-		}
-		return 0;
+		return (1 << PIPE_SHADER_IR_NIR) | (1 << PIPE_SHADER_IR_TGSI);
 	case PIPE_SHADER_CAP_MAX_UNROLL_ITERATIONS_HINT:
 		return 32;
 	case PIPE_SHADER_CAP_SCALAR_ISA:
@@ -636,12 +634,13 @@ fd_get_compiler_options(struct pipe_screen *pscreen,
 	if (is_ir3(screen))
 		return ir3_get_compiler_options(screen->compiler);
 
-	return NULL;
+	return ir2_get_compiler_options();
 }
 
 boolean
 fd_screen_bo_get_handle(struct pipe_screen *pscreen,
 		struct fd_bo *bo,
+		struct renderonly_scanout *scanout,
 		unsigned stride,
 		struct winsys_handle *whandle)
 {
@@ -650,6 +649,8 @@ fd_screen_bo_get_handle(struct pipe_screen *pscreen,
 	if (whandle->type == WINSYS_HANDLE_TYPE_SHARED) {
 		return fd_bo_get_name(bo, &whandle->handle) == 0;
 	} else if (whandle->type == WINSYS_HANDLE_TYPE_KMS) {
+		if (renderonly_get_handle(scanout, whandle))
+			return TRUE;
 		whandle->handle = fd_bo_handle(bo);
 		return TRUE;
 	} else if (whandle->type == WINSYS_HANDLE_TYPE_FD) {
@@ -658,6 +659,37 @@ fd_screen_bo_get_handle(struct pipe_screen *pscreen,
 	} else {
 		return FALSE;
 	}
+}
+
+static void
+fd_screen_query_dmabuf_modifiers(struct pipe_screen *pscreen,
+		enum pipe_format format,
+		int max, uint64_t *modifiers,
+		unsigned int *external_only,
+		int *count)
+{
+	struct fd_screen *screen = fd_screen(pscreen);
+	int i, num = 0;
+
+	max = MIN2(max, screen->num_supported_modifiers);
+
+	if (!max) {
+		max = screen->num_supported_modifiers;
+		external_only = NULL;
+		modifiers = NULL;
+	}
+
+	for (i = 0; i < max; i++) {
+		if (modifiers)
+			modifiers[num] = screen->supported_modifiers[i];
+
+		if (external_only)
+			external_only[num] = 0;
+
+		num++;
+	}
+
+	*count = num;
 }
 
 struct fd_bo *
@@ -687,7 +719,7 @@ fd_screen_bo_from_handle(struct pipe_screen *pscreen,
 }
 
 struct pipe_screen *
-fd_screen_create(struct fd_device *dev)
+fd_screen_create(struct fd_device *dev, struct renderonly *ro)
 {
 	struct fd_screen *screen = CALLOC_STRUCT(fd_screen);
 	struct pipe_screen *pscreen;
@@ -707,6 +739,14 @@ fd_screen_create(struct fd_device *dev)
 
 	screen->dev = dev;
 	screen->refcnt = 1;
+
+	if (ro) {
+		screen->ro = renderonly_dup(ro);
+		if (!screen->ro) {
+			DBG("could not create renderonly object");
+			goto fail;
+		}
+	}
 
 	// maybe this should be in context?
 	screen->pipe = fd_pipe_new(screen->dev, FD_PIPE_3D);
@@ -858,6 +898,17 @@ fd_screen_create(struct fd_device *dev)
 	pscreen->fence_reference = fd_fence_ref;
 	pscreen->fence_finish = fd_fence_finish;
 	pscreen->fence_get_fd = fd_fence_get_fd;
+
+	pscreen->query_dmabuf_modifiers = fd_screen_query_dmabuf_modifiers;
+
+	if (!screen->supported_modifiers) {
+		static const uint64_t supported_modifiers[] = {
+			DRM_FORMAT_MOD_LINEAR,
+		};
+
+		screen->supported_modifiers = supported_modifiers;
+		screen->num_supported_modifiers = ARRAY_SIZE(supported_modifiers);
+	}
 
 	slab_create_parent(&screen->transfer_pool, sizeof(struct fd_transfer), 16);
 

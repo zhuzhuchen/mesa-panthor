@@ -315,8 +315,6 @@ fs_generator::fire_fb_write(fs_inst *inst,
 
    if (devinfo->gen >= 6)
       brw_inst_set_rt_slot_group(devinfo, insn, inst->group / 16);
-
-   brw_mark_surface_used(&prog_data->base, surf_index);
 }
 
 void
@@ -373,8 +371,6 @@ fs_generator::generate_fb_read(fs_inst *inst, struct brw_reg dst,
    gen9_fb_READ(p, dst, payload, surf_index,
                 inst->header_size, inst->size_written / REG_SIZE,
                 prog_data->persample_dispatch);
-
-   brw_mark_surface_used(&prog_data->base, surf_index);
 }
 
 void
@@ -440,7 +436,8 @@ fs_generator::generate_mov_indirect(fs_inst *inst,
 
       if (type_sz(reg.type) > 4 &&
           ((devinfo->gen == 7 && !devinfo->is_haswell) ||
-           devinfo->is_cherryview || gen_device_info_is_9lp(devinfo))) {
+           devinfo->is_cherryview || gen_device_info_is_9lp(devinfo) ||
+           !devinfo->has_64bit_types)) {
          /* IVB has an issue (which we found empirically) where it reads two
           * address register components per channel for indirectly addressed
           * 64-bit sources.
@@ -578,6 +575,72 @@ fs_generator::generate_shuffle(fs_inst *inst,
             brw_MOV(p, suboffset(dst, group),
                     retype(brw_VxH_indirect(0, 0), src.type));
          }
+      }
+   }
+}
+
+void
+fs_generator::generate_quad_swizzle(const fs_inst *inst,
+                                    struct brw_reg dst, struct brw_reg src,
+                                    unsigned swiz)
+{
+   /* Requires a quad. */
+   assert(inst->exec_size >= 4);
+
+   if (src.file == BRW_IMMEDIATE_VALUE ||
+       has_scalar_region(src)) {
+      /* The value is uniform across all channels */
+      brw_MOV(p, dst, src);
+
+   } else if (devinfo->gen < 11 && type_sz(src.type) == 4) {
+      /* This only works on 8-wide 32-bit values */
+      assert(inst->exec_size == 8);
+      assert(src.hstride == BRW_HORIZONTAL_STRIDE_1);
+      assert(src.vstride == src.width + 1);
+      brw_set_default_access_mode(p, BRW_ALIGN_16);
+      struct brw_reg swiz_src = stride(src, 4, 4, 1);
+      swiz_src.swizzle = swiz;
+      brw_MOV(p, dst, swiz_src);
+
+   } else {
+      assert(src.hstride == BRW_HORIZONTAL_STRIDE_1);
+      assert(src.vstride == src.width + 1);
+      const struct brw_reg src_0 = suboffset(src, BRW_GET_SWZ(swiz, 0));
+
+      switch (swiz) {
+      case BRW_SWIZZLE_XXXX:
+      case BRW_SWIZZLE_YYYY:
+      case BRW_SWIZZLE_ZZZZ:
+      case BRW_SWIZZLE_WWWW:
+         brw_MOV(p, dst, stride(src_0, 4, 4, 0));
+         break;
+
+      case BRW_SWIZZLE_XXZZ:
+      case BRW_SWIZZLE_YYWW:
+         brw_MOV(p, dst, stride(src_0, 2, 2, 0));
+         break;
+
+      case BRW_SWIZZLE_XYXY:
+      case BRW_SWIZZLE_ZWZW:
+         assert(inst->exec_size == 4);
+         brw_MOV(p, dst, stride(src_0, 0, 2, 1));
+         break;
+
+      default:
+         assert(inst->force_writemask_all);
+         brw_set_default_exec_size(p, cvt(inst->exec_size / 4) - 1);
+
+         for (unsigned c = 0; c < 4; c++) {
+            brw_inst *insn = brw_MOV(
+               p, stride(suboffset(dst, c),
+                         4 * inst->dst.stride, 1, 4 * inst->dst.stride),
+               stride(suboffset(src, BRW_GET_SWZ(swiz, c)), 4, 1, 0));
+
+            brw_inst_set_no_dd_clear(devinfo, insn, c < 3);
+            brw_inst_set_no_dd_check(devinfo, insn, c > 0);
+         }
+
+         break;
       }
    }
 }
@@ -872,8 +935,6 @@ fs_generator::generate_get_buffer_size(fs_inst *inst,
               inst->header_size > 0,
               simd_mode,
               BRW_SAMPLER_RETURN_FORMAT_SINT32);
-
-   brw_mark_surface_used(prog_data, surf_index.ud);
 }
 
 void
@@ -1158,8 +1219,6 @@ fs_generator::generate_tex(fs_inst *inst, struct brw_reg dst, struct brw_reg src
                  inst->header_size != 0,
                  simd_mode,
                  return_format);
-
-      brw_mark_surface_used(prog_data, surface + base_binding_table_index);
    } else {
       /* Non-const sampler index */
 
@@ -1690,35 +1749,6 @@ fs_generator::generate_pack_half_2x16_split(fs_inst *,
 }
 
 void
-fs_generator::generate_unpack_half_2x16_split(fs_inst *inst,
-                                              struct brw_reg dst,
-                                              struct brw_reg src)
-{
-   assert(devinfo->gen >= 7);
-   assert(dst.type == BRW_REGISTER_TYPE_F);
-   assert(src.type == BRW_REGISTER_TYPE_UD);
-
-   /* From the Ivybridge PRM, Vol4, Part3, Section 6.26 f16to32:
-    *
-    *   Because this instruction does not have a 16-bit floating-point type,
-    *   the source data type must be Word (W). The destination type must be
-    *   F (Float).
-    */
-   struct brw_reg src_w = spread(retype(src, BRW_REGISTER_TYPE_W), 2);
-
-   /* Each channel of src has the form of unpackHalf2x16's input: 0xhhhhllll.
-    * For the Y case, we wish to access only the upper word; therefore
-    * a 16-bit subregister offset is needed.
-    */
-   assert(inst->opcode == FS_OPCODE_UNPACK_HALF_2x16_SPLIT_X ||
-          inst->opcode == FS_OPCODE_UNPACK_HALF_2x16_SPLIT_Y);
-   if (inst->opcode == FS_OPCODE_UNPACK_HALF_2x16_SPLIT_Y)
-      src_w.subnr += 2;
-
-   brw_F16TO32(p, dst, src_w);
-}
-
-void
 fs_generator::generate_shader_time_add(fs_inst *,
                                        struct brw_reg payload,
                                        struct brw_reg offset,
@@ -1752,9 +1782,6 @@ fs_generator::generate_shader_time_add(fs_inst *,
    brw_shader_time_add(p, payload,
                        prog_data->binding_table.shader_time_start);
    brw_pop_insn_state(p);
-
-   brw_mark_surface_used(prog_data,
-                         prog_data->binding_table.shader_time_start);
 }
 
 void
@@ -2303,23 +2330,9 @@ fs_generator::generate_code(const cfg_t *cfg, int dispatch_width)
          break;
 
       case SHADER_OPCODE_QUAD_SWIZZLE:
-         /* This only works on 8-wide 32-bit values */
-         assert(inst->exec_size == 8);
-         assert(type_sz(src[0].type) == 4);
-         assert(inst->force_writemask_all);
          assert(src[1].file == BRW_IMMEDIATE_VALUE);
          assert(src[1].type == BRW_REGISTER_TYPE_UD);
-
-         if (src[0].file == BRW_IMMEDIATE_VALUE ||
-             (src[0].vstride == 0 && src[0].hstride == 0)) {
-            /* The value is uniform across all channels */
-            brw_MOV(p, dst, src[0]);
-         } else {
-            brw_set_default_access_mode(p, BRW_ALIGN_16);
-            struct brw_reg swiz_src = stride(src[0], 4, 4, 1);
-            swiz_src.swizzle = inst->src[1].ud;
-            brw_MOV(p, dst, swiz_src);
-         }
+         generate_quad_swizzle(inst, dst, src[0], src[1].ud);
          break;
 
       case SHADER_OPCODE_CLUSTER_BROADCAST: {
@@ -2368,11 +2381,6 @@ fs_generator::generate_code(const cfg_t *cfg, int dispatch_width)
       case FS_OPCODE_PACK_HALF_2x16_SPLIT:
           generate_pack_half_2x16_split(inst, dst, src[0], src[1]);
           break;
-
-      case FS_OPCODE_UNPACK_HALF_2x16_SPLIT_X:
-      case FS_OPCODE_UNPACK_HALF_2x16_SPLIT_Y:
-         generate_unpack_half_2x16_split(inst, dst, src[0]);
-         break;
 
       case FS_OPCODE_PLACEHOLDER_HALT:
          /* This is the place where the final HALT needs to be inserted if

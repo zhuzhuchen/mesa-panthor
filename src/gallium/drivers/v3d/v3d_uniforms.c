@@ -71,6 +71,30 @@ get_texture_size(struct v3d_texture_stateobj *texstate,
         }
 }
 
+static uint32_t
+get_image_size(struct v3d_shaderimg_stateobj *shaderimg,
+               enum quniform_contents contents,
+               uint32_t data)
+{
+        struct v3d_image_view *image = &shaderimg->si[data];
+
+        switch (contents) {
+        case QUNIFORM_IMAGE_WIDTH:
+                return u_minify(image->base.resource->width0,
+                                image->base.u.tex.level);
+        case QUNIFORM_IMAGE_HEIGHT:
+                return u_minify(image->base.resource->height0,
+                                image->base.u.tex.level);
+        case QUNIFORM_IMAGE_DEPTH:
+                return u_minify(image->base.resource->depth0,
+                                image->base.u.tex.level);
+        case QUNIFORM_IMAGE_ARRAY_SIZE:
+                return image->base.resource->array_size;
+        default:
+                unreachable("Bad texture size field");
+        }
+}
+
 static struct v3d_bo *
 v3d_upload_ubo(struct v3d_context *v3d,
                struct v3d_compiled_shader *shader,
@@ -158,6 +182,27 @@ write_tmu_p0(struct v3d_job *job,
         v3d_job_add_bo(job, rsc->bo);
 }
 
+static void
+write_image_tmu_p0(struct v3d_job *job,
+                   struct v3d_cl_out **uniforms,
+                   struct v3d_shaderimg_stateobj *img,
+                   uint32_t data)
+{
+        /* Extract the image unit from the top bits, and the compiler's
+         * packed p0 from the bottom.
+         */
+        uint32_t unit = data >> 24;
+        uint32_t p0 = data & 0x00ffffff;
+
+        struct v3d_image_view *iview = &img->si[unit];
+        struct v3d_resource *rsc = v3d_resource(iview->base.resource);
+
+        cl_aligned_reloc(&job->indirect, uniforms,
+                         v3d_resource(iview->tex_state)->bo,
+                         iview->tex_state_offset | p0);
+        v3d_job_add_bo(job, rsc->bo);
+}
+
 /** Writes the V3D 4.x TMU configuration parameter 1. */
 static void
 write_tmu_p1(struct v3d_job *job,
@@ -168,8 +213,16 @@ write_tmu_p1(struct v3d_job *job,
         uint32_t unit = v3d_tmu_config_data_get_unit(data);
         struct pipe_sampler_state *psampler = texstate->samplers[unit];
         struct v3d_sampler_state *sampler = v3d_sampler_state(psampler);
+        struct pipe_sampler_view *psview = texstate->textures[unit];
+        struct v3d_sampler_view *sview = v3d_sampler_view(psview);
+        int variant = 0;
 
-        cl_aligned_reloc(&job->indirect, uniforms, sampler->bo,
+        if (sampler->border_color_variants)
+                variant = sview->sampler_variant;
+
+        cl_aligned_reloc(&job->indirect, uniforms,
+                         v3d_resource(sampler->sampler_state)->bo,
+                         sampler->sampler_state_offset[variant] |
                          v3d_tmu_config_data_get_value(data));
 }
 
@@ -232,6 +285,11 @@ v3d_write_uniforms(struct v3d_context *v3d, struct v3d_compiled_shader *shader,
                         write_tmu_p1(job, &uniforms, texstate, data);
                         break;
 
+                case QUNIFORM_IMAGE_TMU_CONFIG_P0:
+                        write_image_tmu_p0(job, &uniforms,
+                                           &v3d->shaderimg[stage], data);
+                        break;
+
                 case QUNIFORM_TEXTURE_CONFIG_P1:
                         write_texture_p1(job, &uniforms, texstate,
                                          data);
@@ -256,6 +314,16 @@ v3d_write_uniforms(struct v3d_context *v3d, struct v3d_compiled_shader *shader,
                                                         data));
                         break;
 
+                case QUNIFORM_IMAGE_WIDTH:
+                case QUNIFORM_IMAGE_HEIGHT:
+                case QUNIFORM_IMAGE_DEPTH:
+                case QUNIFORM_IMAGE_ARRAY_SIZE:
+                        cl_aligned_u32(&uniforms,
+                                       get_image_size(&v3d->shaderimg[stage],
+                                                      uinfo->contents[i],
+                                                      data));
+                        break;
+
                 case QUNIFORM_ALPHA_REF:
                         cl_aligned_f(&uniforms,
                                      v3d->zsa->base.alpha.ref_value);
@@ -274,6 +342,21 @@ v3d_write_uniforms(struct v3d_context *v3d, struct v3d_compiled_shader *shader,
                                                  rsc->bo,
                                                  cb->cb[ubo_index].buffer_offset);
                         }
+                        break;
+
+                case QUNIFORM_SSBO_OFFSET: {
+                        struct pipe_shader_buffer *sb =
+                                &v3d->ssbo[stage].sb[data];
+
+                        cl_aligned_reloc(&job->indirect, &uniforms,
+                                         v3d_resource(sb->buffer)->bo,
+                                         sb->buffer_offset);
+                        break;
+                }
+
+                case QUNIFORM_GET_BUFFER_SIZE:
+                        cl_aligned_u32(&uniforms,
+                                       v3d->ssbo[stage].sb[data].buffer_size);
                         break;
 
                 case QUNIFORM_TEXTURE_FIRST_LEVEL:
@@ -360,6 +443,19 @@ v3d_set_shader_uniform_dirty_flags(struct v3d_compiled_shader *shader)
                          * compiling for, but it's not passed in.
                          */
                         dirty |= VC5_DIRTY_FRAGTEX | VC5_DIRTY_VERTTEX;
+                        break;
+
+                case QUNIFORM_SSBO_OFFSET:
+                case QUNIFORM_GET_BUFFER_SIZE:
+                        dirty |= VC5_DIRTY_SSBO;
+                        break;
+
+                case QUNIFORM_IMAGE_TMU_CONFIG_P0:
+                case QUNIFORM_IMAGE_WIDTH:
+                case QUNIFORM_IMAGE_HEIGHT:
+                case QUNIFORM_IMAGE_DEPTH:
+                case QUNIFORM_IMAGE_ARRAY_SIZE:
+                        dirty |= VC5_DIRTY_SHADER_IMAGE;
                         break;
 
                 case QUNIFORM_ALPHA_REF:

@@ -221,7 +221,7 @@ static bool si_emit_derived_tess_state(struct si_context *sctx,
 	assert(num_tcs_input_cp <= 32);
 	assert(num_tcs_output_cp <= 32);
 
-	uint64_t ring_va = r600_resource(sctx->tess_rings)->gpu_address;
+	uint64_t ring_va = si_resource(sctx->tess_rings)->gpu_address;
 	assert((ring_va & u_bit_consecutive(0, 19)) == 0);
 
 	tcs_in_layout = S_VS_STATE_LS_OUT_PATCH_SIZE(input_patch_size / 4) |
@@ -315,10 +315,12 @@ static unsigned si_num_prims_for_vertices(const struct pipe_draw_info *info)
 	switch (info->mode) {
 	case PIPE_PRIM_PATCHES:
 		return info->count / info->vertices_per_patch;
+	case PIPE_PRIM_POLYGON:
+		return info->count >= 3;
 	case SI_PRIM_RECTANGLE_LIST:
 		return info->count / 3;
 	default:
-		return u_prims_for_vertices(info->mode, info->count);
+		return u_decomposed_prims_for_vertices(info->mode, info->count);
 	}
 }
 
@@ -348,20 +350,11 @@ si_get_init_multi_vgt_param(struct si_screen *sscreen,
 		    key->u.uses_gs)
 			partial_vs_wave = true;
 
-		/* Needed for 028B6C_DISTRIBUTION_MODE != 0 */
+		/* Needed for 028B6C_DISTRIBUTION_MODE != 0. (implies >= VI) */
 		if (sscreen->has_distributed_tess) {
 			if (key->u.uses_gs) {
-				if (sscreen->info.chip_class <= VI)
+				if (sscreen->info.chip_class == VI)
 					partial_es_wave = true;
-
-				/* GPU hang workaround. */
-				if (sscreen->info.family == CHIP_TONGA ||
-				    sscreen->info.family == CHIP_FIJI ||
-				    sscreen->info.family == CHIP_POLARIS10 ||
-				    sscreen->info.family == CHIP_POLARIS11 ||
-				    sscreen->info.family == CHIP_POLARIS12 ||
-				    sscreen->info.family == CHIP_VEGAM)
-					partial_vs_wave = true;
 			} else {
 				partial_vs_wave = true;
 			}
@@ -416,6 +409,18 @@ si_get_init_multi_vgt_param(struct si_screen *sscreen,
 		/* Required on CIK and later. */
 		if (sscreen->info.max_se == 4 && !wd_switch_on_eop)
 			ia_switch_on_eoi = true;
+
+		/* HW engineers suggested that PARTIAL_VS_WAVE_ON should be set
+		 * to work around a GS hang.
+		 */
+		if (key->u.uses_gs &&
+		    (sscreen->info.family == CHIP_TONGA ||
+		     sscreen->info.family == CHIP_FIJI ||
+		     sscreen->info.family == CHIP_POLARIS10 ||
+		     sscreen->info.family == CHIP_POLARIS11 ||
+		     sscreen->info.family == CHIP_POLARIS12 ||
+		     sscreen->info.family == CHIP_VEGAM))
+			partial_vs_wave = true;
 
 		/* Required by Hawaii and, for some special cases, by VI. */
 		if (ia_switch_on_eoi &&
@@ -732,10 +737,10 @@ static void si_emit_draw_packets(struct si_context *sctx,
 
 		index_max_size = (indexbuf->width0 - index_offset) /
 				  index_size;
-		index_va = r600_resource(indexbuf)->gpu_address + index_offset;
+		index_va = si_resource(indexbuf)->gpu_address + index_offset;
 
 		radeon_add_to_buffer_list(sctx, sctx->gfx_cs,
-				      r600_resource(indexbuf),
+				      si_resource(indexbuf),
 				      RADEON_USAGE_READ, RADEON_PRIO_INDEX_BUFFER);
 	} else {
 		/* On CI and later, non-indexed draws overwrite VGT_INDEX_TYPE,
@@ -746,7 +751,7 @@ static void si_emit_draw_packets(struct si_context *sctx,
 	}
 
 	if (indirect) {
-		uint64_t indirect_va = r600_resource(indirect->buffer)->gpu_address;
+		uint64_t indirect_va = si_resource(indirect->buffer)->gpu_address;
 
 		assert(indirect_va % 8 == 0);
 
@@ -758,7 +763,7 @@ static void si_emit_draw_packets(struct si_context *sctx,
 		radeon_emit(cs, indirect_va >> 32);
 
 		radeon_add_to_buffer_list(sctx, sctx->gfx_cs,
-				      r600_resource(indirect->buffer),
+				      si_resource(indirect->buffer),
 				      RADEON_USAGE_READ, RADEON_PRIO_DRAW_INDIRECT);
 
 		unsigned di_src_sel = index_size ? V_0287F0_DI_SRC_SEL_DMA
@@ -787,8 +792,8 @@ static void si_emit_draw_packets(struct si_context *sctx,
 			uint64_t count_va = 0;
 
 			if (indirect->indirect_draw_count) {
-				struct r600_resource *params_buf =
-					r600_resource(indirect->indirect_draw_count);
+				struct si_resource *params_buf =
+					si_resource(indirect->indirect_draw_count);
 
 				radeon_add_to_buffer_list(
 					sctx, sctx->gfx_cs, params_buf,
@@ -813,10 +818,15 @@ static void si_emit_draw_packets(struct si_context *sctx,
 			radeon_emit(cs, di_src_sel);
 		}
 	} else {
+		unsigned instance_count = info->instance_count;
 		int base_vertex;
 
-		radeon_emit(cs, PKT3(PKT3_NUM_INSTANCES, 0, 0));
-		radeon_emit(cs, info->instance_count);
+		if (sctx->last_instance_count == SI_INSTANCE_COUNT_UNKNOWN ||
+		    sctx->last_instance_count != instance_count) {
+			radeon_emit(cs, PKT3(PKT3_NUM_INSTANCES, 0, 0));
+			radeon_emit(cs, instance_count);
+			sctx->last_instance_count = instance_count;
+		}
 
 		/* Base vertex and start instance. */
 		base_vertex = index_size ? info->index_bias : info->start;
@@ -1051,7 +1061,8 @@ void si_emit_cache_flush(struct si_context *sctx)
 				  EOP_DATA_SEL_VALUE_32BIT,
 				  sctx->wait_mem_scratch, va,
 				  sctx->wait_mem_number, SI_NOT_QUERY);
-		si_cp_wait_mem(sctx, va, sctx->wait_mem_number, 0xffffffff, 0);
+		si_cp_wait_mem(sctx, cs, va, sctx->wait_mem_number, 0xffffffff,
+			       WAIT_REG_MEM_EQUAL);
 	}
 
 	/* Make sure ME is idle (it executes most packets) before continuing.
@@ -1407,11 +1418,11 @@ static void si_draw_vbo(struct pipe_context *ctx, const struct pipe_draw_info *i
 			/* info->start will be added by the drawing code */
 			index_offset -= start_offset;
 		} else if (sctx->chip_class <= CIK &&
-			   r600_resource(indexbuf)->TC_L2_dirty) {
+			   si_resource(indexbuf)->TC_L2_dirty) {
 			/* VI reads index buffers through TC L2, so it doesn't
 			 * need this. */
 			sctx->flags |= SI_CONTEXT_WRITEBACK_GLOBAL_L2;
-			r600_resource(indexbuf)->TC_L2_dirty = false;
+			si_resource(indexbuf)->TC_L2_dirty = false;
 		}
 	}
 
@@ -1423,15 +1434,15 @@ static void si_draw_vbo(struct pipe_context *ctx, const struct pipe_draw_info *i
 
 		/* Indirect buffers use TC L2 on GFX9, but not older hw. */
 		if (sctx->chip_class <= VI) {
-			if (r600_resource(indirect->buffer)->TC_L2_dirty) {
+			if (si_resource(indirect->buffer)->TC_L2_dirty) {
 				sctx->flags |= SI_CONTEXT_WRITEBACK_GLOBAL_L2;
-				r600_resource(indirect->buffer)->TC_L2_dirty = false;
+				si_resource(indirect->buffer)->TC_L2_dirty = false;
 			}
 
 			if (indirect->indirect_draw_count &&
-			    r600_resource(indirect->indirect_draw_count)->TC_L2_dirty) {
+			    si_resource(indirect->indirect_draw_count)->TC_L2_dirty) {
 				sctx->flags |= SI_CONTEXT_WRITEBACK_GLOBAL_L2;
-				r600_resource(indirect->indirect_draw_count)->TC_L2_dirty = false;
+				si_resource(indirect->indirect_draw_count)->TC_L2_dirty = false;
 			}
 		}
 	}
@@ -1581,16 +1592,11 @@ si_draw_rectangle(struct blitter_context *blitter,
 void si_trace_emit(struct si_context *sctx)
 {
 	struct radeon_cmdbuf *cs = sctx->gfx_cs;
-	uint64_t va = sctx->current_saved_cs->trace_buf->gpu_address;
 	uint32_t trace_id = ++sctx->current_saved_cs->trace_id;
 
-	radeon_emit(cs, PKT3(PKT3_WRITE_DATA, 3, 0));
-	radeon_emit(cs, S_370_DST_SEL(V_370_MEMORY_SYNC) |
-		    S_370_WR_CONFIRM(1) |
-		    S_370_ENGINE_SEL(V_370_ME));
-	radeon_emit(cs, va);
-	radeon_emit(cs, va >> 32);
-	radeon_emit(cs, trace_id);
+	si_cp_write_data(sctx, sctx->current_saved_cs->trace_buf,
+			 0, 4, V_370_MEM, V_370_ME, &trace_id);
+
 	radeon_emit(cs, PKT3(PKT3_NOP, 0, 0));
 	radeon_emit(cs, AC_ENCODE_TRACE_POINT(trace_id));
 

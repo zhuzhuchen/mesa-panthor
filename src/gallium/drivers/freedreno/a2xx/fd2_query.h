@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016 Christian Gmeiner <christian.gmeiner@gmail.com>
+ * Copyright (C) 2019 Jonathan Marek <jonathan@marek.ca>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -21,14 +21,15 @@
  * SOFTWARE.
  *
  * Authors:
- *    Christian Gmeiner <christian.gmeiner@gmail.com>
+ *    Jonathan Marek <jonathan@marek.ca>
+ *    Rob Clark <robclark@freedesktop.org>
  */
 
-#ifndef __KMSRO_DRM_PUBLIC_H__
-#define __KMSRO_DRM_PUBLIC_H__
+#ifndef FD2_QUERY_H_
+#define FD2_QUERY_H_
 
-struct pipe_screen;
+#include "pipe/p_context.h"
 
-struct pipe_screen *kmsro_drm_screen_create(int fd);
+void fd2_query_context_init(struct pipe_context *pctx);
 
-#endif /* __KMSRO_DRM_PUBLIC_H__ */
+#endif /* FD2_QUERY_H_ */
