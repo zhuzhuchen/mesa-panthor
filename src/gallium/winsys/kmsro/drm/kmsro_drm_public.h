@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017 Lima Project
+ * Copyright (C) 2016 Christian Gmeiner <christian.gmeiner@gmail.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -19,38 +19,16 @@
  * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
+ *
+ * Authors:
+ *    Christian Gmeiner <christian.gmeiner@gmail.com>
  */
 
-#include <fcntl.h>
-#include <unistd.h>
+#ifndef __KMSRO_DRM_PUBLIC_H__
+#define __KMSRO_DRM_PUBLIC_H__
 
-#include "meson_drm_public.h"
-#include "panfrost/drm/panfrost_drm_public.h"
-#include "xf86drm.h"
+struct pipe_screen;
 
-#include "pipe/p_screen.h"
-#include "renderonly/renderonly.h"
+struct pipe_screen *kmsro_drm_screen_create(int fd);
 
-struct pipe_screen *meson_screen_create(int fd)
-{
-   bool is_drm = true;
-   struct renderonly ro = {
-      .create_for_resource = renderonly_create_kms_dumb_buffer_for_resource,
-      .kms_fd = fd,
-      .gpu_fd = drmOpenWithType("panfrost", NULL, DRM_NODE_RENDER),
-   };
-
-   if (ro.gpu_fd < 0) {
-      ro.gpu_fd = open("/dev/mali0", O_RDWR | O_CLOEXEC);
-      is_drm = false;
-   }
-
-   if (ro.gpu_fd < 0)
-      return NULL;
-
-   struct pipe_screen *screen = panfrost_drm_screen_create_renderonly(&ro, is_drm);
-   if (!screen)
-      close(ro.gpu_fd);
-
-   return screen;
-}
+#endif /* __KMSRO_DRM_PUBLIC_H__ */

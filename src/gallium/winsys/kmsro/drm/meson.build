@@ -18,18 +18,29 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-librockchipwinsys = static_library(
-  'rockchipwinsys',
-  files('rockchip_drm_winsys.c'),
+kmsro_c_args = []
+if with_gallium_etnaviv
+  kmsro_c_args += '-DGALLIUM_ETNAVIV'
+endif
+if with_gallium_panfrost
+  kmsro_c_args += '-DGALLIUM_PANFROST'
+endif
+if with_gallium_vc4
+  kmsro_c_args += '-DGALLIUM_VC4'
+endif
+
+libkmsrowinsys = static_library(
+  'kmsrowinsys',
+  files('kmsro_drm_winsys.c'),
   include_directories : [
     inc_src, inc_include,
     inc_gallium, inc_gallium_aux, inc_gallium_winsys,
   ],
-  c_args : [c_vis_args],
+  c_args : [c_vis_args, kmsro_c_args],
   dependencies: dep_libdrm,
 )
 
-driver_rockchip = declare_dependency(
-  compile_args : '-DGALLIUM_ROCKCHIP',
-  link_with : librockchipwinsys,
+driver_kmsro = declare_dependency(
+  compile_args : '-DGALLIUM_KMSRO',
+  link_with : libkmsrowinsys,
 )

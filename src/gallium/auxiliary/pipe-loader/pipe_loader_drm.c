@@ -108,12 +108,7 @@ static const struct drm_driver_descriptor driver_descriptors[] = {
     },
     {
        .driver_name = "pl111",
-        .create_screen = pipe_pl111_create_screen,
-        .configuration = pipe_default_configuration_query,
-    },
-    {
-       .driver_name = "rockchip",
-        .create_screen = pipe_rockchip_create_screen,
+        .create_screen = pipe_kmsro_create_screen,
         .configuration = pipe_default_configuration_query,
     },
     {
@@ -137,6 +132,16 @@ static const struct drm_driver_descriptor driver_descriptors[] = {
         .configuration = pipe_default_configuration_query,
     },
     {
+        .driver_name = "rockchip",
+        .create_screen = pipe_kmsro_create_screen,
+        .configuration = pipe_default_configuration_query,
+    },
+    {
+        .driver_name = "meson",
+        .create_screen = pipe_kmsro_create_screen,
+        .configuration = pipe_default_configuration_query,
+    },
+    {
         .driver_name = "etnaviv",
         .create_screen = pipe_etna_create_screen,
         .configuration = pipe_default_configuration_query,
@@ -149,11 +154,6 @@ static const struct drm_driver_descriptor driver_descriptors[] = {
     {
         .driver_name = "tegra",
         .create_screen = pipe_tegra_create_screen,
-        .configuration = pipe_default_configuration_query,
-    },
-    {
-        .driver_name = "meson",
-        .create_screen = pipe_meson_create_screen,
         .configuration = pipe_default_configuration_query,
     },
 };

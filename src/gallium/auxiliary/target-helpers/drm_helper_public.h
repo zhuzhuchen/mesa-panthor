@@ -43,16 +43,10 @@ struct pipe_screen *
 pipe_vc4_create_screen(int fd, const struct pipe_screen_config *config);
 
 struct pipe_screen *
-pipe_rockchip_create_screen(int fd, const struct pipe_screen_config *config);
-
-struct pipe_screen *
-pipe_meson_create_screen(int fd, const struct pipe_screen_config *config);
-
-struct pipe_screen *
 pipe_panfrost_create_screen(int fd, const struct pipe_screen_config *config);
 
 struct pipe_screen *
-pipe_pl111_create_screen(int fd, const struct pipe_screen_config *config);
+pipe_kmsro_create_screen(int fd, const struct pipe_screen_config *config);
 
 struct pipe_screen *
 pipe_etna_create_screen(int fd, const struct pipe_screen_config *config);

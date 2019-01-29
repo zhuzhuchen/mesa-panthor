@@ -29,8 +29,16 @@ AM_CFLAGS = \
 	$(GALLIUM_WINSYS_CFLAGS) \
 	$(LIBDRM_CFLAGS)
 
-noinst_LTLIBRARIES = libpl111drm.la
+if HAVE_GALLIUM_ETNAVIV
+AM_CFLAGS += -DGALLIUM_ETNAVIV
+endif
 
-libpl111drm_la_SOURCES = $(C_SOURCES)
+if HAVE_GALLIUM_VC4
+AM_CFLAGS += -DGALLIUM_VC4
+endif
+
+noinst_LTLIBRARIES = libkmsrodrm.la
+
+libkmsrodrm_la_SOURCES = $(C_SOURCES)
 
 EXTRA_DIST = meson.build
