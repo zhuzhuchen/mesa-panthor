@@ -199,6 +199,43 @@ panfrost_set_fragment_target_cbuf(
 }
 
 static void
+panfrost_set_fragment_target_zsbuf(
+                struct panfrost_context *ctx,
+                struct pipe_surface *surf)
+{
+        struct panfrost_resource *rsrc = pan_resource(surf->texture);
+
+        if (rsrc->bo->layout == PAN_AFBC) {
+                /* TODO: AFBC on SFBD */
+                assert(!require_sfbd);
+
+                ctx->fragment_mfbd.unk3 |= MALI_MFBD_EXTRA;
+
+                ctx->fragment_extra.ds_afbc.depth_stencil_afbc_metadata = rsrc->bo->afbc_slab.gpu;
+                ctx->fragment_extra.ds_afbc.depth_stencil_afbc_stride = 0;
+
+                ctx->fragment_extra.ds_afbc.depth_stencil = rsrc->bo->afbc_slab.gpu + rsrc->bo->afbc_metadata_size;
+
+                ctx->fragment_extra.ds_afbc.zero1 = 0x10009;
+                ctx->fragment_extra.ds_afbc.padding = 0x1000;
+
+                /* There's a general 0x400 in all versions of this field scene.
+                 * ORed with 0x5 for depth/stencil. ORed 0x10 for AFBC encoded
+                 * depth stencil. It's unclear where the remaining 0x20 bit is
+                 * from */
+
+                ctx->fragment_extra.unk = 0x400 | 0x20 | 0x10 | 0x5;
+
+                ctx->fragment_mfbd.unk3 |= 0x400;
+        } else if (rsrc->bo->layout == PAN_LINEAR) {
+                /* TODO */
+        } else {
+                fprintf(stderr, "Invalid render layout (zsbuf)");
+                assert(0);
+        }
+}
+
+static void
 panfrost_set_fragment_target(struct panfrost_context *ctx)
 {
         for (int cb = 0; cb < ctx->pipe_framebuffer.nr_cbufs; ++cb) {
@@ -206,39 +243,17 @@ panfrost_set_fragment_target(struct panfrost_context *ctx)
                 panfrost_set_fragment_target_cbuf(ctx, surf, cb);
         }
 
-        /* Enable depth/stencil AFBC for the framebuffer (not the render target) */
         if (ctx->pipe_framebuffer.zsbuf) {
-                struct panfrost_resource *rsrc = (struct panfrost_resource *) ctx->pipe_framebuffer.zsbuf->texture;
+                struct pipe_surface *surf = ctx->pipe_framebuffer.zsbuf;
+                panfrost_set_fragment_target_zsbuf(ctx, surf);
 
-                if (rsrc->bo->layout == PAN_AFBC) {
-                        if (require_sfbd) {
-                                fprintf(stderr, "Depth AFBC not supported on SFBD\n");
-                                assert(0);
-                        }
+       }
 
-                        ctx->fragment_mfbd.unk3 |= MALI_MFBD_EXTRA;
-
-                        ctx->fragment_extra.ds_afbc.depth_stencil_afbc_metadata = rsrc->bo->afbc_slab.gpu;
-                        ctx->fragment_extra.ds_afbc.depth_stencil_afbc_stride = 0;
-
-                        ctx->fragment_extra.ds_afbc.depth_stencil = rsrc->bo->afbc_slab.gpu + rsrc->bo->afbc_metadata_size;
-
-                        ctx->fragment_extra.ds_afbc.zero1 = 0x10009;
-                        ctx->fragment_extra.ds_afbc.padding = 0x1000;
-
-                        ctx->fragment_extra.unk = 0x435; /* General 0x400 in all unks. 0x5 for depth/stencil. 0x10 for AFBC encoded depth stencil. Unclear where the 0x20 is from */
-
-                        ctx->fragment_mfbd.unk3 |= 0x400;
-                }
-        }
-
-        /* For the special case of a depth-only FBO, we need to attach a dummy render target */
+        /* There must always be at least one render-target, so attach a dummy
+         * if necessary */
 
         if (ctx->pipe_framebuffer.nr_cbufs == 0) {
-                if (require_sfbd) {
-                        fprintf(stderr, "Depth-only FBO not supported on SFBD\n");
-                        assert(0);
-                }
+                assert(!require_sfbd);
 
                 struct mali_rt_format null_rt = {
                         .unk1 = 0x4000000,
@@ -246,8 +261,6 @@ panfrost_set_fragment_target(struct panfrost_context *ctx)
                 };
 
                 ctx->fragment_rts[0].format = null_rt;
-                ctx->fragment_rts[0].framebuffer = 0;
-                ctx->fragment_rts[0].framebuffer_stride = 0;
         }
 }
 
