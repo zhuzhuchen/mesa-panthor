@@ -35,7 +35,7 @@ pan_CreateFence(VkDevice _device,
                 const VkAllocationCallbacks *pAllocator,
                 VkFence *pFence)
 {
-   assert(0);
+   pan_finishme("unimplemented!");
    return VK_SUCCESS;
 }
 
@@ -44,7 +44,7 @@ pan_DestroyFence(VkDevice _device,
                  VkFence _fence,
                  const VkAllocationCallbacks *pAllocator)
 {
-   assert(0);
+   pan_finishme("unimplemented!");
 }
 
 VkResult
@@ -54,20 +54,20 @@ pan_WaitForFences(VkDevice _device,
                   VkBool32 waitAll,
                   uint64_t timeout)
 {
-   assert(0);
+   pan_finishme("unimplemented!");
    return VK_SUCCESS;
 }
 
 VkResult
 pan_ResetFences(VkDevice _device, uint32_t fenceCount, const VkFence *pFences)
 {
-   assert(0);
+   pan_finishme("unimplemented!");
    return VK_SUCCESS;
 }
 
 VkResult
 pan_GetFenceStatus(VkDevice _device, VkFence _fence)
 {
-   assert(0);
+   pan_finishme("unimplemented!");
    return VK_SUCCESS;
 }
