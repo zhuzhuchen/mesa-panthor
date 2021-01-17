@@ -21,8 +21,8 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef TU_DESCRIPTOR_SET_H
-#define TU_DESCRIPTOR_SET_H
+#ifndef PAN_DESCRIPTOR_SET_H
+#define PAN_DESCRIPTOR_SET_H
 
 #include <vulkan/vulkan.h>
 
@@ -99,4 +99,4 @@ pan_immutable_samplers(const struct pan_descriptor_set_layout *set,
    return (const uint32_t *) ((const char *) set +
                               binding->immutable_samplers_offset);
 }
-#endif /* TU_DESCRIPTOR_SET_H */
+#endif /* PAN_DESCRIPTOR_SET_H */

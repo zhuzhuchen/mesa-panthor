@@ -114,7 +114,7 @@ pan_image_from_gralloc(VkDevice device_h,
                       VkImage *out_image_h)
 
 {
-   TU_FROM_HANDLE(pan_device, device, device_h);
+   PAN_FROM_HANDLE(pan_device, device, device_h);
    VkImage image_h = VK_NULL_HANDLE;
    struct pan_image *image = NULL;
    struct pan_bo *bo = NULL;
@@ -210,7 +210,7 @@ pan_GetSwapchainGrallocUsageANDROID(VkDevice device_h,
                                    VkImageUsageFlags imageUsage,
                                    int *grallocUsage)
 {
-   TU_FROM_HANDLE(pan_device, device, device_h);
+   PAN_FROM_HANDLE(pan_device, device, device_h);
    struct pan_physical_device *phys_dev = device->physical_device;
    VkPhysicalDevice phys_dev_h = pan_physical_device_to_handle(phys_dev);
    VkResult result;
@@ -336,7 +336,7 @@ pan_QueueSignalReleaseImageANDROID(VkQueue _queue,
                                   VkImage image,
                                   int *pNativeFenceFd)
 {
-   TU_FROM_HANDLE(pan_queue, queue, _queue);
+   PAN_FROM_HANDLE(pan_queue, queue, _queue);
    VkResult result = VK_SUCCESS;
 
    if (waitSemaphoreCount == 0) {
