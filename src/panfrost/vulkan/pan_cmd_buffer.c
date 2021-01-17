@@ -28,6 +28,7 @@
 #include "pan_private.h"
 
 #include "vk_format.h"
+#include "vk_util.h"
 
 VkResult
 pan_AllocateCommandBuffers(VkDevice _device,
@@ -207,7 +208,25 @@ pan_CreateCommandPool(VkDevice _device,
                       const VkAllocationCallbacks *pAllocator,
                       VkCommandPool *pCmdPool)
 {
-   pan_finishme("unimplemented!");
+   PAN_FROM_HANDLE(pan_device, device, _device);
+   struct pan_cmd_pool *pool;
+
+   pool = vk_object_alloc(&device->vk, pAllocator, sizeof(*pool),
+                          VK_OBJECT_TYPE_COMMAND_POOL);
+   if (pool == NULL)
+      return vk_error(device->instance, VK_ERROR_OUT_OF_HOST_MEMORY);
+
+   pool->alloc = pAllocator ? (*pAllocator) : device->vk.alloc;
+
+   list_inithead(&pool->cmd_buffers);
+   list_inithead(&pool->free_cmd_buffers);
+
+   /* TODO: what kind of up front alloc do we want */
+
+   pool->queue_family_index = pCreateInfo->queueFamilyIndex;
+
+   *pCmdPool = pan_cmd_pool_to_handle(pool);
+
    return VK_SUCCESS;
 }
 
@@ -216,7 +235,15 @@ pan_DestroyCommandPool(VkDevice _device,
                        VkCommandPool commandPool,
                        const VkAllocationCallbacks *pAllocator)
 {
-   pan_finishme("unimplemented!");
+   PAN_FROM_HANDLE(pan_device, device, _device);
+   PAN_FROM_HANDLE(pan_cmd_pool, pool, commandPool);
+
+   if (!pool)
+      return;
+
+   /* TODO: free memory */
+
+   vk_object_free(&device->vk, pAllocator, pool);
 }
 
 VkResult

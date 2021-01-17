@@ -145,12 +145,13 @@ pan_CreateInstance(const VkInstanceCreateInfo *pCreateInfo,
    if (!instance)
       return vk_error(NULL, VK_ERROR_OUT_OF_HOST_MEMORY);
 
-   instance->_loader_data.loaderMagic = ICD_LOADER_MAGIC;
+   vk_object_base_init(NULL, &instance->base, VK_OBJECT_TYPE_INSTANCE);
 
    if (pAllocator)
       instance->alloc = *pAllocator;
    else
       instance->alloc = default_alloc;
+   printf("instance allocator %p\n", instance->alloc.pfnAllocation);
 
    instance->api_version = client_version;
    instance->physical_device_count = -1;
@@ -166,6 +167,7 @@ pan_CreateInstance(const VkInstanceCreateInfo *pCreateInfo,
       int index = pan_get_instance_extension_index(ext_name);
 
       if (index < 0 || !pan_supported_instance_extensions.extensions[index]) {
+         vk_object_base_finish(&instance->base);
          vk_free2(&default_alloc, pAllocator, instance);
          return vk_error(instance, VK_ERROR_EXTENSION_NOT_PRESENT);
       }
@@ -254,7 +256,7 @@ pan_physical_device_init(struct pan_physical_device *device,
    if (instance->debug_flags & PAN_DEBUG_STARTUP)
       pan_logi("Found compatible device '%s'.", path);
 
-   device->_loader_data.loaderMagic = ICD_LOADER_MAGIC;
+   vk_object_base_init(NULL, &device->base, VK_OBJECT_TYPE_PHYSICAL_DEVICE);
    device->instance = instance;
    assert(strlen(path) < ARRAY_SIZE(device->path));
    strncpy(device->path, path, ARRAY_SIZE(device->path));
@@ -317,6 +319,7 @@ fail:
    close(fd);
    if (master_fd != -1)
       close(master_fd);
+   vk_object_base_finish(&device->base);
    return result;
 }
 
@@ -893,7 +896,7 @@ pan_queue_init(struct pan_device *device,
               int idx,
               VkDeviceQueueCreateFlags flags)
 {
-   queue->_loader_data.loaderMagic = ICD_LOADER_MAGIC;
+   vk_object_base_init(&device->vk, &queue->base, VK_OBJECT_TYPE_QUEUE);
    queue->device = device;
    queue->queue_family_index = queue_family_index;
    queue->queue_idx = idx;
@@ -926,6 +929,7 @@ pan_CreateDevice(VkPhysicalDevice physicalDevice,
       unsigned num_features =
          sizeof(VkPhysicalDeviceFeatures) / sizeof(VkBool32);
       for (uint32_t i = 0; i < num_features; i++) {
+         vk_free(&device->vk.alloc, device);
          if (enabled_feature[i] && !supported_feature[i])
             return vk_error(physical_device->instance,
                             VK_ERROR_FEATURE_NOT_PRESENT);
@@ -937,21 +941,18 @@ pan_CreateDevice(VkPhysicalDevice physicalDevice,
    if (!device)
       return vk_error(physical_device->instance, VK_ERROR_OUT_OF_HOST_MEMORY);
 
-   device->_loader_data.loaderMagic = ICD_LOADER_MAGIC;
+   vk_device_init(&device->vk, pCreateInfo,
+         &physical_device->instance->alloc, pAllocator);
+
    device->instance = physical_device->instance;
    device->physical_device = physical_device;
-
-   if (pAllocator)
-      device->alloc = *pAllocator;
-   else
-      device->alloc = physical_device->instance->alloc;
 
    for (uint32_t i = 0; i < pCreateInfo->enabledExtensionCount; i++) {
       const char *ext_name = pCreateInfo->ppEnabledExtensionNames[i];
       int index = pan_get_device_extension_index(ext_name);
       if (index < 0 ||
           !physical_device->supported_extensions.extensions[index]) {
-         vk_free(&device->alloc, device);
+         vk_free(&device->vk.alloc, device);
          return vk_error(physical_device->instance,
                          VK_ERROR_EXTENSION_NOT_PRESENT);
       }
@@ -964,7 +965,7 @@ pan_CreateDevice(VkPhysicalDevice physicalDevice,
          &pCreateInfo->pQueueCreateInfos[i];
       uint32_t qfi = queue_create->queueFamilyIndex;
       device->queues[qfi] = vk_alloc(
-         &device->alloc, queue_create->queueCount * sizeof(struct pan_queue),
+         &device->vk.alloc, queue_create->queueCount * sizeof(struct pan_queue),
          8, VK_SYSTEM_ALLOCATION_SCOPE_DEVICE);
       if (!device->queues[qfi]) {
          result = VK_ERROR_OUT_OF_HOST_MEMORY;
@@ -1006,10 +1007,10 @@ fail:
       for (unsigned q = 0; q < device->queue_count[i]; q++)
          pan_queue_finish(&device->queues[i][q]);
       if (device->queue_count[i])
-         vk_free(&device->alloc, device->queues[i]);
+         vk_object_free(&device->vk, NULL, device->queues[i]);
    }
 
-   vk_free(&device->alloc, device);
+   vk_free(&device->vk.alloc, device);
    return result;
 }
 
@@ -1196,8 +1197,8 @@ pan_AllocateMemory(VkDevice _device,
       return VK_SUCCESS;
    }
 
-   mem = vk_alloc2(&device->alloc, pAllocator, sizeof(*mem), 8,
-                   VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
+   mem = vk_object_alloc(&device->vk, pAllocator, sizeof(*mem),
+                   VK_OBJECT_TYPE_DEVICE_MEMORY);
    if (mem == NULL)
       return vk_error(device->instance, VK_ERROR_OUT_OF_HOST_MEMORY);
 
@@ -1229,7 +1230,7 @@ pan_AllocateMemory(VkDevice _device,
    }
 
    if (result != VK_SUCCESS) {
-      vk_free2(&device->alloc, pAllocator, mem);
+      vk_object_free(&device->vk, pAllocator, mem);
       return result;
    }
 
@@ -1506,8 +1507,8 @@ pan_CreateBuffer(VkDevice _device,
 
    assert(pCreateInfo->sType == VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO);
 
-   buffer = vk_alloc2(&device->alloc, pAllocator, sizeof(*buffer), 8,
-                      VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
+   buffer = vk_object_alloc(&device->vk, pAllocator, sizeof(*buffer),
+                      VK_OBJECT_TYPE_DEVICE_MEMORY);
    if (buffer == NULL)
       return vk_error(device->instance, VK_ERROR_OUT_OF_HOST_MEMORY);
 

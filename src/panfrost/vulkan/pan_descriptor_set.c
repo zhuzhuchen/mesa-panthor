@@ -93,8 +93,8 @@ pan_CreateDescriptorSetLayout(VkDevice _device,
    size_t size =
       samplers_offset + immutable_sampler_count * 4 * sizeof(uint32_t);
 
-   set_layout = vk_alloc2(&device->alloc, pAllocator, size, 8,
-                          VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
+   set_layout = vk_object_zalloc(&device->vk, pAllocator, size,
+                          VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT);
    if (!set_layout)
       return vk_error(device->instance, VK_ERROR_OUT_OF_HOST_MEMORY);
 
@@ -107,7 +107,7 @@ pan_CreateDescriptorSetLayout(VkDevice _device,
    VkDescriptorSetLayoutBinding *bindings = create_sorted_bindings(
       pCreateInfo->pBindings, pCreateInfo->bindingCount);
    if (!bindings) {
-      vk_free2(&device->alloc, pAllocator, set_layout);
+      vk_object_free(&device->vk, pAllocator, set_layout);
       return vk_error(device->instance, VK_ERROR_OUT_OF_HOST_MEMORY);
    }
 
@@ -245,8 +245,8 @@ pan_CreatePipelineLayout(VkDevice _device,
    assert(pCreateInfo->sType ==
           VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO);
 
-   layout = vk_alloc2(&device->alloc, pAllocator, sizeof(*layout), 8,
-                      VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
+   layout = vk_object_alloc(&device->vk, pAllocator, sizeof(*layout),
+                            VK_OBJECT_TYPE_PIPELINE_LAYOUT);
    if (layout == NULL)
       return vk_error(device->instance, VK_ERROR_OUT_OF_HOST_MEMORY);
 
@@ -344,12 +344,10 @@ pan_CreateDescriptorPool(VkDevice _device,
       size += sizeof(struct pan_descriptor_pool_entry) * pCreateInfo->maxSets;
    }
 
-   pool = vk_alloc2(&device->alloc, pAllocator, size, 8,
-                    VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
+   pool = vk_object_zalloc(&device->vk, pAllocator, size,
+                    VK_OBJECT_TYPE_DESCRIPTOR_POOL);
    if (!pool)
       return vk_error(device->instance, VK_ERROR_OUT_OF_HOST_MEMORY);
-
-   memset(pool, 0, sizeof(*pool));
 
    if (!(pCreateInfo->flags & VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT)) {
       pool->host_memory_base = (uint8_t*)pool + sizeof(struct pan_descriptor_pool);
@@ -421,7 +419,7 @@ pan_descriptor_set_create(struct pan_device *device,
       set = (struct pan_descriptor_set*)pool->host_memory_ptr;
       pool->host_memory_ptr += mem_size;
    } else {
-      set = vk_alloc2(&device->alloc, NULL, mem_size, 8,
+      set = vk_alloc2(&device->vk.alloc, NULL, mem_size, 8,
                       VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
       assert(set);
       if (!set)
@@ -429,6 +427,7 @@ pan_descriptor_set_create(struct pan_device *device,
    }
 
    memset(set, 0, mem_size);
+   vk_object_base_init(&device->vk, &set->base, VK_OBJECT_TYPE_DESCRIPTOR_SET);
 
    if (layout->dynamic_offset_count) {
       set->dynamic_descriptors = (struct pan_descriptor_range*)((uint8_t*)set + range_offset);
@@ -452,7 +451,7 @@ pan_descriptor_set_create(struct pan_device *device,
 
       assert(pool->host_memory_base || pool->entry_count < pool->max_entry_count);
       if (!pool->host_memory_base && pool->entry_count == pool->max_entry_count) {
-         vk_free2(&device->alloc, NULL, set);
+         vk_object_free(&device->vk, NULL, set);
          return vk_error(device->instance, VK_ERROR_OUT_OF_POOL_MEMORY);
       }
 
@@ -482,7 +481,7 @@ pan_descriptor_set_create(struct pan_device *device,
 
          assert(pool->size - offset >= layout_size);
          if (pool->size - offset < layout_size) {
-            vk_free2(&device->alloc, NULL, set);
+            vk_object_free(&device->vk, NULL, set);
             return vk_error(device->instance, VK_ERROR_OUT_OF_POOL_MEMORY);
          }
 

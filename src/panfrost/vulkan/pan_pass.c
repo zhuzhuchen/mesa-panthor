@@ -47,12 +47,11 @@ pan_CreateRenderPass(VkDevice _device,
    attachments_offset = size;
    size += pCreateInfo->attachmentCount * sizeof(pass->attachments[0]);
 
-   pass = vk_alloc2(&device->alloc, pAllocator, size, 8,
-                    VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
+   pass = vk_object_zalloc(&device->vk, pAllocator, size,
+                    VK_OBJECT_TYPE_RENDER_PASS);
    if (pass == NULL)
       return vk_error(device->instance, VK_ERROR_OUT_OF_HOST_MEMORY);
 
-   memset(pass, 0, size);
    pass->attachment_count = pCreateInfo->attachmentCount;
    pass->subpass_count = pCreateInfo->subpassCount;
    pass->attachments = (void *) pass + attachments_offset;
@@ -93,11 +92,11 @@ pan_CreateRenderPass(VkDevice _device,
 
    if (subpass_attachment_count) {
       pass->subpass_attachments = vk_alloc2(
-         &device->alloc, pAllocator,
+         &device->vk.alloc, pAllocator,
          subpass_attachment_count * sizeof(struct pan_subpass_attachment), 8,
          VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
       if (pass->subpass_attachments == NULL) {
-         vk_free2(&device->alloc, pAllocator, pass);
+         vk_object_free(&device->vk, pAllocator, pass);
          return vk_error(device->instance, VK_ERROR_OUT_OF_HOST_MEMORY);
       }
    } else

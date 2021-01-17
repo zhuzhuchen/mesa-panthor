@@ -63,8 +63,8 @@ pan_pipeline_builder_create_pipeline(struct pan_pipeline_builder *builder,
    struct pan_device *dev = builder->device;
 
    struct pan_pipeline *pipeline =
-      vk_zalloc2(&dev->alloc, builder->alloc, sizeof(*pipeline), 8,
-                 VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
+      vk_object_zalloc(&dev->vk, builder->alloc, sizeof(*pipeline),
+                 VK_OBJECT_TYPE_PIPELINE);
    if (!pipeline)
       return VK_ERROR_OUT_OF_HOST_MEMORY;
 

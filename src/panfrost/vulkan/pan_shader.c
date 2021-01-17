@@ -88,7 +88,7 @@ pan_shader_create(struct pan_device *dev,
    const struct pan_shader_module *module = pan_shader_module_from_handle(stage_info->module);
    struct pan_shader *shader;
 
-   shader = vk_zalloc2(&dev->alloc, alloc, sizeof(*shader), 8,
+   shader = vk_zalloc2(&dev->vk.alloc, alloc, sizeof(*shader), 8,
                        VK_SYSTEM_ALLOCATION_SCOPE_COMMAND);
    if (!shader)
       return NULL;
@@ -100,7 +100,7 @@ pan_shader_create(struct pan_device *dev,
                                       stage, stage_info->pName,
 				      stage_info->pSpecializationInfo);
    if (!nir) {
-      vk_free2(&dev->alloc, alloc, shader);
+      vk_free2(&dev->vk.alloc, alloc, shader);
       return NULL;
    }
 
@@ -151,9 +151,9 @@ pan_CreateShaderModule(VkDevice _device,
    assert(pCreateInfo->flags == 0);
    assert(pCreateInfo->codeSize % 4 == 0);
 
-   module = vk_alloc2(&device->alloc, pAllocator,
-                      sizeof(*module) + pCreateInfo->codeSize, 8,
-                      VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
+   module = vk_object_alloc(&device->vk, pAllocator,
+                      sizeof(*module) + pCreateInfo->codeSize,
+                      VK_OBJECT_TYPE_SHADER_MODULE);
    if (module == NULL)
       return vk_error(device->instance, VK_ERROR_OUT_OF_HOST_MEMORY);
 

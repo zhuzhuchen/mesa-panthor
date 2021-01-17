@@ -49,6 +49,7 @@
 #include "util/macros.h"
 #include "vk_alloc.h"
 #include "vk_debug_report.h"
+#include "vulkan/util/vk_object.h"
 #include "wsi_common.h"
 
 #include "drm-uapi/panfrost_drm.h"
@@ -211,7 +212,7 @@ pan_lookup_entrypoint_checked(
 
 struct pan_physical_device
 {
-   VK_LOADER_DATA _loader_data;
+   struct vk_object_base base;
 
    struct pan_instance *instance;
 
@@ -249,7 +250,7 @@ enum pan_debug_flags
 
 struct pan_instance
 {
-   VK_LOADER_DATA _loader_data;
+   struct vk_object_base base;
 
    VkAllocationCallbacks alloc;
 
@@ -281,6 +282,8 @@ struct cache_entry;
 
 struct pan_pipeline_cache
 {
+   struct vk_object_base base;
+
    struct pan_device *device;
    pthread_mutex_t mutex;
 
@@ -338,6 +341,8 @@ struct pan_meta_state
 
 struct pan_fence
 {
+   struct vk_object_base base;
+
    bool signaled;
    int fd;
 };
@@ -357,7 +362,7 @@ pan_fence_wait_idle(struct pan_fence *fence);
 
 struct pan_queue
 {
-   VK_LOADER_DATA _loader_data;
+   struct vk_object_base base;
    struct pan_device *device;
    uint32_t queue_family_index;
    int queue_idx;
@@ -367,9 +372,7 @@ struct pan_queue
 
 struct pan_device
 {
-   VK_LOADER_DATA _loader_data;
-
-   VkAllocationCallbacks alloc;
+   struct vk_device vk;
 
    struct pan_instance *instance;
 
@@ -475,6 +478,8 @@ struct pan_cs
 
 struct pan_device_memory
 {
+   struct vk_object_base base;
+
    struct pan_bo bo;
    VkDeviceSize size;
 
@@ -495,6 +500,8 @@ struct pan_descriptor_range
 
 struct pan_descriptor_set
 {
+   struct vk_object_base base;
+
    const struct pan_descriptor_set_layout *layout;
    uint32_t size;
 
@@ -518,6 +525,8 @@ struct pan_descriptor_pool_entry
 
 struct pan_descriptor_pool
 {
+   struct vk_object_base base;
+
    struct pan_bo bo;
    uint8_t *mapped_ptr;
    uint64_t current_offset;
@@ -561,6 +570,8 @@ struct pan_descriptor_update_template_entry
 
 struct pan_descriptor_update_template
 {
+   struct vk_object_base base;
+
    uint32_t entry_count;
    VkPipelineBindPoint bind_point;
    struct pan_descriptor_update_template_entry entry[0];
@@ -568,6 +579,7 @@ struct pan_descriptor_update_template
 
 struct pan_buffer
 {
+   struct vk_object_base base;
    VkDeviceSize size;
 
    VkBufferUsageFlags usage;
@@ -774,6 +786,7 @@ struct pan_cmd_state
 
 struct pan_cmd_pool
 {
+   struct vk_object_base base;
    VkAllocationCallbacks alloc;
    struct list_head cmd_buffers;
    struct list_head free_cmd_buffers;
@@ -820,8 +833,7 @@ pan_bo_list_merge(struct pan_bo_list *list, const struct pan_bo_list *other);
 
 struct pan_cmd_buffer
 {
-   VK_LOADER_DATA _loader_data;
-
+   struct vk_object_base base;
    struct pan_device *device;
 
    struct pan_cmd_pool *pool;
@@ -879,6 +891,7 @@ pan_unaligned_dispatch(struct pan_cmd_buffer *cmd_buffer,
 
 struct pan_event
 {
+   struct vk_object_base base;
    uint64_t *map;
 };
 
@@ -916,6 +929,7 @@ mesa_to_vk_shader_stage(gl_shader_stage mesa_stage)
 
 struct pan_shader_module
 {
+   struct vk_object_base base;
    unsigned char sha1[20];
 
    uint32_t code_size;
@@ -958,6 +972,7 @@ pan_shader_compile(struct pan_device *dev,
 
 struct pan_pipeline
 {
+   struct vk_object_base base;
    struct pan_cs cs;
 
    struct pan_dynamic_state dynamic_state;
@@ -1061,6 +1076,7 @@ struct panvk_image_level
 
 struct panvk_image
 {
+   struct vk_object_base base;
    VkImageType type;
    /* The original VkFormat provided by the client.  This may not match any
     * of the actual surface formats.
@@ -1119,6 +1135,7 @@ pan_get_levelCount(const struct panvk_image *image,
 
 struct panvk_image_view
 {
+   struct vk_object_base base;
    struct panvk_image *image; /**< VkImageViewCreateInfo::image */
 
    VkImageViewType type;
@@ -1140,6 +1157,7 @@ struct panvk_image_view
 
 struct pan_sampler
 {
+   struct vk_object_base base;
 };
 
 struct panvk_image_create_info
@@ -1169,6 +1187,7 @@ panvk_image_view_init(struct panvk_image_view *view,
 
 struct pan_buffer_view
 {
+   struct vk_object_base base;
    VkFormat vk_format;
    uint64_t range; /**< VkBufferViewCreateInfo::range */
    uint32_t state[4];
@@ -1217,6 +1236,7 @@ struct pan_attachment_info
 
 struct pan_framebuffer
 {
+   struct vk_object_base base;
    uint32_t width;
    uint32_t height;
    uint32_t layers;
@@ -1273,6 +1293,7 @@ struct pan_render_pass_attachment
 
 struct pan_render_pass
 {
+   struct vk_object_base base;
    uint32_t attachment_count;
    uint32_t subpass_count;
    struct pan_subpass_attachment *subpass_attachments;
@@ -1288,6 +1309,7 @@ pan_device_finish_meta(struct pan_device *device);
 
 struct pan_query_pool
 {
+   struct vk_object_base base;
    uint32_t stride;
    uint32_t availability_offset;
    uint64_t size;
@@ -1298,6 +1320,7 @@ struct pan_query_pool
 
 struct pan_semaphore
 {
+   struct vk_object_base base;
    uint32_t syncobj;
    uint32_t temp_syncobj;
 };

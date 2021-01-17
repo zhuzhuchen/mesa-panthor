@@ -50,6 +50,8 @@ struct pan_descriptor_set_binding_layout
 
 struct pan_descriptor_set_layout
 {
+   struct vk_object_base base;
+
    /* The create flags for this descriptor set layout */
    VkDescriptorSetLayoutCreateFlags flags;
 
@@ -78,6 +80,8 @@ struct pan_descriptor_set_layout
 
 struct pan_pipeline_layout
 {
+   struct vk_object_base base;
+
    struct
    {
       struct pan_descriptor_set_layout *layout;
