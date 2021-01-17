@@ -195,7 +195,7 @@ pan_DestroyInstance(VkInstance _instance,
                     const VkAllocationCallbacks *pAllocator)
 {
    glsl_type_singleton_decref();
-   assert(0);
+   pan_finishme("unimplemented!");
 }
 
 static unsigned
@@ -387,7 +387,7 @@ pan_EnumeratePhysicalDeviceGroups(VkInstance _instance,
                                   uint32_t *pPhysicalDeviceGroupCount,
                                   VkPhysicalDeviceGroupProperties *pPhysicalDeviceGroupProperties)
 {
-   assert(0);
+   pan_finishme("unimplemented!");
    return VK_SUCCESS;
 }
 
@@ -1016,14 +1016,14 @@ fail:
 void
 pan_DestroyDevice(VkDevice _device, const VkAllocationCallbacks *pAllocator)
 {
-   assert(0);
+   pan_finishme("unimplemented!");
 }
 
 VkResult
 pan_EnumerateInstanceLayerProperties(uint32_t *pPropertyCount,
                                      VkLayerProperties *pProperties)
 {
-   assert(0);
+   pan_finishme("unimplemented!");
    return VK_SUCCESS;
 }
 
@@ -1032,7 +1032,7 @@ pan_EnumerateDeviceLayerProperties(VkPhysicalDevice physicalDevice,
                                    uint32_t *pPropertyCount,
                                    VkLayerProperties *pProperties)
 {
-   assert(0);
+   pan_finishme("unimplemented!");
    return VK_SUCCESS;
 }
 
@@ -1082,21 +1082,21 @@ pan_QueueSubmit(VkQueue _queue,
                 const VkSubmitInfo *pSubmits,
                 VkFence _fence)
 {
-   assert(0);
+   pan_finishme("unimplemented!");
    return VK_SUCCESS;
 }
 
 VkResult
 pan_QueueWaitIdle(VkQueue _queue)
 {
-   assert(0);
+   pan_finishme("unimplemented!");
    return VK_SUCCESS;
 }
 
 VkResult
 pan_DeviceWaitIdle(VkDevice _device)
 {
-   assert(0);
+   pan_finishme("unimplemented!");
    return VK_SUCCESS;
 }
 
@@ -1249,7 +1249,7 @@ pan_FreeMemory(VkDevice _device,
                VkDeviceMemory _mem,
                const VkAllocationCallbacks *pAllocator)
 {
-   assert(0);
+   pan_finishme("unimplemented!");
 }
 
 VkResult
@@ -1290,7 +1290,7 @@ pan_MapMemory(VkDevice _device,
 void
 pan_UnmapMemory(VkDevice _device, VkDeviceMemory _memory)
 {
-   assert(0);
+   pan_finishme("unimplemented!");
 }
 
 VkResult
@@ -1298,7 +1298,7 @@ pan_FlushMappedMemoryRanges(VkDevice _device,
                             uint32_t memoryRangeCount,
                             const VkMappedMemoryRange *pMemoryRanges)
 {
-   assert(0);
+   pan_finishme("unimplemented!");
    return VK_SUCCESS;
 }
 
@@ -1307,7 +1307,7 @@ pan_InvalidateMappedMemoryRanges(VkDevice _device,
                                  uint32_t memoryRangeCount,
                                  const VkMappedMemoryRange *pMemoryRanges)
 {
-   assert(0);
+   pan_finishme("unimplemented!");
    return VK_SUCCESS;
 }
 
@@ -1328,7 +1328,7 @@ pan_GetBufferMemoryRequirements2(VkDevice device,
                                  const VkBufferMemoryRequirementsInfo2 *pInfo,
                                  VkMemoryRequirements2 *pMemoryRequirements)
 {
-   assert(0);
+   pan_finishme("unimplemented!");
 }
 
 void
@@ -1336,7 +1336,7 @@ pan_GetImageMemoryRequirements(VkDevice _device,
                                VkImage _image,
                                VkMemoryRequirements *pMemoryRequirements)
 {
-   assert(0);
+   pan_finishme("unimplemented!");
 }
 
 void
@@ -1344,7 +1344,7 @@ pan_GetImageMemoryRequirements2(VkDevice device,
                                const VkImageMemoryRequirementsInfo2 *pInfo,
                                VkMemoryRequirements2 *pMemoryRequirements)
 {
-   assert(0);
+   pan_finishme("unimplemented!");
 }
 
 void
@@ -1352,7 +1352,7 @@ pan_GetImageSparseMemoryRequirements(VkDevice device, VkImage image,
                                      uint32_t *pSparseMemoryRequirementCount,
                                      VkSparseImageMemoryRequirements *pSparseMemoryRequirements)
 {
-   assert(0);
+   pan_finishme("unimplemented!");
 }
 
 void
@@ -1361,7 +1361,7 @@ pan_GetImageSparseMemoryRequirements2(VkDevice device,
                                       uint32_t *pSparseMemoryRequirementCount,
                                       VkSparseImageMemoryRequirements2 *pSparseMemoryRequirements)
 {
-   assert(0);
+   pan_finishme("unimplemented!");
 }
 
 void
@@ -1369,7 +1369,7 @@ pan_GetDeviceMemoryCommitment(VkDevice device,
                               VkDeviceMemory memory,
                               VkDeviceSize *pCommittedMemoryInBytes)
 {
-   assert(0);
+   pan_finishme("unimplemented!");
 }
 
 VkResult
@@ -1412,7 +1412,7 @@ pan_BindImageMemory2(VkDevice device,
                      uint32_t bindInfoCount,
                      const VkBindImageMemoryInfo *pBindInfos)
 {
-   assert(0);
+   pan_finishme("unimplemented!");
    return VK_SUCCESS;
 }
 
@@ -1422,7 +1422,7 @@ pan_BindImageMemory(VkDevice device,
                     VkDeviceMemory memory,
                     VkDeviceSize memoryOffset)
 {
-   assert(0);
+   pan_finishme("unimplemented!");
    return VK_SUCCESS;
 }
 
@@ -1432,7 +1432,7 @@ pan_QueueBindSparse(VkQueue _queue,
                     const VkBindSparseInfo *pBindInfo,
                     VkFence _fence)
 {
-   assert(0);
+   pan_finishme("unimplemented!");
    return VK_SUCCESS;
 }
 
@@ -1444,7 +1444,7 @@ pan_CreateSemaphore(VkDevice _device,
                     const VkAllocationCallbacks *pAllocator,
                     VkSemaphore *pSemaphore)
 {
-   assert(0);
+   pan_finishme("unimplemented!");
    return VK_SUCCESS;
 }
 
@@ -1453,7 +1453,7 @@ pan_DestroySemaphore(VkDevice _device,
                      VkSemaphore _semaphore,
                      const VkAllocationCallbacks *pAllocator)
 {
-   assert(0);
+   pan_finishme("unimplemented!");
 }
 
 VkResult
@@ -1462,7 +1462,7 @@ pan_CreateEvent(VkDevice _device,
                 const VkAllocationCallbacks *pAllocator,
                 VkEvent *pEvent)
 {
-   assert(0);
+   pan_finishme("unimplemented!");
    return VK_SUCCESS;
 }
 
@@ -1471,27 +1471,27 @@ pan_DestroyEvent(VkDevice _device,
                  VkEvent _event,
                  const VkAllocationCallbacks *pAllocator)
 {
-   assert(0);
+   pan_finishme("unimplemented!");
 }
 
 VkResult
 pan_GetEventStatus(VkDevice _device, VkEvent _event)
 {
-   assert(0);
+   pan_finishme("unimplemented!");
    return VK_EVENT_RESET;
 }
 
 VkResult
 pan_SetEvent(VkDevice _device, VkEvent _event)
 {
-   assert(0);
+   pan_finishme("unimplemented!");
    return VK_SUCCESS;
 }
 
 VkResult
 pan_ResetEvent(VkDevice _device, VkEvent _event)
 {
-   assert(0);
+   pan_finishme("unimplemented!");
    return VK_SUCCESS;
 }
 
@@ -1525,7 +1525,7 @@ pan_DestroyBuffer(VkDevice _device,
                   VkBuffer _buffer,
                   const VkAllocationCallbacks *pAllocator)
 {
-   assert(0);
+   pan_finishme("unimplemented!");
 }
 
 VkResult
@@ -1534,7 +1534,7 @@ pan_CreateFramebuffer(VkDevice _device,
                       const VkAllocationCallbacks *pAllocator,
                       VkFramebuffer *pFramebuffer)
 {
-   assert(0);
+   pan_finishme("unimplemented!");
    return VK_SUCCESS;
 }
 
@@ -1543,7 +1543,7 @@ pan_DestroyFramebuffer(VkDevice _device,
                        VkFramebuffer _fb,
                        const VkAllocationCallbacks *pAllocator)
 {
-   assert(0);
+   pan_finishme("unimplemented!");
 }
 
 VkResult
@@ -1552,7 +1552,7 @@ pan_CreateSampler(VkDevice _device,
                   const VkAllocationCallbacks *pAllocator,
                   VkSampler *pSampler)
 {
-   assert(0);
+   pan_finishme("unimplemented!");
    return VK_SUCCESS;
 }
 
@@ -1561,7 +1561,7 @@ pan_DestroySampler(VkDevice _device,
                    VkSampler _sampler,
                    const VkAllocationCallbacks *pAllocator)
 {
-   assert(0);
+   pan_finishme("unimplemented!");
 }
 
 /* vk_icd.h does not declare this function, so we declare it here to
@@ -1614,7 +1614,7 @@ pan_GetMemoryFdKHR(VkDevice _device,
                    const VkMemoryGetFdInfoKHR *pGetFdInfo,
                    int *pFd)
 {
-   assert(0);
+   pan_finishme("unimplemented!");
    return VK_SUCCESS;
 }
 
@@ -1624,7 +1624,7 @@ pan_GetMemoryFdPropertiesKHR(VkDevice _device,
                              int fd,
                              VkMemoryFdPropertiesKHR *pMemoryFdProperties)
 {
-   assert(0);
+   pan_finishme("unimplemented!");
    return VK_SUCCESS;
 }
 
@@ -1633,7 +1633,7 @@ pan_GetPhysicalDeviceExternalSemaphoreProperties(VkPhysicalDevice physicalDevice
                                                  const VkPhysicalDeviceExternalSemaphoreInfo *pExternalSemaphoreInfo,
                                                  VkExternalSemaphoreProperties *pExternalSemaphoreProperties)
 {
-   assert(0);
+   pan_finishme("unimplemented!");
 }
 
 void
@@ -1641,7 +1641,7 @@ pan_GetPhysicalDeviceExternalFenceProperties(VkPhysicalDevice physicalDevice,
                                              const VkPhysicalDeviceExternalFenceInfo *pExternalFenceInfo,
                                              VkExternalFenceProperties *pExternalFenceProperties)
 {
-   assert(0);
+   pan_finishme("unimplemented!");
 }
 
 VkResult
@@ -1650,7 +1650,7 @@ pan_CreateDebugReportCallbackEXT(VkInstance _instance,
                                  const VkAllocationCallbacks *pAllocator,
                                  VkDebugReportCallbackEXT *pCallback)
 {
-   assert(0);
+   pan_finishme("unimplemented!");
    return VK_SUCCESS;
 }
 
@@ -1659,7 +1659,7 @@ pan_DestroyDebugReportCallbackEXT(VkInstance _instance,
                                   VkDebugReportCallbackEXT _callback,
                                   const VkAllocationCallbacks *pAllocator)
 {
-   assert(0);
+   pan_finishme("unimplemented!");
 }
 
 void
@@ -1672,7 +1672,7 @@ pan_DebugReportMessageEXT(VkInstance _instance,
                           const char *pLayerPrefix,
                           const char *pMessage)
 {
-   assert(0);
+   pan_finishme("unimplemented!");
 }
 
 void
@@ -1682,7 +1682,7 @@ pan_GetDeviceGroupPeerMemoryFeatures(VkDevice device,
                                      uint32_t remoteDeviceIndex,
                                      VkPeerMemoryFeatureFlags *pPeerMemoryFeatures)
 {
-   assert(0);
+   pan_finishme("unimplemented!");
 }
 
 uint32_t

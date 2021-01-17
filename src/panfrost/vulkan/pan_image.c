@@ -38,7 +38,7 @@ pan_CreateImage(VkDevice device,
                 const VkAllocationCallbacks *pAllocator,
                 VkImage *pImage)
 {
-   assert(0);
+   pan_finishme("unimplemented!");
    return VK_SUCCESS;
 }
 
@@ -47,7 +47,7 @@ pan_DestroyImage(VkDevice _device,
                  VkImage _image,
                  const VkAllocationCallbacks *pAllocator)
 {
-   assert(0);
+   pan_finishme("unimplemented!");
 }
 
 void
@@ -56,7 +56,7 @@ pan_GetImageSubresourceLayout(VkDevice _device,
                               const VkImageSubresource *pSubresource,
                               VkSubresourceLayout *pLayout)
 {
-   assert(0);
+   pan_finishme("unimplemented!");
 }
 
 VkResult
@@ -65,7 +65,7 @@ pan_CreateImageView(VkDevice _device,
                     const VkAllocationCallbacks *pAllocator,
                     VkImageView *pView)
 {
-   assert(0);
+   pan_finishme("unimplemented!");
    return VK_SUCCESS;
 }
 
@@ -74,7 +74,7 @@ pan_DestroyImageView(VkDevice _device,
                      VkImageView _iview,
                      const VkAllocationCallbacks *pAllocator)
 {
-   assert(0);
+   pan_finishme("unimplemented!");
 }
 
 VkResult
@@ -83,7 +83,7 @@ pan_CreateBufferView(VkDevice _device,
                      const VkAllocationCallbacks *pAllocator,
                      VkBufferView *pView)
 {
-   assert(0);
+   pan_finishme("unimplemented!");
    return VK_SUCCESS;
 }
 
@@ -92,5 +92,5 @@ pan_DestroyBufferView(VkDevice _device,
                       VkBufferView bufferView,
                       const VkAllocationCallbacks *pAllocator)
 {
-   assert(0);
+   pan_finishme("unimplemented!");
 }
