@@ -1333,19 +1333,28 @@ pan_GetBufferMemoryRequirements2(VkDevice device,
 }
 
 void
-pan_GetImageMemoryRequirements(VkDevice _device,
-                               VkImage _image,
-                               VkMemoryRequirements *pMemoryRequirements)
-{
-   pan_finishme("unimplemented!");
-}
-
-void
 pan_GetImageMemoryRequirements2(VkDevice device,
                                const VkImageMemoryRequirementsInfo2 *pInfo,
                                VkMemoryRequirements2 *pMemoryRequirements)
 {
-   pan_finishme("unimplemented!");
+   PAN_FROM_HANDLE(panvk_image, image, pInfo->image);
+
+   pMemoryRequirements->memoryRequirements = (VkMemoryRequirements) {
+      .memoryTypeBits = 1,
+      .alignment = image->alignment,
+      .size = image->size
+   };
+}
+
+void
+pan_GetImageMemoryRequirements(VkDevice device, VkImage image, VkMemoryRequirements *reqs)
+{
+   VkMemoryRequirements2 reqs2 = { .sType = VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2 };
+   pan_GetImageMemoryRequirements2(device, &(VkImageMemoryRequirementsInfo2) {
+      .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_REQUIREMENTS_INFO_2,
+      .image = image
+   }, &reqs2);
+   *reqs = reqs2.memoryRequirements;
 }
 
 void
