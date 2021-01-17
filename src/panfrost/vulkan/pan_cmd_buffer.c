@@ -30,13 +30,117 @@
 #include "vk_format.h"
 #include "vk_util.h"
 
+static VkResult
+pan_create_cmd_buffer(struct pan_device *device,
+                     struct pan_cmd_pool *pool,
+                     VkCommandBufferLevel level,
+                     VkCommandBuffer *pCommandBuffer)
+{
+   struct pan_cmd_buffer *cmd_buffer;
+
+   cmd_buffer = vk_object_zalloc(&device->vk, NULL, sizeof(*cmd_buffer),
+                                 VK_OBJECT_TYPE_COMMAND_BUFFER);
+   if (cmd_buffer == NULL)
+      return vk_error(device->instance, VK_ERROR_OUT_OF_HOST_MEMORY);
+
+   cmd_buffer->device = device;
+   cmd_buffer->pool = pool;
+   cmd_buffer->level = level;
+
+   if (pool) {
+      list_addtail(&cmd_buffer->pool_link, &pool->cmd_buffers);
+      cmd_buffer->queue_family_index = pool->queue_family_index;
+
+   } else {
+      /* Init the pool_link so we can safely call list_del when we destroy
+       * the command buffer
+       */
+      list_inithead(&cmd_buffer->pool_link);
+      cmd_buffer->queue_family_index = PAN_QUEUE_GENERAL;
+   }
+
+   /* TODO: init what? */
+
+   *pCommandBuffer = pan_cmd_buffer_to_handle(cmd_buffer);
+
+   return VK_SUCCESS;
+}
+
+static void
+pan_cmd_buffer_destroy(struct pan_cmd_buffer *cmd_buffer)
+{
+   list_del(&cmd_buffer->pool_link);
+
+   /* TODO: finish? */
+
+   vk_object_free(&cmd_buffer->device->vk, &cmd_buffer->pool->alloc, cmd_buffer);
+}
+
+static VkResult
+pan_reset_cmd_buffer(struct pan_cmd_buffer *cmd_buffer)
+{
+   cmd_buffer->record_result = VK_SUCCESS;
+
+   /* TODO: what is there to reset? */
+
+   for (unsigned i = 0; i < MAX_BIND_POINTS; i++)
+      memset(&cmd_buffer->descriptors[i].sets, 0, sizeof(cmd_buffer->descriptors[i].sets));
+
+   cmd_buffer->status = PAN_CMD_BUFFER_STATUS_INITIAL;
+
+   return cmd_buffer->record_result;
+}
+
 VkResult
 pan_AllocateCommandBuffers(VkDevice _device,
                            const VkCommandBufferAllocateInfo *pAllocateInfo,
                            VkCommandBuffer *pCommandBuffers)
 {
-   pan_finishme("unimplemented!");
-   return VK_SUCCESS;
+   PAN_FROM_HANDLE(pan_device, device, _device);
+   PAN_FROM_HANDLE(pan_cmd_pool, pool, pAllocateInfo->commandPool);
+
+   VkResult result = VK_SUCCESS;
+   uint32_t i;
+
+   for (i = 0; i < pAllocateInfo->commandBufferCount; i++) {
+
+      if (!list_is_empty(&pool->free_cmd_buffers)) {
+         struct pan_cmd_buffer *cmd_buffer = list_first_entry(
+            &pool->free_cmd_buffers, struct pan_cmd_buffer, pool_link);
+
+         list_del(&cmd_buffer->pool_link);
+         list_addtail(&cmd_buffer->pool_link, &pool->cmd_buffers);
+
+         result = pan_reset_cmd_buffer(cmd_buffer);
+         cmd_buffer->level = pAllocateInfo->level;
+
+         pCommandBuffers[i] = pan_cmd_buffer_to_handle(cmd_buffer);
+      } else {
+         result = pan_create_cmd_buffer(device, pool, pAllocateInfo->level,
+                                       &pCommandBuffers[i]);
+      }
+      if (result != VK_SUCCESS)
+         break;
+   }
+
+   if (result != VK_SUCCESS) {
+      pan_FreeCommandBuffers(_device, pAllocateInfo->commandPool, i,
+                            pCommandBuffers);
+
+      /* From the Vulkan 1.0.66 spec:
+       *
+       * "vkAllocateCommandBuffers can be used to create multiple
+       *  command buffers. If the creation of any of those command
+       *  buffers fails, the implementation must destroy all
+       *  successfully created command buffer objects from this
+       *  command, set all entries of the pCommandBuffers array to
+       *  NULL and return the error."
+       */
+      memset(pCommandBuffers, 0,
+             sizeof(*pCommandBuffers) * pAllocateInfo->commandBufferCount);
+   }
+
+   return result;
 }
 
 void
