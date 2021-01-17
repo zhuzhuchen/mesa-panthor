@@ -32,7 +32,7 @@ pan_CmdCopyBuffer(VkCommandBuffer commandBuffer,
                   uint32_t regionCount,
                   const VkBufferCopy *pRegions)
 {
-   assert(0);
+   pan_finishme("unimplemented!");
 }
 
 void
@@ -43,7 +43,7 @@ pan_CmdCopyBufferToImage(VkCommandBuffer commandBuffer,
                          uint32_t regionCount,
                          const VkBufferImageCopy *pRegions)
 {
-   assert(0);
+   pan_finishme("unimplemented!");
 }
 
 void
@@ -54,7 +54,7 @@ pan_CmdCopyImageToBuffer(VkCommandBuffer commandBuffer,
                          uint32_t regionCount,
                          const VkBufferImageCopy *pRegions)
 {
-   assert(0);
+   pan_finishme("unimplemented!");
 }
 
 void
@@ -66,5 +66,5 @@ pan_CmdCopyImage(VkCommandBuffer commandBuffer,
                  uint32_t regionCount,
                  const VkImageCopy *pRegions)
 {
-   assert(0);
+   pan_finishme("unimplemented!");
 }
