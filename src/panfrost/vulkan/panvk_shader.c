@@ -314,7 +314,7 @@ panvk_shader_create(struct panvk_device *dev,
    NIR_PASS_V(nir, nir_opt_copy_prop_vars);
    NIR_PASS_V(nir, nir_opt_combine_stores, nir_var_all);
 
-   NIR_PASS_V(nir, nir_lower_uniforms_to_ubo, 16);
+   NIR_PASS_V(nir, nir_lower_uniforms_to_ubo, true, false);
    NIR_PASS_V(nir, nir_lower_explicit_io,
               nir_var_mem_ubo | nir_var_mem_ssbo,
               nir_address_format_32bit_index_offset);
@@ -325,6 +325,7 @@ panvk_shader_create(struct panvk_device *dev,
    NIR_PASS_V(nir, nir_lower_system_values);
    NIR_PASS_V(nir, nir_lower_compute_system_values, NULL);
 
+   NIR_PASS_V(nir, nir_lower_var_copies);
    NIR_PASS_V(nir, panvk_lower, shader, layout);
    nir_shader_gather_info(nir, nir_shader_get_entrypoint(nir));
    if (unlikely(dev->physical_device->instance->debug_flags & PANVK_DEBUG_NIR)) {

@@ -38,7 +38,7 @@ sys.path.append(VULKAN_UTIL)
 from vk_extensions import *
 from vk_extensions_gen import *
 
-MAX_API_VERSION = '1.0.0'
+MAX_API_VERSION = '1.1.0'
 
 # On Android, we disable all surface and swapchain extensions. Android's Vulkan
 # loader implements VK_KHR_surface and VK_KHR_swapchain, and applications

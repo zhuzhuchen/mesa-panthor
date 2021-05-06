@@ -39,130 +39,26 @@
 unsigned
 panvk_image_get_plane_size(const struct panvk_image *image, unsigned plane)
 {
-   return image->layout.planes[plane].size;
+   assert(!plane);
+   return image->pimage.layout.data_size;
 }
 
 unsigned
 panvk_image_get_total_size(const struct panvk_image *image)
 {
-   unsigned size = 0;
-
-   for (unsigned i = 0; i < util_format_get_num_planes(image->format); i++)
-      size += image->layout.planes[i].size;
-
-   return size;
+   assert(util_format_get_num_planes(image->pimage.layout.format) == 1);
+   return image->pimage.layout.data_size;
 }
 
-static void
-panvk_image_slice_layout_init(const struct panvk_image *image,
-                              struct panvk_image_layout *layout,
-                              unsigned plane, unsigned slice,
-                              unsigned *offset, bool align_on_tile,
-                              bool align_on_cacheline)
+static enum mali_texture_dimension
+panvk_image_type_to_mali_tex_dim(VkImageType type)
 {
-   assert(plane < PANVK_MAX_PLANES);
-   assert(slice < PANVK_MAX_MIP_LEVELS);
-
-   struct panvk_slice_layout *slice_layout = &layout->planes[plane].slices[slice];
-   enum pipe_format format = util_format_get_plane_format(image->format, plane);
-   unsigned bytes_per_pixel = util_format_get_blocksize(format);
-
-   /* MSAA is implemented as a 3D texture with z corresponding to the
-    * sample #, horrifyingly enough.
-    */
-   bool msaa = image->samples != VK_SAMPLE_COUNT_1_BIT;
-
-   bool afbc = drm_is_afbc(image->modifier);
-   bool tiled = image->modifier == DRM_FORMAT_MOD_ARM_16X16_BLOCK_U_INTERLEAVED;
-   bool linear = image->modifier == DRM_FORMAT_MOD_LINEAR;
-   /* We don't know how to specify a 2D stride for 3D textures */
-   bool can_align_stride = image->type != VK_IMAGE_TYPE_3D;
-
-   align_on_tile = (align_on_tile || tiled || afbc) && can_align_stride;
-   slice_layout->width = u_minify(image->extent.width, slice);
-   slice_layout->height = u_minify(image->extent.height, slice);
-   slice_layout->depth = u_minify(image->extent.depth, msaa ? 0 : slice);
-
-   if (align_on_tile) {
-      /* We don't need to align depth */
-      slice_layout->width = ALIGN_POT(slice_layout->width, 16);
-      slice_layout->height = ALIGN_POT(slice_layout->height, 16);
-   }
-
-   if (align_on_cacheline)
-      *offset = ALIGN_POT(*offset, 64);
-
-   slice_layout->offset = *offset;
-
-   /* Compute the would-be stride */
-   slice_layout->line_stride = bytes_per_pixel * slice_layout->width;
-   if (util_format_is_compressed(image->format))
-      slice_layout->line_stride /= 4;
-
-   /* ..but cache-line align it for performance */
-   if (can_align_stride && linear && align_on_cacheline)
-      slice_layout->line_stride = ALIGN_POT(slice_layout->line_stride, 64);
-
-   slice_layout->size = slice_layout->line_stride * slice_layout->height *
-                        slice_layout->depth;
-
-   if (afbc) {
-      slice_layout->afbc_header_size =
-         panfrost_afbc_header_size(slice_layout->width, slice_layout->height);
-      *offset += slice_layout->afbc_header_size;
-   }
-
-   *offset += slice_layout->size;
-
-   /* Add a checksum region if necessary */
-   if (image->checksummed) {
-      assert(slice_layout->depth == 1);
-      slice_layout->checksum.offset = *offset;
-      slice_layout->checksum.stride = DIV_ROUND_UP(slice_layout->width, 16);
-      slice_layout->checksum.size = slice_layout->height * slice_layout->checksum.stride;
-      *offset += slice_layout->checksum.size;
-   }
-}
-
-static void
-panvk_image_plane_layout_init(const struct panvk_image *image,
-                              struct panvk_image_layout *layout,
-                              unsigned plane, unsigned *offset,
-                              bool align_on_tile, bool align_on_cacheline)
-{
-   struct panvk_plane_layout *plane_layout = &layout->planes[plane];
-
-   if (align_on_cacheline)
-      *offset = ALIGN_POT(*offset, 64);
-
-   plane_layout->offset = *offset;
-
-   unsigned slice_offset = 0;
-   for (unsigned s = 0; s < image->level_count; s++) {
-      panvk_image_slice_layout_init(image, layout, plane, s, &slice_offset,
-                                    align_on_tile, align_on_cacheline);
-   }
-
-   unsigned elem_size = slice_offset;
-   if (align_on_cacheline)
-      elem_size = ALIGN_POT(elem_size, 64);
-
-   plane_layout->array_stride = elem_size;
-   plane_layout->size = elem_size * image->layer_count;
-}
-
-static void
-panvk_image_layout_init(const struct panvk_image *image,
-                        struct panvk_image_layout *layout)
-{
-   unsigned offset = 0;
-
-   for (unsigned p = 0; p < util_format_get_num_planes(image->format); p++) {
-      if (image->flags & VK_IMAGE_CREATE_DISJOINT_BIT)
-         offset = 0;
-
-      panvk_image_plane_layout_init(image, layout, p, &offset, true, true);
-   }
+        switch (type) {
+        case VK_IMAGE_TYPE_1D: return MALI_TEXTURE_DIMENSION_1D;
+        case VK_IMAGE_TYPE_2D: return MALI_TEXTURE_DIMENSION_2D;
+        case VK_IMAGE_TYPE_3D: return MALI_TEXTURE_DIMENSION_3D;
+        default: unreachable("Invalid image type");
+        }
 }
 
 static VkResult
@@ -174,6 +70,7 @@ panvk_image_create(VkDevice _device,
                    const VkSubresourceLayout *plane_layouts)
 {
    VK_FROM_HANDLE(panvk_device, device, _device);
+   const struct panfrost_device *pdev = &device->physical_device->pdev;
    struct panvk_image *image = NULL;
    assert(pCreateInfo->sType == VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO);
 
@@ -196,9 +93,13 @@ panvk_image_create(VkDevice _device,
    image->usage = pCreateInfo->usage;
    image->flags = pCreateInfo->flags;
    image->extent = pCreateInfo->extent;
-   image->level_count = pCreateInfo->mipLevels;
-   image->layer_count = pCreateInfo->arrayLayers;
-   image->samples = pCreateInfo->samples;
+   pan_image_layout_init(pdev, &image->pimage.layout, modifier,
+                         vk_format_to_pipe_format(pCreateInfo->format),
+                         panvk_image_type_to_mali_tex_dim(pCreateInfo->imageType),
+                         pCreateInfo->extent.width, pCreateInfo->extent.height,
+                         pCreateInfo->extent.depth, pCreateInfo->arrayLayers,
+                         pCreateInfo->samples, pCreateInfo->mipLevels,
+                         PAN_IMAGE_CRC_NONE, NULL);
 
    image->exclusive = pCreateInfo->sharingMode == VK_SHARING_MODE_EXCLUSIVE;
    if (pCreateInfo->sharingMode == VK_SHARING_MODE_CONCURRENT) {
@@ -212,9 +113,6 @@ panvk_image_create(VkDevice _device,
 
    if (vk_find_struct_const(pCreateInfo->pNext, EXTERNAL_MEMORY_IMAGE_CREATE_INFO))
       image->shareable = true;
-
-   image->format = vk_format_to_pipe_format(pCreateInfo->format);
-   panvk_image_layout_init(image, &image->layout);
 
    *pImage = panvk_image_to_handle(image);
    return VK_SUCCESS;
@@ -260,6 +158,10 @@ panvk_CreateImage(VkDevice device,
          modifier = DRM_FORMAT_MOD_LINEAR;
    }
 
+   /* TODO: mod selection */
+   if (modifier == DRM_FORMAT_MOD_INVALID)
+      modifier = DRM_FORMAT_MOD_LINEAR;
+
    return panvk_image_create(device, pCreateInfo, pAllocator, pImage, modifier, plane_layouts);
 }
 
@@ -301,18 +203,18 @@ panvk_GetImageSubresourceLayout(VkDevice _device,
    VK_FROM_HANDLE(panvk_image, image, _image);
 
    unsigned plane = panvk_plane_index(image->vk_format, pSubresource->aspectMask);
-   const struct panvk_plane_layout *plane_layout = &image->layout.planes[plane];
-   const struct panvk_slice_layout *slice_layout =
-      &plane_layout->slices[pSubresource->mipLevel];
+   assert(plane < PANVK_MAX_PLANES);
 
-   /* We don't support multiplanart formats yet. */
-   assert(!plane);
-   pLayout->offset = slice_layout->offset + plane_layout->offset +
-                     (pSubresource->arrayLayer * plane_layout->array_stride);
+   const struct pan_image_slice_layout *slice_layout =
+      &image->pimage.layout.slices[pSubresource->mipLevel];
+
+   pLayout->offset = slice_layout->offset +
+                     (pSubresource->arrayLayer *
+                      image->pimage.layout.array_stride);
    pLayout->size = slice_layout->size;
    pLayout->rowPitch = slice_layout->line_stride;
-   pLayout->arrayPitch = plane_layout->array_stride;
-   pLayout->depthPitch = slice_layout->line_stride * slice_layout->height;
+   pLayout->arrayPitch = image->pimage.layout.array_stride;
+   pLayout->depthPitch = slice_layout->surface_stride;
 }
 
 static enum mali_texture_dimension
@@ -335,171 +237,41 @@ panvk_view_type_to_mali_tex_dim(VkImageViewType type)
    }
 }
 
-static unsigned
-panvk_convert_swizzle(const VkComponentMapping *swizzle)
+static void
+panvk_convert_swizzle(const VkComponentMapping *in,
+                      unsigned char *out)
 {
-   unsigned ret = 0;
-
-   const VkComponentSwizzle *comp = &swizzle->r;
+   const VkComponentSwizzle *comp = &in->r;
    for (unsigned i = 0; i < 4; i++) {
       switch (comp[i]) {
       case VK_COMPONENT_SWIZZLE_IDENTITY:
-         ret |= i << (i * 3);
+         out[i] = PIPE_SWIZZLE_X + i;
          break;
       case VK_COMPONENT_SWIZZLE_ZERO:
+         out[i] = PIPE_SWIZZLE_0;
+         break;
       case VK_COMPONENT_SWIZZLE_ONE:
-         ret |= (comp[i] - VK_COMPONENT_SWIZZLE_ZERO) << (i * 3);
+         out[i] = PIPE_SWIZZLE_1;
          break;
       case VK_COMPONENT_SWIZZLE_R:
+         out[i] = PIPE_SWIZZLE_X;
+         break;
       case VK_COMPONENT_SWIZZLE_G:
+         out[i] = PIPE_SWIZZLE_Y;
+         break;
       case VK_COMPONENT_SWIZZLE_B:
+         out[i] = PIPE_SWIZZLE_Z;
+         break;
       case VK_COMPONENT_SWIZZLE_A:
-         ret |= (comp[i] - VK_COMPONENT_SWIZZLE_R) << (i * 3);
+         out[i] = PIPE_SWIZZLE_W;
          break;
       default:
          unreachable("Invalid swizzle");
       }
    }
-
-   return ret;
 }
 
-static void
-panvk_emit_surface_desc(const struct panvk_image_view *view,
-                        unsigned plane, unsigned layer, unsigned slice,
-                        unsigned sample, mali_ptr *desc)
-{
-   const struct panvk_image *image = view->image;
-   const struct panvk_plane_layout *plane_layout = &image->layout.planes[plane];
-   const struct panvk_slice_layout *slice_layout = &plane_layout->slices[slice];
-   mali_ptr base;
 
-   if (image->flags & VK_IMAGE_CREATE_DISJOINT_BIT) {
-      base = image->memory.planes[plane].bo->ptr.gpu +
-             image->memory.planes[plane].offset;
-   } else {
-      base = image->memory.planes[0].bo->ptr.gpu +
-             image->memory.planes[0].offset;
-   }
-
-   base += (layer * plane_layout->array_stride) + slice_layout->offset +
-           (sample * slice_layout->line_stride * slice_layout->height);
-   desc[0] = base;
-
-   bool tiled = image->modifier == DRM_FORMAT_MOD_ARM_16X16_BLOCK_U_INTERLEAVED;
-   bool linear = image->modifier == DRM_FORMAT_MOD_LINEAR;
-   unsigned row_stride, surf_stride;
-
-   if (linear) {
-      row_stride = slice_layout->line_stride;
-      surf_stride = slice_layout->depth ?
-                    row_stride * slice_layout->height : 0;
-   } else if (tiled) {
-      row_stride = slice_layout->height <= 16 ?
-                   0 : slice_layout->line_stride * 16;
-      surf_stride = row_stride * slice_layout->height;
-      surf_stride = slice_layout->depth ?
-                    slice_layout->line_stride * slice_layout->height : 0;
-   } else {
-      unreachable("TODO: AFBC");
-   }
-
-   desc[1] = row_stride | ((mali_ptr)surf_stride << 32);
-}
-
-#define MALI_SWIZZLE_R001 \
-        (MALI_CHANNEL_R << 0) | \
-        (MALI_CHANNEL_0 << 3) | \
-        (MALI_CHANNEL_0 << 6) | \
-        (MALI_CHANNEL_1 << 9)
-
-#define MALI_SWIZZLE_A001 \
-        (MALI_CHANNEL_A << 0) | \
-        (MALI_CHANNEL_0 << 3) | \
-        (MALI_CHANNEL_0 << 6) | \
-        (MALI_CHANNEL_1 << 9)
-
-static void
-panvk_emit_midgard_image_view(const struct panvk_device *dev,
-                              const struct panvk_image_view *view)
-{
-   const struct panfrost_device *pdev = &dev->physical_device->pdev;
-   const struct panvk_image *image = view->image;
-   unsigned plane = 0;
-   const struct panvk_plane_layout *plane_layout = &image->layout.planes[plane];
-   const struct panvk_slice_layout *slice_layout =
-      &plane_layout->slices[view->range.baseMipLevel];
-
-   const struct util_format_description *fdesc = util_format_description(view->format);
-
-   pan_pack(view->bo->ptr.cpu, MIDGARD_TEXTURE, cfg) {
-      cfg.width = slice_layout->width;
-      cfg.height = slice_layout->height;
-      cfg.depth = slice_layout->depth;
-      cfg.array_size = view->range.layerCount;
-      cfg.format = pdev->formats[fdesc->format].hw;
-      cfg.dimension = panvk_view_type_to_mali_tex_dim(view->type);
-      cfg.texel_ordering = panfrost_modifier_to_layout(view->image->modifier);
-      cfg.manual_stride = true;
-      cfg.levels = view->range.levelCount;
-      cfg.swizzle = panvk_convert_swizzle(&view->components);
-   };
-
-   mali_ptr *surf_desc = view->bo->ptr.cpu + MALI_MIDGARD_TEXTURE_LENGTH;
-   for (unsigned layer = view->range.baseArrayLayer;
-        layer < view->range.baseArrayLayer + view->range.layerCount; layer++) {
-      for (unsigned level = view->range.baseMipLevel;
-           level < view->range.baseMipLevel + view->range.levelCount; level++) {
-         for (unsigned sample = 0; sample < image->samples; sample++) {
-            panvk_emit_surface_desc(view, plane, layer, level, sample,
-                                    surf_desc);
-            surf_desc += 2;
-         }
-      }
-   }
-}
-
-static void
-panvk_emit_bifrost_image_view(const struct panvk_device *dev,
-                              const struct panvk_image_view *view)
-{
-   const struct panfrost_device *pdev = &dev->physical_device->pdev;
-   const struct panvk_image *image = view->image;
-   unsigned plane = 0;
-   const struct panvk_plane_layout *plane_layout = &image->layout.planes[plane];
-   const struct panvk_slice_layout *slice_layout =
-      &plane_layout->slices[view->range.baseMipLevel];
-
-   const struct util_format_description *fdesc = util_format_description(view->format);
-
-   pan_pack(&view->bifrost.tex_desc, BIFROST_TEXTURE, cfg) {
-      cfg.dimension = panvk_view_type_to_mali_tex_dim(view->type);
-      cfg.format = pdev->formats[fdesc->format].hw;
-      cfg.width = slice_layout->width;
-      cfg.height = slice_layout->height;
-      cfg.swizzle = panvk_convert_swizzle(&view->components);
-      cfg.texel_ordering = panfrost_modifier_to_layout(image->modifier);
-      cfg.levels = view->range.levelCount;
-      cfg.surfaces = view->bo->ptr.gpu;
-
-      /* Use the sampler descriptor for LOD clamping */
-      cfg.minimum_lod = 0;
-      cfg.maximum_lod = view->range.levelCount - 1;
-   };
-
-   mali_ptr *surf_desc = view->bo->ptr.cpu;
-   for (unsigned layer = view->range.baseArrayLayer;
-        layer < view->range.baseArrayLayer + view->range.layerCount; layer++) {
-      for (unsigned level = view->range.baseMipLevel;
-           level < view->range.baseMipLevel + view->range.levelCount; level++) {
-         for (unsigned sample = 0; sample < image->samples; sample++) {
-            panvk_emit_surface_desc(view, plane, layer, level, sample,
-                                    surf_desc);
-            surf_desc += 2;
-         }
-      }
-   }
-}
 
 VkResult
 panvk_CreateImageView(VkDevice _device,
@@ -511,32 +283,56 @@ panvk_CreateImageView(VkDevice _device,
    VK_FROM_HANDLE(panvk_image, image, pCreateInfo->image);
    struct panvk_image_view *view;
 
-   view = vk_object_alloc(&device->vk, pAllocator, sizeof(*view),
+   view = vk_object_zalloc(&device->vk, pAllocator, sizeof(*view),
                           VK_OBJECT_TYPE_IMAGE_VIEW);
    if (view == NULL)
       return vk_error(device->instance, VK_ERROR_OUT_OF_HOST_MEMORY);
 
-   view->image = image;
-   view->type = pCreateInfo->viewType;
+   view->pview.format = vk_format_to_pipe_format(pCreateInfo->format);
+
+   if (pCreateInfo->subresourceRange.aspectMask == VK_IMAGE_ASPECT_DEPTH_BIT)
+      view->pview.format = util_format_get_depth_only(view->pview.format);
+   else if (pCreateInfo->subresourceRange.aspectMask == VK_IMAGE_ASPECT_STENCIL_BIT)
+      view->pview.format = util_format_stencil_only(view->pview.format);
+
+   view->pview.dim = panvk_view_type_to_mali_tex_dim(pCreateInfo->viewType);
+   view->pview.first_level = pCreateInfo->subresourceRange.baseMipLevel;
+   view->pview.last_level = pCreateInfo->subresourceRange.baseMipLevel +
+                            pCreateInfo->subresourceRange.levelCount - 1;
+   view->pview.first_layer = pCreateInfo->subresourceRange.baseArrayLayer;
+   view->pview.last_layer = pCreateInfo->subresourceRange.baseArrayLayer +
+                            pCreateInfo->subresourceRange.layerCount - 1;
+   panvk_convert_swizzle(&pCreateInfo->components, view->pview.swizzle);
+   view->pview.image = &image->pimage;
    view->vk_format = pCreateInfo->format;
-   view->format = vk_format_to_pipe_format(pCreateInfo->format);
-   view->components = pCreateInfo->components;
-   view->range = pCreateInfo->subresourceRange;
 
    struct panfrost_device *pdev = &device->physical_device->pdev;
-   unsigned num_surf_desc = view->range.layerCount * view->range.levelCount *
-                            view->image->samples;
-   unsigned bo_size = num_surf_desc * sizeof(mali_ptr) * 2;
+   unsigned bo_size =
+      panfrost_estimate_texture_payload_size(pdev,
+                                             view->pview.first_level,
+                                             view->pview.last_level,
+                                             view->pview.first_layer,
+                                             view->pview.last_layer,
+                                             image->pimage.layout.nr_samples,
+                                             view->pview.dim,
+                                             image->pimage.layout.modifier);
 
-   if (!pan_is_bifrost(pdev))
+   unsigned surf_descs_offset = 0;
+   if (!pan_is_bifrost(pdev)) {
       bo_size += MALI_MIDGARD_TEXTURE_LENGTH;
+      surf_descs_offset = MALI_MIDGARD_TEXTURE_LENGTH;
+   }
 
    view->bo = panfrost_bo_create(pdev, bo_size, 0);
 
-   if (pan_is_bifrost(pdev))
-      panvk_emit_bifrost_image_view(device, view);
-   else
-      panvk_emit_midgard_image_view(device, view);
+   struct panfrost_ptr surf_descs = {
+      .cpu = view->bo->ptr.cpu + surf_descs_offset,
+      .gpu = view->bo->ptr.gpu + surf_descs_offset,
+   };
+   void *tex_desc = pan_is_bifrost(pdev) ?
+                    &view->bifrost.tex_desc : view->bo->ptr.cpu;
+
+   panfrost_new_texture(pdev, &view->pview, tex_desc, &surf_descs);
 
    *pView = panvk_image_view_to_handle(view);
    return VK_SUCCESS;
@@ -583,6 +379,6 @@ panvk_GetImageDrmFormatModifierPropertiesEXT(VkDevice device,
 
    assert(pProperties->sType == VK_STRUCTURE_TYPE_IMAGE_DRM_FORMAT_MODIFIER_PROPERTIES_EXT);
 
-   pProperties->drmFormatModifier = image->modifier;
+   pProperties->drmFormatModifier = image->pimage.layout.modifier;
    return VK_SUCCESS;
 }

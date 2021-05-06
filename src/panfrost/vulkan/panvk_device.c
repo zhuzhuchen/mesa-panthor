@@ -1074,7 +1074,16 @@ panvk_queue_submit_batch(struct panvk_queue *queue,
       util_dynarray_foreach(&batch->jobs, void *, job)
          memset((*job), 0, 4 * 4);
 
-      panvk_emit_bifrost_tiler_context(queue->device, batch->fb.info, &batch->tiler);
+      /* Reset the tiler before re-issuing the batch */
+      if (pan_is_bifrost(pdev)) {
+         memcpy(batch->tiler.bifrost_descs.cpu, &batch->tiler.templ.bifrost,
+                sizeof(batch->tiler.templ.bifrost));
+      } else {
+         void *tiler = pan_section_ptr(batch->fb.desc.cpu, MULTI_TARGET_FRAMEBUFFER, TILER);
+         memcpy(tiler, &batch->tiler.templ.midgard, sizeof(batch->tiler.templ.midgard));
+         /* All weights set to 0, nothing to do here */
+         pan_section_pack(batch->fb.desc.cpu, MULTI_TARGET_FRAMEBUFFER, TILER_WEIGHTS, w);
+      }
    }
 
    if (batch->scoreboard.first_job) {
@@ -1133,6 +1142,30 @@ panvk_queue_submit_batch(struct panvk_queue *queue,
    batch->issued = true;
 }
 
+static void
+panvk_queue_transfer_sync(struct panvk_queue *queue,
+                          struct panvk_syncobj *dst)
+{
+   const struct panfrost_device *pdev = &queue->device->physical_device->pdev;
+   int ret;
+
+   struct drm_syncobj_handle handle = {
+      .handle = queue->sync,
+      .flags = DRM_SYNCOBJ_HANDLE_TO_FD_FLAGS_EXPORT_SYNC_FILE,
+      .fd = -1,
+   };
+
+   ret = drmIoctl(pdev->fd, DRM_IOCTL_SYNCOBJ_HANDLE_TO_FD, &handle);
+   assert(!ret);
+   assert(handle.fd >= 0);
+
+   handle.handle = dst->temporary ? : dst->permanent;
+   ret = drmIoctl(pdev->fd, DRM_IOCTL_SYNCOBJ_FD_TO_HANDLE, &handle);
+   assert(!ret);
+
+   close(handle.fd);
+}
+
 VkResult
 panvk_QueueSubmit(VkQueue _queue,
                   uint32_t submitCount,
@@ -1140,7 +1173,6 @@ panvk_QueueSubmit(VkQueue _queue,
                   VkFence _fence)
 {
    VK_FROM_HANDLE(panvk_queue, queue, _queue);
-   const struct panfrost_device *pdev = &queue->device->physical_device->pdev;
    VK_FROM_HANDLE(panvk_fence, fence, _fence);
 
    for (uint32_t i = 0; i < submitCount; ++i) {
@@ -1182,7 +1214,7 @@ panvk_QueueSubmit(VkQueue _queue,
 
             if (batch->fb.info) {
                for (unsigned i = 0; i < batch->fb.info->attachment_count; i++) {
-                  bos[bo_idx++] = batch->fb.info->attachments[i].iview->image->memory.planes[0].bo->gem_handle;
+                  bos[bo_idx++] = batch->fb.info->attachments[i].iview->pview.image->data.bo->gem_handle;
                }
             }
 
@@ -1194,23 +1226,13 @@ panvk_QueueSubmit(VkQueue _queue,
       /* Transfer the out fence to signal semaphores */
       for (unsigned i = 0; i < submit->signalSemaphoreCount; i++) {
          VK_FROM_HANDLE(panvk_semaphore, sem, submit->pSignalSemaphores[i]);
-         struct drm_syncobj_transfer transfer = {
-            .src_handle = queue->sync,
-            .dst_handle = sem->syncobj.temporary ? : sem->syncobj.permanent,
-         };
-
-         drmIoctl(pdev->fd, DRM_IOCTL_SYNCOBJ_TRANSFER, &transfer);
+         panvk_queue_transfer_sync(queue, &sem->syncobj);
       }
    }
 
    if (fence) {
       /* Transfer the last out fence to the fence object */
-      struct drm_syncobj_transfer transfer = {
-         .src_handle = queue->sync,
-         .dst_handle = fence->syncobj.temporary ? : fence->syncobj.permanent,
-      };
-
-      drmIoctl(pdev->fd, DRM_IOCTL_SYNCOBJ_TRANSFER, &transfer);
+      panvk_queue_transfer_sync(queue, &fence->syncobj);
    }
 
    return VK_SUCCESS;
@@ -1531,11 +1553,13 @@ panvk_BindImageMemory2(VkDevice device,
       VK_FROM_HANDLE(panvk_device_memory, mem, pBindInfos[i].memory);
 
       if (mem) {
-         image->memory.planes[0].bo = mem->bo;
-         image->memory.planes[0].offset = pBindInfos[i].memoryOffset;
+         panfrost_bo_reference(mem->bo);
+         image->pimage.data.bo = mem->bo;
+         image->pimage.data.offset = pBindInfos[i].memoryOffset;
       } else {
-         image->memory.planes[0].bo = NULL;
-         image->memory.planes[0].offset = 0;
+         panfrost_bo_unreference(image->pimage.data.bo);
+         image->pimage.data.bo = NULL;
+         image->pimage.data.offset = pBindInfos[i].memoryOffset;
       }
    }
 

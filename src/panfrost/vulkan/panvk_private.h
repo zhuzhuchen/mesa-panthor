@@ -60,6 +60,7 @@
 #include "midgard/midgard_compile.h"
 
 #include "pan_blend.h"
+#include "pan_cs.h"
 #include "pan_device.h"
 #include "pan_pool.h"
 #include "pan_texture.h"
@@ -78,7 +79,6 @@ typedef uint32_t xcb_window_t;
 #include <vulkan/vk_android_native_buffer.h>
 #include <vulkan/vk_icd.h>
 #include <vulkan/vulkan.h>
-#include <vulkan/vulkan_intel.h>
 
 #include "panvk_entrypoints.h"
 
@@ -253,7 +253,17 @@ struct panvk_batch {
    } fb;
    struct panfrost_ptr tls;
    mali_ptr fragment_job;
-   struct panfrost_ptr tiler;
+   struct {
+      struct pan_tiler_context ctx;
+      struct panfrost_ptr bifrost_descs;
+      union {
+         struct {
+            struct mali_bifrost_tiler_heap_packed heap;
+            struct mali_bifrost_tiler_packed tiler;
+         } bifrost;
+         struct mali_midgard_tiler_packed midgard;
+      } templ;
+   } tiler;
    bool issued;
 };
 
@@ -494,7 +504,7 @@ struct panvk_draw_info {
    };
    mali_ptr tls;
    mali_ptr fb;
-   mali_ptr tiler;
+   const struct pan_tiler_context *tiler_ctx;
    mali_ptr fs_rsd;
    mali_ptr viewport;
    struct {
@@ -503,19 +513,17 @@ struct panvk_draw_info {
    } jobs;
 };
 
-struct panvk_attrib {
+struct panvk_attrib_info {
    unsigned buf;
    unsigned offset;
    enum pipe_format format;
 };
 
-struct panvk_attrib_buf {
+struct panvk_attrib_buf_info {
    bool special;
    union {
       struct {
-         mali_ptr address;
          unsigned stride;
-         unsigned size;
          bool per_instance;
       };
       unsigned special_id;
@@ -523,18 +531,20 @@ struct panvk_attrib_buf {
 };
 
 struct panvk_attribs_info {
-   struct panvk_attrib attrib[PAN_MAX_ATTRIBUTE];
+   struct panvk_attrib_info attrib[PAN_MAX_ATTRIBUTE];
    unsigned attrib_count;
-   struct panvk_attrib_buf buf[PAN_MAX_ATTRIBUTE];
+   struct panvk_attrib_buf_info buf[PAN_MAX_ATTRIBUTE];
    unsigned buf_count;
 };
 
-struct panvk_compute_dim {
-   uint32_t x, y, z;
+struct panvk_attrib_buf {
+   mali_ptr address;
+   unsigned size;
 };
 
 enum panvk_cmd_state_dirty {
-   PANVK_CMD_STATE_DIRTY_FS_RSD,
+   PANVK_CMD_STATE_DIRTY_FS_RSD = 1 << 0,
+   PANVK_CMD_STATE_DIRTY_ATTRIBS = 1 << 1,
 };
 
 struct panvk_cmd_state {
@@ -544,13 +554,12 @@ struct panvk_cmd_state {
    struct panvk_pipeline *pipeline;
 
    struct panvk_varyings_info varyings;
-   struct panvk_attribs_info attribs;
    struct pan_blend_state blend;
    mali_ptr blend_shaders[MAX_RTS];
    mali_ptr fs_rsd;
 
    struct {
-      struct panvk_compute_dim wg_count;
+      struct pan_compute_dim wg_count;
    } compute;
 
    struct {
@@ -561,6 +570,13 @@ struct panvk_cmd_state {
       } depth_bias;
       float line_width;
    } rast;
+
+   struct {
+      struct panvk_attrib_buf bufs[MAX_VBS];
+      unsigned count;
+      mali_ptr attribs;
+      mali_ptr attrib_bufs;
+   } vb;
 
    /* Index buffer */
    struct {
@@ -812,46 +828,26 @@ struct panvk_plane_memory {
    unsigned offset;
 };
 
-#define PANVK_MAX_PLANES 3
-
-struct panvk_image_layout {
-   struct panvk_plane_layout planes[PANVK_MAX_PLANES];
-};
-
-struct panvk_image_memory {
-   struct panvk_plane_memory planes[PANVK_MAX_PLANES];
-};
+#define PANVK_MAX_PLANES 1
 
 struct panvk_image {
    struct vk_object_base base;
+   struct pan_image pimage;
    VkImageType type;
 
    /* The original VkFormat provided by the client.  This may not match any
     * of the actual surface formats.
     */
    VkFormat vk_format;
-   enum pipe_format format;
    VkImageAspectFlags aspects;
    VkImageUsageFlags usage;  /**< Superset of VkImageCreateInfo::usage. */
    VkImageTiling tiling;     /** VkImageCreateInfo::tiling */
    VkImageCreateFlags flags; /** VkImageCreateInfo::flags */
    VkExtent3D extent;
-   uint32_t level_count;
-   uint32_t layer_count;
-   VkSampleCountFlagBits samples;
-
-   uint64_t modifier;
-   bool checksummed;
-
-   /* memory layout */
-   struct panvk_image_layout layout;
 
    unsigned queue_family_mask;
    bool exclusive;
    bool shareable;
-
-   /* Set when bound */
-   struct panvk_image_memory memory;
 };
 
 unsigned
@@ -862,14 +858,9 @@ panvk_image_get_total_size(const struct panvk_image *image);
 
 struct panvk_image_view {
    struct vk_object_base base;
+   struct pan_image_view pview;
 
-   struct panvk_image *image; /**< VkImageViewCreateInfo::image */
-
-   VkImageViewType type;
-   VkComponentMapping components;
-   VkImageSubresourceRange range;
    VkFormat vk_format;
-   enum pipe_format format;
    struct panfrost_bo *bo;
    struct {
       struct mali_bifrost_texture_packed tex_desc;

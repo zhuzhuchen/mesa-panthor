@@ -28,6 +28,7 @@
 
 #include "compiler/shader_enums.h"
 #include "panfrost-job.h"
+#include "pan_cs.h"
 
 struct pan_blend_state;
 struct pan_shader_info;
@@ -41,6 +42,7 @@ struct panvk_compute_dim;
 struct panvk_device;
 struct panvk_batch;
 struct panvk_varyings_info;
+struct panvk_attrib_buf;
 struct panvk_attribs_info;
 struct panvk_pipeline;
 struct panvk_draw_info;
@@ -60,15 +62,19 @@ panvk_emit_varying_bufs(const struct panvk_device *dev,
                         void *descs);
 
 void
-panvk_emit_attribs(const struct panvk_device *dev,
-                   const struct panvk_attribs_info *attribs,
-                   void *descs);
-
-void
 panvk_emit_attrib_bufs(const struct panvk_device *dev,
-                       const struct panvk_attribs_info *attribs,
+                       const struct panvk_attribs_info *info,
+                       const struct panvk_attrib_buf *bufs,
+                       unsigned buf_count,
                        const struct panvk_draw_info *draw,
                        void *descs);
+
+void
+panvk_emit_attribs(const struct panvk_device *dev,
+                   const struct panvk_attribs_info *attribs,
+                   const struct panvk_attrib_buf *bufs,
+                   unsigned buf_count,
+                   void *descs);
 
 void
 panvk_emit_ubos(const struct panvk_pipeline *pipeline,
@@ -114,19 +120,21 @@ panvk_emit_bifrost_tiler_context(const struct panvk_device *dev,
                                  const struct panvk_framebuffer *fb,
                                  const struct panfrost_ptr *descs);
 
-void
+unsigned
 panvk_emit_fb(const struct panvk_device *dev,
               const struct panvk_batch *batch,
               const struct panvk_subpass *subpass,
               const struct panvk_pipeline *pipeline,
               const struct panvk_framebuffer *fb,
               const struct panvk_clear_value *clears,
+              const struct pan_tls_info *tlsinfo,
+              const struct pan_tiler_context *tilerctx,
               void *desc);
 
 void
 panvk_emit_tls(const struct panvk_device *dev,
                const struct panvk_pipeline *pipeline,
-               const struct panvk_compute_dim *wg_count,
+               const struct pan_compute_dim *wg_count,
                struct pan_pool *tls_pool,
                void *desc);
 

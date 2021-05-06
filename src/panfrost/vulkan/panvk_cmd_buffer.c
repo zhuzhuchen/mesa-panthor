@@ -58,17 +58,28 @@ panvk_cmd_dirty_sysval(struct panvk_cmd_buffer *cmdbuf, unsigned id)
 static VkResult
 panvk_reset_cmdbuf(struct panvk_cmd_buffer *cmdbuf)
 {
+   struct panvk_device *device = cmdbuf->device;
+   struct panfrost_device *pdev = &cmdbuf->device->physical_device->pdev;
+
    cmdbuf->record_result = VK_SUCCESS;
 
    list_for_each_entry_safe(struct panvk_batch, batch, &cmdbuf->batches, node) {
       list_del(&batch->node);
       util_dynarray_fini(&batch->jobs);
+      if (!pan_is_bifrost(pdev))
+         panfrost_bo_unreference(batch->tiler.ctx.midgard.polygon_list);
       vk_free(&cmdbuf->pool->alloc, batch);
    }
 
    panfrost_pool_cleanup(&cmdbuf->desc_pool);
    panfrost_pool_cleanup(&cmdbuf->tls_pool);
    panfrost_pool_cleanup(&cmdbuf->varying_pool);
+   panfrost_pool_init(&cmdbuf->desc_pool, NULL, &device->physical_device->pdev,
+                      0, false);
+   panfrost_pool_init(&cmdbuf->tls_pool, NULL, &device->physical_device->pdev,
+                      PAN_BO_INVISIBLE, false);
+   panfrost_pool_init(&cmdbuf->varying_pool, NULL, &device->physical_device->pdev,
+                      PAN_BO_INVISIBLE, false);
    cmdbuf->status = PANVK_CMD_BUFFER_STATUS_INITIAL;
 
    for (unsigned i = 0; i < MAX_BIND_POINTS; i++)
@@ -95,6 +106,8 @@ panvk_create_cmdbuf(struct panvk_device *device,
    cmdbuf->pool = pool;
    panfrost_pool_init(&cmdbuf->desc_pool, NULL, &device->physical_device->pdev,
                       0, false);
+   panfrost_pool_init(&cmdbuf->tls_pool, NULL, &device->physical_device->pdev,
+                      PAN_BO_INVISIBLE, false);
    panfrost_pool_init(&cmdbuf->varying_pool, NULL, &device->physical_device->pdev,
                       PAN_BO_INVISIBLE, false);
    list_inithead(&cmdbuf->batches);
@@ -203,16 +216,17 @@ panvk_CmdBindVertexBuffers(VkCommandBuffer commandBuffer,
                            const VkDeviceSize *pOffsets)
 {
    VK_FROM_HANDLE(panvk_cmd_buffer, cmdbuf, commandBuffer);
-   struct panvk_attribs_info *attribs = &cmdbuf->state.attribs;
 
    assert(firstBinding + bindingCount <= MAX_VBS);
 
    for (uint32_t i = 0; i < bindingCount; i++) {
       struct panvk_buffer *buf = panvk_buffer_from_handle(pBuffers[i]);
 
-      attribs->buf[firstBinding + i].address = buf->bo->ptr.gpu + pOffsets[i];
-      attribs->buf[firstBinding + i].size = buf->size - pOffsets[i];
+      cmdbuf->state.vb.bufs[firstBinding + i].address = buf->bo->ptr.gpu + pOffsets[i];
+      cmdbuf->state.vb.bufs[firstBinding + i].size = buf->size - pOffsets[i];
    }
+   cmdbuf->state.vb.count = MAX2(cmdbuf->state.vb.count, firstBinding + bindingCount);
+   cmdbuf->state.dirty |= PANVK_CMD_STATE_DIRTY_ATTRIBS;
 }
 
 void
@@ -306,7 +320,7 @@ panvk_CmdBindPipeline(VkCommandBuffer commandBuffer,
    cmdbuf->state.bind_point = pipelineBindPoint;
    cmdbuf->state.pipeline = pipeline;
    cmdbuf->state.varyings = pipeline->varyings;
-   cmdbuf->state.attribs = pipeline->attribs;
+   cmdbuf->state.dirty |= PANVK_CMD_STATE_DIRTY_ATTRIBS;
 }
 
 void
@@ -645,6 +659,45 @@ panvk_cmd_prepare_fragment_job(struct panvk_cmd_buffer *cmdbuf)
 }
 
 static void
+panvk_cmdbuf_get_midgard_polygon_list(struct panvk_cmd_buffer *cmdbuf,
+                                      bool has_draws)
+{
+   struct panfrost_device *pdev = &cmdbuf->device->physical_device->pdev;
+   struct panvk_batch *batch = cmdbuf->state.batch;
+
+   assert(!pan_is_bifrost(pdev));
+
+   if (batch->tiler.ctx.midgard.polygon_list)
+      return;
+
+   unsigned size =
+      panfrost_tiler_get_polygon_list_size(pdev,
+                                           batch->fb.info->width,
+                                           batch->fb.info->height,
+                                           has_draws);
+   size = util_next_power_of_two(size);
+
+   /* Create the BO as invisible if we can. In the non-hierarchical tiler case,
+    * we need to write the polygon list manually because there's not WRITE_VALUE
+    * job in the chain (maybe we should add one...). */
+   bool init_polygon_list = !has_draws && (pdev->quirks & MIDGARD_NO_HIER_TILING);
+   batch->tiler.ctx.midgard.polygon_list =
+      panfrost_bo_create(pdev, size,
+                         init_polygon_list ? 0 : PAN_BO_INVISIBLE);
+
+
+   if (init_polygon_list) {
+      assert(batch->tiler.ctx.midgard.polygon_list->ptr.cpu);
+      uint32_t *polygon_list_body =
+         batch->tiler.ctx.midgard.polygon_list->ptr.cpu +
+         MALI_MIDGARD_TILER_MINIMUM_HEADER_SIZE;
+      polygon_list_body[0] = 0xa0000000; /* TODO: Just that? */
+   }
+
+   batch->tiler.ctx.midgard.disable = !has_draws;
+}
+
+static void
 panvk_cmd_close_batch(struct panvk_cmd_buffer *cmdbuf)
 {
    assert(cmdbuf->state.batch);
@@ -656,23 +709,63 @@ panvk_cmd_close_batch(struct panvk_cmd_buffer *cmdbuf)
       return;
    }
 
+   const struct panfrost_device *pdev = cmdbuf->desc_pool.dev;
+
    list_addtail(&cmdbuf->state.batch->node, &cmdbuf->batches);
 
-   if (cmdbuf->state.batch->tls.cpu) {
-      panvk_emit_tls(cmdbuf->device, cmdbuf->state.pipeline,
-                     &cmdbuf->state.compute.wg_count,
-                     &cmdbuf->tls_pool,
-                     cmdbuf->state.batch->tls.cpu);
+   struct pan_tls_info tlsinfo = {
+      .tls.size = cmdbuf->state.pipeline->tls_size,
+      .wls.size = cmdbuf->state.pipeline->wls_size,
+   };
+
+   if (tlsinfo.tls.size) {
+      tlsinfo.tls.ptr =
+         panfrost_pool_alloc_aligned(&cmdbuf->tls_pool, tlsinfo.tls.size, 4096).gpu;
+   }
+
+   if (tlsinfo.wls.size) {
+      unsigned wls_size =
+         pan_wls_mem_size(pdev, &cmdbuf->state.compute.wg_count, tlsinfo.wls.size);
+      tlsinfo.wls.ptr =
+         panfrost_pool_alloc_aligned(&cmdbuf->tls_pool, wls_size, 4096).gpu;
+   }
+
+   if ((pan_is_bifrost(pdev) || !cmdbuf->state.batch->fb.desc.cpu) &&
+       cmdbuf->state.batch->tls.cpu) {
+      pan_emit_tls(pdev, &tlsinfo, cmdbuf->state.batch->tls.cpu);
    }
 
    if (cmdbuf->state.batch->fb.desc.cpu) {
-      panvk_emit_fb(cmdbuf->device,
-                    cmdbuf->state.batch,
-                    cmdbuf->state.subpass,
-                    cmdbuf->state.pipeline,
-                    cmdbuf->state.framebuffer,
-                    cmdbuf->state.clear,
-                    cmdbuf->state.batch->fb.desc.cpu);
+      if (!pan_is_bifrost(pdev)) {
+         panvk_cmdbuf_get_midgard_polygon_list(cmdbuf, false);
+
+         mali_ptr polygon_list =
+            cmdbuf->state.batch->tiler.ctx.midgard.polygon_list->ptr.gpu;
+         struct panfrost_ptr writeval_job =
+            panfrost_scoreboard_initialize_tiler(&cmdbuf->desc_pool,
+                                                 &cmdbuf->state.batch->scoreboard,
+                                                 polygon_list);
+         if (writeval_job.cpu)
+            util_dynarray_append(&cmdbuf->state.batch->jobs, void *, writeval_job.cpu);
+      }
+
+      cmdbuf->state.batch->fb.desc.gpu |=
+         panvk_emit_fb(cmdbuf->device,
+                       cmdbuf->state.batch,
+                       cmdbuf->state.subpass,
+                       cmdbuf->state.pipeline,
+                       cmdbuf->state.framebuffer,
+                       cmdbuf->state.clear,
+                       &tlsinfo, &cmdbuf->state.batch->tiler.ctx,
+                       cmdbuf->state.batch->fb.desc.cpu);
+
+      if (!pan_is_bifrost(pdev)) {
+         memcpy(&cmdbuf->state.batch->tiler.templ.midgard,
+                pan_section_ptr(cmdbuf->state.batch->fb.desc.cpu,
+                                MULTI_TARGET_FRAMEBUFFER, TILER),
+                sizeof(cmdbuf->state.batch->tiler.templ.midgard));
+      }
+
       panvk_cmd_prepare_fragment_job(cmdbuf);
    }
 
@@ -725,6 +818,10 @@ panvk_cmd_alloc_fb_desc(struct panvk_cmd_buffer *cmdbuf)
       return;
 
    struct panvk_batch *batch = cmdbuf->state.batch;
+
+   if (batch->fb.desc.gpu)
+      return;
+
    const struct panfrost_device *pdev = cmdbuf->desc_pool.dev;
    const struct panvk_subpass *subpass = cmdbuf->state.subpass;
    bool sfbd = pdev->quirks & MIDGARD_SFBD;
@@ -737,7 +834,6 @@ panvk_cmd_alloc_fb_desc(struct panvk_cmd_buffer *cmdbuf)
       tags |= MALI_FBD_TAG_IS_MFBD;
       size += MALI_RENDER_TARGET_LENGTH * subpass->color_count;
       if (subpass->zs_attachment.idx != VK_ATTACHMENT_UNUSED) {
-         tags |= MALI_FBD_TAG_HAS_ZS_RT;
          size += MALI_ZS_CRC_EXTENSION_LENGTH;
       }
    }
@@ -765,6 +861,7 @@ panvk_cmd_alloc_tls_desc(struct panvk_cmd_buffer *cmdbuf)
        cmdbuf->state.bind_point == VK_PIPELINE_BIND_POINT_GRAPHICS) {
       panvk_cmd_alloc_fb_desc(cmdbuf);
       batch->tls = batch->fb.desc;
+      batch->tls.gpu &= ~63ULL;
    } else {
       batch->tls =
          panfrost_pool_alloc_aligned(&cmdbuf->desc_pool,
@@ -838,7 +935,7 @@ panvk_cmd_prepare_ubos(struct panvk_cmd_buffer *cmdbuf)
 
    for (unsigned i = 0; i < ARRAY_SIZE(pipeline->sysvals); i++) {
       if (pipeline->sysvals[i].ids.sysval_count)
-         num_ubos = MAX2(num_ubos, pipeline->sysvals[i].ubo_idx);
+         num_ubos = MAX2(num_ubos, pipeline->sysvals[i].ubo_idx + 1);
    }
 
    desc_state->dirty &= ~PANVK_DESC_STATE_DIRTY_UBOS;
@@ -965,24 +1062,39 @@ panvk_draw_prepare_fs_rsd(struct panvk_cmd_buffer *cmdbuf,
 }
 
 static void
+panvk_cmdbuf_get_bifrost_tiler_context(struct panvk_cmd_buffer *cmdbuf)
+{
+   struct panvk_batch *batch = cmdbuf->state.batch;
+
+   if (batch->tiler.bifrost_descs.cpu)
+      return;
+
+   batch->tiler.bifrost_descs =
+      panfrost_pool_alloc_aligned(&cmdbuf->desc_pool,
+                                  MALI_BIFROST_TILER_LENGTH +
+                                  MALI_BIFROST_TILER_HEAP_LENGTH,
+                                  64);
+
+   panvk_emit_bifrost_tiler_context(cmdbuf->device, cmdbuf->state.framebuffer,
+                                    &batch->tiler.bifrost_descs);
+   memcpy(&batch->tiler.templ.bifrost, batch->tiler.bifrost_descs.cpu,
+          sizeof(batch->tiler.templ.bifrost));
+   batch->tiler.ctx.bifrost = batch->tiler.bifrost_descs.gpu;
+}
+
+static void
 panvk_draw_prepare_tiler_context(struct panvk_cmd_buffer *cmdbuf,
                                  struct panvk_draw_info *draw)
 {
    const struct panfrost_device *pdev = &cmdbuf->device->physical_device->pdev;
    struct panvk_batch *batch = cmdbuf->state.batch;
 
-   if (pan_is_bifrost(pdev) && !batch->tiler.cpu) {
-      batch->tiler =
-         panfrost_pool_alloc_aligned(&cmdbuf->desc_pool,
-                                     MALI_BIFROST_TILER_LENGTH +
-                                     MALI_BIFROST_TILER_HEAP_LENGTH,
-                                     64);
+   if (pan_is_bifrost(pdev))
+      panvk_cmdbuf_get_bifrost_tiler_context(cmdbuf);
+   else
+      panvk_cmdbuf_get_midgard_polygon_list(cmdbuf, true);
 
-      panvk_emit_bifrost_tiler_context(cmdbuf->device, cmdbuf->state.framebuffer,
-                                       &batch->tiler);
-   }
-
-   draw->tiler = batch->tiler.gpu;
+   draw->tiler_ctx = &batch->tiler.ctx;
 }
 
 static void
@@ -1047,10 +1159,16 @@ panvk_draw_prepare_attributes(struct panvk_cmd_buffer *cmdbuf,
    /* TODO: images */
    struct panfrost_device *pdev = cmdbuf->desc_pool.dev;
 
-   if (!cmdbuf->state.attribs.buf_count)
+   if (!cmdbuf->state.pipeline->attribs.buf_count)
       return;
 
-   unsigned buf_count = cmdbuf->state.attribs.buf_count +
+   if (!(cmdbuf->state.dirty & PANVK_CMD_STATE_DIRTY_ATTRIBS)) {
+      draw->attributes[MESA_SHADER_VERTEX] = cmdbuf->state.vb.attribs;
+      draw->attribute_bufs = cmdbuf->state.vb.attrib_bufs;
+      return;
+   }
+
+   unsigned buf_count = cmdbuf->state.pipeline->attribs.buf_count +
                         (pan_is_bifrost(pdev) ? 1 : 0);
    struct panfrost_ptr bufs =
       panfrost_pool_alloc_aligned(&cmdbuf->desc_pool,
@@ -1058,18 +1176,25 @@ panvk_draw_prepare_attributes(struct panvk_cmd_buffer *cmdbuf,
                                   MALI_ATTRIBUTE_BUFFER_LENGTH,
                                   MALI_ATTRIBUTE_BUFFER_LENGTH * 2);
    
-   panvk_emit_attrib_bufs(cmdbuf->device, &cmdbuf->state.attribs,
+   panvk_emit_attrib_bufs(cmdbuf->device,
+                          &cmdbuf->state.pipeline->attribs,
+                          cmdbuf->state.vb.bufs, cmdbuf->state.vb.count,
                           draw, bufs.cpu);
-   draw->attribute_bufs = bufs.gpu;
+   cmdbuf->state.vb.attrib_bufs = bufs.gpu;
 
    struct panfrost_ptr attribs =
       panfrost_pool_alloc_aligned(&cmdbuf->desc_pool,
-                                  cmdbuf->state.attribs.attrib_count *
+                                  cmdbuf->state.pipeline->attribs.attrib_count *
                                   MALI_ATTRIBUTE_LENGTH,
                                   MALI_ATTRIBUTE_LENGTH);
 
-   panvk_emit_attribs(cmdbuf->device, &cmdbuf->state.attribs, attribs.cpu);
-   draw->attributes[MESA_SHADER_VERTEX] = attribs.gpu;
+   panvk_emit_attribs(cmdbuf->device, &cmdbuf->state.pipeline->attribs,
+                      cmdbuf->state.vb.bufs, cmdbuf->state.vb.count,
+                      attribs.cpu);
+   cmdbuf->state.vb.attribs = attribs.gpu;
+   cmdbuf->state.dirty &= ~PANVK_CMD_STATE_DIRTY_ATTRIBS;
+   draw->attributes[MESA_SHADER_VERTEX] = cmdbuf->state.vb.attribs;
+   draw->attribute_bufs = cmdbuf->state.vb.attrib_bufs;
 }
 
 static void

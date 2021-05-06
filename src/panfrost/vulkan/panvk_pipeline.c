@@ -584,7 +584,7 @@ bifrost_get_blend_desc(const struct panfrost_device *dev,
       }
 
       cfg.fixed_function.conversion.memory_format =
-         panfrost_format_to_bifrost_blend(dev, desc, true);
+         panfrost_format_to_bifrost_blend(dev, fmt);
    }
 
    return res;
@@ -673,9 +673,18 @@ panvk_pipeline_builder_parse_color_blend(struct panvk_pipeline_builder *builder,
           nconstants <= 1)
          continue;
 
-      /* TODO: add a blend shader cache */
+      /* Default for Midgard */
+      nir_alu_type col0_type = nir_type_float32;
+      nir_alu_type col1_type = nir_type_float32;
+      /* Bifrost has per-output types, respect them */
+      if (pan_is_bifrost(pdev)) {
+         col0_type = pipeline->fs.info.bifrost.blend[i].type;
+         col1_type = pipeline->fs.info.bifrost.blend_src1_type;
+      }
+
+      /* TODO: use the blend shader cache */
       builder->blend_shaders[i].nir =
-         pan_blend_create_shader(pdev, &pipeline->blend, i);
+         pan_blend_create_shader(pdev, &pipeline->blend, col0_type, col1_type, i);
 
       if (!nconstants) {
          /* No constant involved, we can compile the shader now */

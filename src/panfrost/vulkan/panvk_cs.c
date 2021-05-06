@@ -25,6 +25,7 @@
 #include "compiler/shader_enums.h"
 
 #include "panfrost-quirks.h"
+#include "pan_cs.h"
 #include "pan_encoder.h"
 #include "pan_pool.h"
 
@@ -137,16 +138,18 @@ panvk_emit_varying_bufs(const struct panvk_device *dev,
 
 static void
 panvk_emit_attrib_buf(const struct panvk_device *dev,
-                      const struct panvk_attribs_info *attribs,
+                      const struct panvk_attribs_info *info,
                       const struct panvk_draw_info *draw,
+                      const struct panvk_attrib_buf *bufs,
+                      unsigned buf_count,
                       unsigned idx, void *desc)
 {
    ASSERTED const struct panfrost_device *pdev = &dev->physical_device->pdev;
-   const struct panvk_attrib_buf *buf = &attribs->buf[idx];
+   const struct panvk_attrib_buf_info *buf_info = &info->buf[idx];
 
-   if (buf->special) {
+   if (buf_info->special) {
       assert(!pan_is_bifrost(pdev));
-      switch (buf->special_id) {
+      switch (buf_info->special_id) {
       case PAN_VERTEX_ID:
          panfrost_vertex_id(draw->padded_vertex_count, desc,
                             draw->instance_count > 1);
@@ -160,10 +163,12 @@ panvk_emit_attrib_buf(const struct panvk_device *dev,
       }
    }
 
-   unsigned divisor = buf->per_instance ?
+   assert(idx < buf_count);
+   const struct panvk_attrib_buf *buf = &bufs[idx];
+   unsigned divisor = buf_info->per_instance ?
                       draw->padded_vertex_count : 0;
    unsigned stride = divisor && draw->instance_count == 1 ?
-                     0 : buf->stride;
+                     0 : buf_info->stride;
    mali_ptr addr = buf->address & ~63ULL;
    unsigned size = buf->size + (buf->address & 63);
 
@@ -181,15 +186,17 @@ panvk_emit_attrib_buf(const struct panvk_device *dev,
 
 void
 panvk_emit_attrib_bufs(const struct panvk_device *dev,
-                       const struct panvk_attribs_info *attribs,
+                       const struct panvk_attribs_info *info,
+                       const struct panvk_attrib_buf *bufs,
+                       unsigned buf_count,
                        const struct panvk_draw_info *draw,
                        void *descs)
 {
    const struct panfrost_device *pdev = &dev->physical_device->pdev;
    struct mali_attribute_buffer_packed *buf = descs;
 
-   for (unsigned i = 0; i < attribs->buf_count; i++)
-      panvk_emit_attrib_buf(dev, attribs, draw, i, buf++);
+   for (unsigned i = 0; i < info->buf_count; i++)
+      panvk_emit_attrib_buf(dev, info, draw, bufs, buf_count, i, buf++);
 
    if (pan_is_bifrost(pdev))
       memset(buf, 0, sizeof(*buf));
@@ -198,6 +205,8 @@ panvk_emit_attrib_bufs(const struct panvk_device *dev,
 static void
 panvk_emit_attrib(const struct panvk_device *dev,
                   const struct panvk_attribs_info *attribs,
+                  const struct panvk_attrib_buf *bufs,
+                  unsigned buf_count,
                   unsigned idx, void *attrib)
 {
    const struct panfrost_device *pdev = &dev->physical_device->pdev;
@@ -205,21 +214,22 @@ panvk_emit_attrib(const struct panvk_device *dev,
    pan_pack(attrib, ATTRIBUTE, cfg) {
       cfg.buffer_index = attribs->attrib[idx].buf;
       cfg.offset = attribs->attrib[idx].offset +
-                   (attribs->buf[cfg.buffer_index].address & 63);
+                   (bufs[cfg.buffer_index].address & 63);
       cfg.format = pdev->formats[attribs->attrib[idx].format].hw;
-      cfg.offset_enable = !pan_is_bifrost(pdev);
    }
 }
 
 void
 panvk_emit_attribs(const struct panvk_device *dev,
                    const struct panvk_attribs_info *attribs,
+                   const struct panvk_attrib_buf *bufs,
+                   unsigned buf_count,
                    void *descs)
 {
    struct mali_attribute_packed *attrib = descs;
 
    for (unsigned i = 0; i < attribs->attrib_count; i++)
-      panvk_emit_attrib(dev, attribs, i, attrib++);
+      panvk_emit_attrib(dev, attribs, bufs, buf_count, i, attrib++);
 }
 
 void
@@ -371,7 +381,10 @@ panvk_emit_tiler_job(const struct panvk_device *dev,
       cfg.viewport = draw->viewport;
       cfg.varyings = draw->varyings[MESA_SHADER_FRAGMENT];
       cfg.varying_buffers = cfg.varyings ? draw->varying_bufs : 0;
-      cfg.thread_storage = draw->tls;
+      if (pan_is_bifrost(pdev))
+         cfg.thread_storage = draw->tls;
+      else
+         cfg.fbd = draw->fb;
 
       /* For all primitives but lines DRAW.flat_shading_vertex must
        * be set to 0 and the provoking vertex is selected with the
@@ -392,7 +405,7 @@ panvk_emit_tiler_job(const struct panvk_device *dev,
 
    if (pan_is_bifrost(pdev)) {
       pan_section_pack(job, BIFROST_TILER_JOB, TILER, cfg) {
-         cfg.address = draw->tiler;
+         cfg.address = draw->tiler_ctx->bifrost;
       }
       pan_section_pack(job, BIFROST_TILER_JOB, DRAW_PADDING, padding);
       pan_section_pack(job, BIFROST_TILER_JOB, PADDING, padding);
@@ -487,6 +500,58 @@ panvk_prepare_bifrost_fs_rsd(const struct panvk_device *dev,
 }
 
 static void
+panvk_prepare_midgard_fs_rsd(const struct panvk_device *dev,
+                             const struct panvk_pipeline *pipeline,
+                             const struct pan_blend_state *blend,
+                             struct MALI_RENDERER_STATE *rsd)
+{
+   if (!pipeline->fs.required) {
+      rsd->shader.shader = 0x1;
+      rsd->properties.midgard.work_register_count = 1;
+      rsd->properties.depth_source = MALI_DEPTH_SOURCE_FIXED_FUNCTION;
+      rsd->properties.midgard.force_early_z = true;
+   } else {
+      const struct panfrost_device *pdev = &dev->physical_device->pdev;
+      const struct pan_shader_info *info = &pipeline->fs.info;
+
+      pan_shader_prepare_rsd(pdev, info, pipeline->fs.address, rsd);
+
+      /* Reasons to disable early-Z from a shader perspective */
+      bool late_z = info->fs.can_discard || info->writes_global ||
+                    info->fs.writes_depth || info->fs.writes_stencil;
+
+      /* If either depth or stencil is enabled, discard matters */
+      bool zs_enabled =
+         (pipeline->zs.z_test && pipeline->zs.z_compare_func != MALI_FUNC_ALWAYS) ||
+         pipeline->zs.s_test;
+
+      bool has_blend_shader = false;
+
+      for (unsigned i = 0; i < blend->rt_count; i++)
+         has_blend_shader |= !pan_blend_can_fixed_function(pdev, blend, i);
+
+      /* TODO: Reduce this limit? */
+      if (has_blend_shader)
+         rsd->properties.midgard.work_register_count = MAX2(info->work_reg_count, 8);
+      else
+         rsd->properties.midgard.work_register_count = info->work_reg_count;
+
+      rsd->properties.midgard.force_early_z =
+         !(late_z || pipeline->ms.alpha_to_coverage);
+
+      /* Workaround a hardware errata where early-z cannot be enabled
+       * when discarding even when the depth buffer is read-only, by
+       * lying to the hardware about the discard and setting the
+       * reads tilebuffer? flag to compensate */
+      rsd->properties.midgard.shader_reads_tilebuffer =
+         info->fs.outputs_read ||
+         (!zs_enabled && info->fs.can_discard);
+      rsd->properties.midgard.shader_contains_discard =
+         zs_enabled && info->fs.can_discard;
+   }
+}
+
+static void
 panvk_prepare_fs_rsd(const struct panvk_device *dev,
                      const struct panvk_pipeline *pipeline,
                      const struct panvk_cmd_state *state,
@@ -500,7 +565,7 @@ panvk_prepare_fs_rsd(const struct panvk_device *dev,
    if (pan_is_bifrost(pdev))
       panvk_prepare_bifrost_fs_rsd(dev, pipeline, blend, rsd);
    else
-      assert(0);
+      panvk_prepare_midgard_fs_rsd(dev, pipeline, blend, rsd);
 
    bool msaa = pipeline->ms.rast_samples > 1;
    rsd->multisample_misc.multisample_enable = msaa;
@@ -657,10 +722,54 @@ panvk_prepare_bifrost_blend(const struct panvk_device *dev,
           */
          cfg.bifrost.internal.fixed_function.num_comps = 4;
          cfg.bifrost.internal.fixed_function.conversion.memory_format =
-            panfrost_format_to_bifrost_blend(pdev, format_desc, true);
+            panfrost_format_to_bifrost_blend(pdev, rts->format);
          cfg.bifrost.internal.fixed_function.conversion.register_format =
             bifrost_blend_type_from_nir(pipeline->fs.info.bifrost.blend[rt].type);
          cfg.bifrost.internal.fixed_function.rt = rt;
+      }
+   }
+}
+
+static void
+panvk_prepare_midgard_blend(const struct panvk_device *dev,
+                            const struct panvk_pipeline *pipeline,
+                            const struct pan_blend_state *blend,
+                            mali_ptr blend_shader,
+                            unsigned rt, void *bd)
+{
+   const struct panfrost_device *pdev = &dev->physical_device->pdev;
+   const struct pan_blend_rt_state *rts = &blend->rts[rt];
+
+   if (!blend->rt_count || !rts) {
+      /* Disable blending for depth-only */
+      pan_pack(bd, BLEND, cfg) {
+         cfg.midgard.equation.color_mask = 0xf;
+         cfg.midgard.equation.rgb.a = MALI_BLEND_OPERAND_A_SRC;
+         cfg.midgard.equation.rgb.b = MALI_BLEND_OPERAND_B_SRC;
+         cfg.midgard.equation.rgb.c = MALI_BLEND_OPERAND_C_ZERO;
+         cfg.midgard.equation.alpha.a = MALI_BLEND_OPERAND_A_SRC;
+         cfg.midgard.equation.alpha.b = MALI_BLEND_OPERAND_B_SRC;
+         cfg.midgard.equation.alpha.c = MALI_BLEND_OPERAND_C_ZERO;
+      }
+      return;
+   }
+
+   pan_pack(bd, BLEND, cfg) {
+      if (!rts->equation.color_mask) {
+         cfg.enable = false;
+         continue;
+      }
+
+      cfg.srgb = util_format_is_srgb(rts->format);
+      cfg.load_destination = pan_blend_reads_dest(blend, rt);
+      cfg.round_to_fb_precision = !blend->dither;
+      cfg.midgard.blend_shader = blend_shader != 0;
+      if (blend_shader) {
+         cfg.midgard.shader_pc = blend_shader;
+      } else {
+         pan_blend_to_fixed_function_equation(pdev, blend, rt,
+                                              &cfg.midgard.equation);
+         cfg.midgard.constant = pan_blend_get_constant(pdev, blend, rt);
       }
    }
 }
@@ -677,7 +786,7 @@ panvk_emit_blend(const struct panvk_device *dev,
    if (pan_is_bifrost(pdev))
       panvk_prepare_bifrost_blend(dev, pipeline, blend, blend_shader, rt, bd);
    else
-      assert(0);
+      panvk_prepare_midgard_blend(dev, pipeline, blend, blend_shader, rt, bd);
 }
 
 void
@@ -746,394 +855,69 @@ panvk_emit_bifrost_tiler_context(const struct panvk_device *dev,
    }
 }
 
-static void
-panvk_emit_sfb(const struct panvk_device *dev,
-               const struct panvk_batch *batch,
-               const struct panvk_subpass *subpass,
-               const struct panvk_pipeline *pipeline,
-               const struct panvk_framebuffer *fb,
-               const struct panvk_clear_value *clears,
-               void *desc)
-{
-   assert(0);
-}
-
-static unsigned
-bytes_per_pixel_tib(enum pipe_format format)
-{
-   if (panfrost_blend_format(format).internal) {
-      /* Blendable formats are always 32-bits in the tile buffer,
-       * extra bits are used as padding or to dither */
-      return 4;
-   } else {
-      /* Non-blendable formats are raw, rounded up to the nearest
-       * power-of-two size */
-      unsigned bytes = util_format_get_blocksize(format);
-      return util_next_power_of_two(bytes);
-   }
-}
-
-static unsigned
-get_internal_cbuf_size(const struct panvk_subpass *subpass,
-                       const struct panvk_framebuffer *fb,
-                       unsigned *tile_size)
-{
-   unsigned total_size = 0;
-
-   *tile_size = 16 * 16;
-   for (int cb = 0; cb < subpass->color_count; cb++) {
-      if (subpass->color_attachments[cb].idx == VK_ATTACHMENT_UNUSED)
-         continue;
-
-      const struct panvk_attachment_info *info =
-         &fb->attachments[subpass->color_attachments[cb].idx];
-      const struct panvk_image_view *iview = info->iview;
-
-      unsigned nr_samples = iview->image->samples;
-      total_size += bytes_per_pixel_tib(iview->format) *
-                    nr_samples * (*tile_size);
-   }
-
-   /* We have a 4KB budget, let's reduce the tile size until it fits. */
-   while (total_size > 4096) {
-      total_size >>= 1;
-      *tile_size >>= 1;
-   }
-
-   /* Align on 1k. */
-   total_size = ALIGN_POT(total_size, 1024);
-
-   /* Minimum tile size is 4x4. */
-   assert(*tile_size >= 4 * 4);
-   return total_size;
-}
-
-static enum mali_mfbd_color_format
-panvk_raw_format(unsigned bits)
-{
-   switch (bits) {
-   case    8: return MALI_MFBD_COLOR_FORMAT_RAW8;
-   case   16: return MALI_MFBD_COLOR_FORMAT_RAW16;
-   case   24: return MALI_MFBD_COLOR_FORMAT_RAW24;
-   case   32: return MALI_MFBD_COLOR_FORMAT_RAW32;
-   case   48: return MALI_MFBD_COLOR_FORMAT_RAW48;
-   case   64: return MALI_MFBD_COLOR_FORMAT_RAW64;
-   case   96: return MALI_MFBD_COLOR_FORMAT_RAW96;
-   case  128: return MALI_MFBD_COLOR_FORMAT_RAW128;
-   case  192: return MALI_MFBD_COLOR_FORMAT_RAW192;
-   case  256: return MALI_MFBD_COLOR_FORMAT_RAW256;
-   case  384: return MALI_MFBD_COLOR_FORMAT_RAW384;
-   case  512: return MALI_MFBD_COLOR_FORMAT_RAW512;
-   case  768: return MALI_MFBD_COLOR_FORMAT_RAW768;
-   case 1024: return MALI_MFBD_COLOR_FORMAT_RAW1024;
-   case 1536: return MALI_MFBD_COLOR_FORMAT_RAW1536;
-   case 2048: return MALI_MFBD_COLOR_FORMAT_RAW2048;
-   default: unreachable("invalid raw bpp");
-   }
-}
-
-static void
-panvk_rt_set_format(const struct panvk_device *dev,
-                    const struct panvk_image_view *iview,
-                    struct MALI_RENDER_TARGET *rt)
-{
-   const struct util_format_description *desc =
-      util_format_description(iview->format);
-
-   unsigned char swizzle[4];
-   panfrost_invert_swizzle(desc->swizzle, swizzle);
-   rt->swizzle = panfrost_translate_swizzle_4(swizzle);
-
-   if (desc->colorspace == UTIL_FORMAT_COLORSPACE_SRGB)
-      rt->srgb = true;
-
-   struct pan_blendable_format fmt = panfrost_blend_format(iview->format);
-
-   if (fmt.internal) {
-      rt->internal_format = fmt.internal;
-      rt->writeback_format = fmt.writeback;
-   } else {
-      /* Construct RAW internal/writeback, where internal is
-       * specified logarithmically (round to next power-of-two).
-       * Offset specified from RAW8, where 8 = 2^3 */
-
-      unsigned bits = desc->block.bits;
-      unsigned offset = util_logbase2_ceil(bits) - 3;
-      assert(offset <= 4);
-
-      rt->internal_format =
-         MALI_COLOR_BUFFER_INTERNAL_FORMAT_RAW8 + offset;
-
-      rt->writeback_format = panvk_raw_format(bits);
-   }
-}
-
-static void
-panvk_rt_set_buf(const struct panvk_device *dev,
-                 const struct panvk_image_view *iview,
-                 struct MALI_RENDER_TARGET *rt)
-{
-   const struct panfrost_device *pdev = &dev->physical_device->pdev;
-
-   /* FIXME */
-   rt->writeback_msaa = MALI_MSAA_SINGLE;
-   mali_ptr base = iview->image->memory.planes[0].bo->ptr.gpu +
-                   iview->image->memory.planes[0].offset;
-
-   if (pdev->arch >= 7)
-      rt->bifrost_v7.writeback_block_format = MALI_BLOCK_FORMAT_V7_LINEAR;
-   else
-      rt->midgard.writeback_block_format = MALI_BLOCK_FORMAT_LINEAR;
-
-   rt->rgb.base = base;
-   rt->rgb.row_stride = iview->image->layout.planes[0].slices[0].line_stride;
-   rt->rgb.surface_stride = 0;
-}
-
-static void
-panvk_emit_rt(const struct panvk_device *dev,
-              const struct panvk_subpass *subpass,
-              const struct panvk_pipeline *pipeline,
-              const struct panvk_framebuffer *fb,
-              const struct panvk_clear_value *clears,
-              unsigned rt, unsigned cbuf_offset,
-              void *desc)
-{
-   const struct panfrost_device *pdev = &dev->physical_device->pdev;
-   const struct panvk_image_view *iview = NULL;
-   const struct panvk_clear_value *clear = NULL;
-
-   if (subpass->color_attachments[rt].idx != VK_ATTACHMENT_UNUSED) {
-      iview = fb->attachments[subpass->color_attachments[rt].idx].iview;
-      if (subpass->color_attachments[rt].clear)
-         clear = &clears[subpass->color_attachments[rt].idx];
-   }
-
-   pan_pack(desc, RENDER_TARGET, cfg) {
-      cfg.clean_pixel_write_enable = true;
-      if (iview) {
-         cfg.write_enable = true;
-         cfg.dithering_enable = true;
-         cfg.internal_buffer_offset = cbuf_offset;
-         /* FIXME */
-         panvk_rt_set_format(dev, iview, &cfg);
-         panvk_rt_set_buf(dev, iview, &cfg);
-//         panfrost_mfbd_rt_set_buf(surf, &rt);
-      } else {
-         cfg.internal_format = MALI_COLOR_BUFFER_INTERNAL_FORMAT_R8G8B8A8;
-         cfg.internal_buffer_offset = cbuf_offset;
-         if (pdev->arch >= 7) {
-            cfg.bifrost_v7.writeback_block_format = MALI_BLOCK_FORMAT_V7_TILED_U_INTERLEAVED;
-            cfg.dithering_enable = true;
-         }
-      }
-
-      if (clear) {
-         cfg.clear.color_0 = clear->color[0];
-         cfg.clear.color_1 = clear->color[1];
-         cfg.clear.color_2 = clear->color[2];
-         cfg.clear.color_3 = clear->color[3];
-      }
-   }
-}
-
-static void
-panvk_emit_zs_crc(const struct panvk_device *dev,
-                  const struct panvk_subpass *subpass,
-                  const struct panvk_pipeline *pipeline,
-                  const struct panvk_framebuffer *fb,
-                  void *desc)
-{
-   const struct panfrost_device *pdev = &dev->physical_device->pdev;
-   const struct panvk_attachment_info *info =
-      &fb->attachments[subpass->zs_attachment.idx];
-   const struct panvk_image_view *iview = info->iview;
-
-   /* TODO: AFBC, tiled (and a lot more to fix) */
-   pan_pack(desc, ZS_CRC_EXTENSION, ext) {
-      ext.zs_clean_pixel_write_enable = true;
-      if (pdev->arch < 7)
-         ext.zs_msaa = MALI_MSAA_SINGLE;
-      else
-         ext.zs_msaa_v7 = MALI_MSAA_SINGLE;
-      assert(iview->image->modifier == DRM_FORMAT_MOD_LINEAR);
-      mali_ptr base = iview->image->memory.planes[0].bo->ptr.gpu +
-                      iview->image->memory.planes[0].offset;
-
-      ext.zs_writeback_base = base;
-      ext.zs_writeback_row_stride =
-         iview->image->layout.planes[0].slices[0].line_stride;
-      ext.zs_writeback_surface_stride = 0;
-      if (pdev->arch >= 7)
-         ext.zs_block_format_v7 = MALI_BLOCK_FORMAT_V7_LINEAR;
-      else
-         ext.zs_block_format = MALI_BLOCK_FORMAT_LINEAR;
-
-      switch (iview->format) {
-      case PIPE_FORMAT_Z16_UNORM:
-         ext.zs_write_format = MALI_ZS_FORMAT_D16;
-         break;
-      case PIPE_FORMAT_Z24_UNORM_S8_UINT:
-         ext.zs_write_format = MALI_ZS_FORMAT_D24S8;
-         ext.s_writeback_base = ext.zs_writeback_base;
-         break;
-      case PIPE_FORMAT_Z24X8_UNORM:
-         ext.zs_write_format = MALI_ZS_FORMAT_D24X8;
-         break;
-      case PIPE_FORMAT_Z32_FLOAT:
-         ext.zs_write_format = MALI_ZS_FORMAT_D32;
-         break;
-      default:
-         unreachable("Unsupported depth/stencil format.");
-      }
-   }
-}
-
-static enum mali_z_internal_format
-get_z_internal_format(const struct panvk_subpass *subpass,
-                      const struct panvk_framebuffer *fb)
-{
-   const struct panvk_image_view *iview =
-      subpass->zs_attachment.idx != VK_ATTACHMENT_UNUSED ?
-      fb->attachments[subpass->zs_attachment.idx].iview : NULL;
-      
-   /* Default to 24 bit depth if there's no surface. */
-   if (!iview)
-      return MALI_Z_INTERNAL_FORMAT_D24;
-
-   return panfrost_get_z_internal_format(iview->format);
-}
-
-static void
-panvk_emit_bifrost_mfb_sections(const struct panvk_device *dev,
-                                const struct panvk_batch *batch,
-                                void *desc)
-{
-   struct panfrost_device *pdev = &dev->physical_device->pdev;
-
-   pan_section_pack(desc, MULTI_TARGET_FRAMEBUFFER, BIFROST_PARAMETERS, params) {
-      params.sample_locations =
-         panfrost_sample_positions(pdev, MALI_SAMPLE_PATTERN_SINGLE_SAMPLED);
-   }
-
-   pan_section_pack(desc, MULTI_TARGET_FRAMEBUFFER, BIFROST_TILER_POINTER, tiler) {
-      tiler.address = batch->tiler.gpu;
-   }
-
-   pan_section_pack(desc, MULTI_TARGET_FRAMEBUFFER, BIFROST_PADDING, padding);
-}
-
-static void
-panvk_emit_mfb(const struct panvk_device *dev,
-               const struct panvk_batch *batch,
-               const struct panvk_subpass *subpass,
-               const struct panvk_pipeline *pipeline,
-               const struct panvk_framebuffer *fb,
-               const struct panvk_clear_value *clears,
-               void *desc)
-{
-   const struct panfrost_device *pdev = &dev->physical_device->pdev;
-   unsigned cbuf_offset = 0, tib_size;
-   unsigned internal_cbuf_size = get_internal_cbuf_size(subpass, fb, &tib_size);
-   void *rt_descs;
-
-   if (subpass->zs_attachment.idx != VK_ATTACHMENT_UNUSED) {
-      void *zs_crc_desc = desc + MALI_MULTI_TARGET_FRAMEBUFFER_LENGTH;
-
-      panvk_emit_zs_crc(dev, subpass, pipeline, fb, zs_crc_desc);
-      rt_descs = zs_crc_desc += MALI_ZS_CRC_EXTENSION_LENGTH;
-   } else {
-      rt_descs = desc + MALI_MULTI_TARGET_FRAMEBUFFER_LENGTH;
-   }
-
-   for (unsigned cb = 0; cb < subpass->color_count; cb++) {
-      const struct panvk_image_view *iview =
-         subpass->color_attachments[cb].idx != VK_ATTACHMENT_UNUSED ?
-         fb->attachments[cb].iview : NULL;
-
-      panvk_emit_rt(dev, subpass, pipeline, fb, clears, cb, cbuf_offset,
-                    rt_descs + (cb * MALI_RENDER_TARGET_LENGTH));
-      if (iview) {
-         cbuf_offset += bytes_per_pixel_tib(iview->format) * tib_size *
-                        iview->image->samples;
-      }
-   }
-
-   if (pan_is_bifrost(pdev))
-      panvk_emit_bifrost_mfb_sections(dev, batch, desc);
-
-   pan_section_pack(desc, MULTI_TARGET_FRAMEBUFFER, PARAMETERS, params) {
-      params.width = fb->width;
-      params.height = fb->height;
-      params.bound_max_x = fb->width - 1;
-      params.bound_max_y = fb->height - 1;
-      params.effective_tile_size = tib_size;
-      params.tie_break_rule = MALI_TIE_BREAK_RULE_MINUS_180_IN_0_OUT;
-      params.render_target_count = subpass->color_count;
-      params.z_internal_format = get_z_internal_format(subpass, fb);
-      if (subpass->zs_attachment.clear) {
-         params.z_clear = clears[subpass->zs_attachment.idx].depth;
-         params.s_clear = clears[subpass->zs_attachment.idx].stencil;
-      }
-
-      params.color_buffer_allocation = internal_cbuf_size;
-
-      /* FIXME */
-      params.sample_count = 1;
-      params.sample_pattern = MALI_SAMPLE_PATTERN_SINGLE_SAMPLED;
-      params.has_zs_crc_extension = subpass->zs_attachment.idx != VK_ATTACHMENT_UNUSED;
-   }
-}
-
-void
+unsigned
 panvk_emit_fb(const struct panvk_device *dev,
               const struct panvk_batch *batch,
               const struct panvk_subpass *subpass,
               const struct panvk_pipeline *pipeline,
               const struct panvk_framebuffer *fb,
               const struct panvk_clear_value *clears,
+              const struct pan_tls_info *tlsinfo,
+              const struct pan_tiler_context *tilerctx,
               void *desc)
 {
    const struct panfrost_device *pdev = &dev->physical_device->pdev;
-   bool sfbd = pdev->quirks & MIDGARD_SFBD;
+   struct panvk_image_view *view;
+   struct pan_fb_info fbinfo = {
+      .width = fb->width,
+      .height = fb->height,
+      .extent.maxx = fb->width - 1,
+      .extent.maxy = fb->height - 1,
+      .nr_samples = 1,
+   };
+   struct pan_image_state dummy_rt_state[8] = { 0 };
+   struct pan_image_state dummy_zs_state = { 0 };
+   struct pan_image_state dummy_s_state = { 0 };
 
-   if (sfbd)
-      panvk_emit_sfb(dev, batch, subpass, pipeline, fb, clears, desc);
-   else
-      panvk_emit_mfb(dev, batch, subpass, pipeline, fb, clears, desc);
-}
+   for (unsigned cb = 0; cb < subpass->color_count; cb++) {
+      int idx = subpass->color_attachments[cb].idx;
+      view = idx != VK_ATTACHMENT_UNUSED ?
+             fb->attachments[idx].iview : NULL;
+      if (!view)
+         continue;
+      fbinfo.rts[cb].view = &view->pview;
+      fbinfo.rts[cb].state = &dummy_rt_state[cb];
+      fbinfo.rts[cb].clear = subpass->color_attachments[idx].clear;
+      memcpy(fbinfo.rts[cb].clear_value, clears[idx].color,
+             sizeof(fbinfo.rts[cb].clear_value));
+      fbinfo.nr_samples =
+         MAX2(fbinfo.nr_samples, view->pview.image->layout.nr_samples);
+   }
 
-void
-panvk_emit_tls(const struct panvk_device *dev,
-               const struct panvk_pipeline *pipeline,
-               const struct panvk_compute_dim *wg_count,
-               struct pan_pool *tls_pool,
-               void *desc)
-{
-   pan_pack(desc, LOCAL_STORAGE, cfg) {
-      if (pipeline->tls_size) {
-         cfg.tls_size = panfrost_get_stack_shift(pipeline->tls_size);
-         cfg.tls_base_pointer =
-            panfrost_pool_alloc_aligned(tls_pool,
-                                        pipeline->tls_size, 4096).gpu;
+   if (subpass->zs_attachment.idx != VK_ATTACHMENT_UNUSED) {
+      view = fb->attachments[subpass->zs_attachment.idx].iview;
+      const struct util_format_description *fdesc =
+         util_format_description(view->pview.format);
+
+      fbinfo.nr_samples =
+         MAX2(fbinfo.nr_samples, view->pview.image->layout.nr_samples);
+
+      if (util_format_has_depth(fdesc)) {
+         fbinfo.zs.clear.z = subpass->zs_attachment.clear;
+         fbinfo.zs.clear_value.depth = clears[subpass->zs_attachment.idx].depth;
+         fbinfo.zs.view.zs = &view->pview;
+         fbinfo.zs.state.zs = &dummy_zs_state;
       }
 
-      unsigned compute_size = wg_count->x * wg_count->y * wg_count->z;
-      if (pipeline->wls_size && compute_size) {
-         unsigned instances =
-            util_next_power_of_two(wg_count->x) *
-            util_next_power_of_two(wg_count->y) *
-            util_next_power_of_two(wg_count->z);
-
-         unsigned wls_size =
-            util_next_power_of_two(MAX2(pipeline->wls_size, 128));
-
-         cfg.wls_instances = instances;
-         cfg.wls_size_scale = util_logbase2(wls_size) + 1;
-         cfg.wls_base_pointer =
-            panfrost_pool_alloc_aligned(tls_pool, wls_size, 4096).gpu;
-      } else {
-         cfg.wls_instances = MALI_LOCAL_STORAGE_NO_WORKGROUP_MEM;
+      if (util_format_has_depth(fdesc)) {
+         fbinfo.zs.clear.s = subpass->zs_attachment.clear;
+         fbinfo.zs.clear_value.stencil = clears[subpass->zs_attachment.idx].depth;
+         if (!fbinfo.zs.view.zs) {
+            fbinfo.zs.view.s = &view->pview;
+            fbinfo.zs.state.s = &dummy_s_state;
+         }
       }
    }
+
+   return pan_emit_fbd(pdev, &fbinfo, tlsinfo, tilerctx, desc);
 }
