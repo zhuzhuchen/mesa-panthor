@@ -68,6 +68,12 @@ panvk_reset_cmdbuf(struct panvk_cmd_buffer *cmdbuf)
       util_dynarray_fini(&batch->jobs);
       if (!pan_is_bifrost(pdev))
          panfrost_bo_unreference(batch->tiler.ctx.midgard.polygon_list);
+
+      util_dynarray_foreach(&batch->event_ops, struct panvk_event_op *, op) {
+         vk_free(&device->vk.alloc, *op);
+      }
+      util_dynarray_fini(&batch->event_ops);
+
       vk_free(&cmdbuf->pool->alloc, batch);
    }
 
@@ -124,6 +130,12 @@ panvk_destroy_cmdbuf(struct panvk_cmd_buffer *cmdbuf)
    list_for_each_entry_safe(struct panvk_batch, batch, &cmdbuf->batches, node) {
       list_del(&batch->node);
       util_dynarray_fini(&batch->jobs);
+
+      util_dynarray_foreach(&batch->event_ops, struct panvk_event_op *, op) {
+         vk_free(&device->vk.alloc, *op);
+      }
+      util_dynarray_fini(&batch->event_ops);
+
       vk_free(&cmdbuf->pool->alloc, batch);
    }
 
@@ -619,6 +631,7 @@ panvk_CmdBeginRenderPass2(VkCommandBuffer commandBuffer,
                                    sizeof(*cmdbuf->state.batch), 8,
                                    VK_SYSTEM_ALLOCATION_SCOPE_COMMAND);
    util_dynarray_init(&cmdbuf->state.batch->jobs, NULL);
+   util_dynarray_init(&cmdbuf->state.batch->event_ops, NULL);
    cmdbuf->state.clear = vk_zalloc(&cmdbuf->pool->alloc,
                                    sizeof(*cmdbuf->state.clear) *
                                    pRenderPassBegin->clearValueCount, 8,
@@ -700,18 +713,25 @@ panvk_cmdbuf_get_midgard_polygon_list(struct panvk_cmd_buffer *cmdbuf,
 static void
 panvk_cmd_close_batch(struct panvk_cmd_buffer *cmdbuf)
 {
-   assert(cmdbuf->state.batch);
+   struct panvk_batch *batch = cmdbuf->state.batch;
 
-   if (!cmdbuf->state.batch->fragment_job &&
-       !cmdbuf->state.batch->scoreboard.first_job) {
-      vk_free(&cmdbuf->pool->alloc, cmdbuf->state.batch);
-      cmdbuf->state.batch = NULL;
-      return;
+   assert(batch);
+
+   if (!batch->fragment_job && !batch->scoreboard.first_job) {
+      if (util_dynarray_num_elements(&batch->event_ops, struct panvk_event_op *) == 0) {
+         vk_free(&cmdbuf->pool->alloc, batch);
+         cmdbuf->state.batch = NULL;
+         return;
+      } else {
+         list_addtail(&batch->node, &cmdbuf->batches);
+         cmdbuf->state.batch = NULL;
+         return;
+      }
    }
 
    const struct panfrost_device *pdev = cmdbuf->desc_pool.dev;
 
-   list_addtail(&cmdbuf->state.batch->node, &cmdbuf->batches);
+   list_addtail(&batch->node, &cmdbuf->batches);
 
    struct pan_tls_info tlsinfo = {
       .tls.size = cmdbuf->state.pipeline->tls_size,
@@ -730,40 +750,38 @@ panvk_cmd_close_batch(struct panvk_cmd_buffer *cmdbuf)
          panfrost_pool_alloc_aligned(&cmdbuf->tls_pool, wls_size, 4096).gpu;
    }
 
-   if ((pan_is_bifrost(pdev) || !cmdbuf->state.batch->fb.desc.cpu) &&
-       cmdbuf->state.batch->tls.cpu) {
-      pan_emit_tls(pdev, &tlsinfo, cmdbuf->state.batch->tls.cpu);
+   if ((pan_is_bifrost(pdev) || !batch->fb.desc.cpu) && batch->tls.cpu) {
+      pan_emit_tls(pdev, &tlsinfo, batch->tls.cpu);
    }
 
-   if (cmdbuf->state.batch->fb.desc.cpu) {
+   if (batch->fb.desc.cpu) {
       if (!pan_is_bifrost(pdev)) {
          panvk_cmdbuf_get_midgard_polygon_list(cmdbuf, false);
 
-         mali_ptr polygon_list =
-            cmdbuf->state.batch->tiler.ctx.midgard.polygon_list->ptr.gpu;
+         mali_ptr polygon_list = batch->tiler.ctx.midgard.polygon_list->ptr.gpu;
          struct panfrost_ptr writeval_job =
             panfrost_scoreboard_initialize_tiler(&cmdbuf->desc_pool,
-                                                 &cmdbuf->state.batch->scoreboard,
+                                                 &batch->scoreboard,
                                                  polygon_list);
          if (writeval_job.cpu)
-            util_dynarray_append(&cmdbuf->state.batch->jobs, void *, writeval_job.cpu);
+            util_dynarray_append(&batch->jobs, void *, writeval_job.cpu);
       }
 
-      cmdbuf->state.batch->fb.desc.gpu |=
+      batch->fb.desc.gpu |=
          panvk_emit_fb(cmdbuf->device,
                        cmdbuf->state.batch,
                        cmdbuf->state.subpass,
                        cmdbuf->state.pipeline,
                        cmdbuf->state.framebuffer,
                        cmdbuf->state.clear,
-                       &tlsinfo, &cmdbuf->state.batch->tiler.ctx,
-                       cmdbuf->state.batch->fb.desc.cpu);
+                       &tlsinfo, &batch->tiler.ctx,
+                       batch->fb.desc.cpu);
 
       if (!pan_is_bifrost(pdev)) {
-         memcpy(&cmdbuf->state.batch->tiler.templ.midgard,
-                pan_section_ptr(cmdbuf->state.batch->fb.desc.cpu,
+         memcpy(&batch->tiler.templ.midgard,
+                pan_section_ptr(batch->fb.desc.cpu,
                                 MULTI_TARGET_FRAMEBUFFER, TILER),
-                sizeof(cmdbuf->state.batch->tiler.templ.midgard));
+                sizeof(batch->tiler.templ.midgard));
       }
 
       panvk_cmd_prepare_fragment_job(cmdbuf);
@@ -1435,36 +1453,81 @@ panvk_CmdPipelineBarrier(VkCommandBuffer commandBuffer,
    }
 }
 
+static void
+panvk_add_event_operation(struct panvk_cmd_buffer *cmdbuf,
+                          struct panvk_event *event,
+                          enum panvk_event_op_type type)
+{
+   bool was_in_batch = cmdbuf->state.batch != NULL;
+   struct panvk_event_op *op = vk_zalloc(&cmdbuf->device->vk.alloc,
+                                         sizeof(struct panvk_event_op), 8,
+                                         VK_SYSTEM_ALLOCATION_SCOPE_COMMAND);
+
+   if (was_in_batch)
+      panvk_cmd_close_batch(cmdbuf);
+
+   panvk_cmd_open_batch(cmdbuf);
+
+   op->type = type;
+   op->event = event;
+
+   util_dynarray_append(&cmdbuf->state.batch->event_ops,
+                        struct panvk_event_op *,
+                        op);
+
+   if (!was_in_batch)
+      panvk_cmd_close_batch(cmdbuf);
+}
+
 void
 panvk_CmdSetEvent(VkCommandBuffer commandBuffer,
-                VkEvent _event,
-                VkPipelineStageFlags stageMask)
+                  VkEvent _event,
+                  VkPipelineStageFlags stageMask)
 {
-   panvk_stub();
+   VK_FROM_HANDLE(panvk_cmd_buffer, cmdbuf, commandBuffer);
+   VK_FROM_HANDLE(panvk_event, event, _event);
+
+   /* vkCmdSetEvent cannot be called inside a render pass */
+   assert(cmdbuf->state.pass == NULL);
+
+   panvk_add_event_operation(cmdbuf, event, PANVK_EVENT_OP_SET);
 }
 
 void
 panvk_CmdResetEvent(VkCommandBuffer commandBuffer,
-                  VkEvent _event,
-                  VkPipelineStageFlags stageMask)
+                    VkEvent _event,
+                    VkPipelineStageFlags stageMask)
 {
-   panvk_stub();
+   VK_FROM_HANDLE(panvk_cmd_buffer, cmdbuf, commandBuffer);
+   VK_FROM_HANDLE(panvk_event, event, _event);
+
+   /* vkCmdResetEvent cannot be called inside a render pass */
+   assert(cmdbuf->state.pass == NULL);
+
+   panvk_add_event_operation(cmdbuf, event, PANVK_EVENT_OP_RESET);
 }
 
 void
 panvk_CmdWaitEvents(VkCommandBuffer commandBuffer,
-                  uint32_t eventCount,
-                  const VkEvent *pEvents,
-                  VkPipelineStageFlags srcStageMask,
-                  VkPipelineStageFlags dstStageMask,
-                  uint32_t memoryBarrierCount,
-                  const VkMemoryBarrier *pMemoryBarriers,
-                  uint32_t bufferMemoryBarrierCount,
-                  const VkBufferMemoryBarrier *pBufferMemoryBarriers,
-                  uint32_t imageMemoryBarrierCount,
-                  const VkImageMemoryBarrier *pImageMemoryBarriers)
+                    uint32_t eventCount,
+                    const VkEvent *pEvents,
+                    VkPipelineStageFlags srcStageMask,
+                    VkPipelineStageFlags dstStageMask,
+                    uint32_t memoryBarrierCount,
+                    const VkMemoryBarrier *pMemoryBarriers,
+                    uint32_t bufferMemoryBarrierCount,
+                    const VkBufferMemoryBarrier *pBufferMemoryBarriers,
+                    uint32_t imageMemoryBarrierCount,
+                    const VkImageMemoryBarrier *pImageMemoryBarriers)
 {
-   panvk_stub();
+   VK_FROM_HANDLE(panvk_cmd_buffer, cmdbuf, commandBuffer);
+
+   assert(eventCount > 0);
+
+   for (uint32_t i = 0; i < eventCount; i++) {
+      VK_FROM_HANDLE(panvk_event, event, pEvents[i]);
+      panvk_add_event_operation(cmdbuf, event, PANVK_EVENT_OP_WAIT);
+   }
 }
 
 void

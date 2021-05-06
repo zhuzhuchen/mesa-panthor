@@ -246,6 +246,7 @@ panvk_device_is_lost(struct panvk_device *device)
 struct panvk_batch {
    struct list_head node;
    struct util_dynarray jobs;
+   struct util_dynarray event_ops;
    struct pan_scoreboard scoreboard;
    struct {
       const struct panvk_framebuffer *info;
@@ -269,6 +270,17 @@ struct panvk_batch {
 
 struct panvk_syncobj {
    uint32_t permanent, temporary;
+};
+
+enum panvk_event_op_type {
+   PANVK_EVENT_OP_SET,
+   PANVK_EVENT_OP_RESET,
+   PANVK_EVENT_OP_WAIT,
+};
+
+struct panvk_event_op {
+   enum panvk_event_op_type type;
+   struct panvk_event *event;
 };
 
 struct panvk_fence {
@@ -652,6 +664,7 @@ struct panvk_cmd_buffer {
 
 struct panvk_event {
    struct vk_object_base base;
+   int state;
 };
 
 struct panvk_shader_module {

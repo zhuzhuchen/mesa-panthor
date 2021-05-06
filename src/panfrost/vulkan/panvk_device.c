@@ -1218,6 +1218,29 @@ panvk_QueueSubmit(VkQueue _queue,
                }
             }
 
+            if (util_dynarray_num_elements(&batch->event_ops,
+                                           struct panvk_event_op *) > 0) {
+               const struct panfrost_device *pdev = &queue->device->physical_device->pdev;
+               int ret = drmSyncobjWait(pdev->fd, &queue->sync, 1, INT64_MAX, 0, NULL);
+               assert(!ret);
+            }
+
+            util_dynarray_foreach(&batch->event_ops, struct panvk_event_op *, op) {
+               switch ((*op)->type) {
+               case PANVK_EVENT_OP_SET:
+                  p_atomic_set(&(*op)->event->state, 1);
+                  break;
+               case PANVK_EVENT_OP_RESET:
+                  p_atomic_set(&(*op)->event->state, 0);
+                  break;
+               case PANVK_EVENT_OP_WAIT:
+                  /* Nothing left to do */
+                  break;
+               default:
+                  unreachable("bad panvk_event_op type\n");
+               }
+            }
+
             assert(bo_idx == nr_bos);
             panvk_queue_submit_batch(queue, batch, bos, nr_bos, in_fences, nr_in_fences);
          }
@@ -1597,7 +1620,17 @@ panvk_CreateEvent(VkDevice _device,
                   const VkAllocationCallbacks *pAllocator,
                   VkEvent *pEvent)
 {
-   panvk_stub();
+   VK_FROM_HANDLE(panvk_device, device, _device);
+   struct panvk_event *event =
+      vk_object_zalloc(&device->vk, pAllocator, sizeof(*event),
+                       VK_OBJECT_TYPE_EVENT);
+   if (!event)
+      return vk_error(device->instance, VK_ERROR_OUT_OF_HOST_MEMORY);
+
+   /* Events are created in the unsignaled state */
+   event->state = false;
+   *pEvent = panvk_event_to_handle(event);
+
    return VK_SUCCESS;
 }
 
@@ -1606,27 +1639,35 @@ panvk_DestroyEvent(VkDevice _device,
                    VkEvent _event,
                    const VkAllocationCallbacks *pAllocator)
 {
-   panvk_stub();
+   VK_FROM_HANDLE(panvk_device, device, _device);
+   VK_FROM_HANDLE(panvk_event, event, _event);
+
+   if (!event)
+      return;
+
+   vk_object_free(&device->vk, pAllocator, event);
 }
 
 VkResult
 panvk_GetEventStatus(VkDevice _device, VkEvent _event)
 {
-   panvk_stub();
-   return VK_EVENT_RESET;
+   VK_FROM_HANDLE(panvk_event, event, _event);
+   return p_atomic_read(&event->state) ? VK_EVENT_SET : VK_EVENT_RESET;
 }
 
 VkResult
 panvk_SetEvent(VkDevice _device, VkEvent _event)
 {
-   panvk_stub();
+   VK_FROM_HANDLE(panvk_event, event, _event);
+   p_atomic_set(&event->state, 1);
    return VK_SUCCESS;
 }
 
 VkResult
 panvk_ResetEvent(VkDevice _device, VkEvent _event)
 {
-   panvk_stub();
+   VK_FROM_HANDLE(panvk_event, event, _event);
+   p_atomic_set(&event->state, 0);
    return VK_SUCCESS;
 }
 
