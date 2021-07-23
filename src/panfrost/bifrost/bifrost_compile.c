@@ -4698,7 +4698,7 @@ bi_compile_variant_nir(nir_shader *nir,
         }
 
         /* Analyze after scheduling since we depend on instruction order. */
-        bi_analyze_helper_terminate(ctx);
+        //bi_analyze_helper_terminate(ctx);
 
         if (bifrost_debug & BIFROST_DBG_SHADERS && !skip_internal)
                 bi_print_shader(ctx, stdout);
