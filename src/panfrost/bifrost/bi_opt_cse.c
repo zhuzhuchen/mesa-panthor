@@ -164,10 +164,16 @@ bi_opt_cse(bi_context *ctx)
                         /* Rewrite before trying to CSE anything so we converge
                          * locally in one iteration */
                         bi_foreach_src(instr, s) {
-                                if (bi_is_staging_src(instr, s))
+                                if (bi_count_read_registers(instr, s) > 1)
                                         continue;
 
                                 if (!bi_is_ssa(instr->src[s]))
+                                        continue;
+
+                                /* HACK:
+                                 * dEQP-GLES31.functional.compute.basic.shared_atomic_op_single_invocation
+                                 */
+                                if (bi_opcode_props[instr->op].message)
                                         continue;
 
                                 bi_index repl = replacement[bi_word_node(instr->src[s])];

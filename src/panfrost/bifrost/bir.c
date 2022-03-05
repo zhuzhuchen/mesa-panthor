@@ -102,6 +102,14 @@ bi_count_read_registers(const bi_instr *ins, unsigned s)
                 case BI_OPCODE_TEX_FETCH:
                 case BI_OPCODE_TEX_GATHER:
                 case BI_OPCODE_TEX_SINGLE:
+                case BI_OPCODE_STORE_I8:
+                case BI_OPCODE_STORE_I16:
+                case BI_OPCODE_STORE_I24:
+                case BI_OPCODE_STORE_I32:
+                case BI_OPCODE_STORE_I48:
+                case BI_OPCODE_STORE_I64:
+                case BI_OPCODE_STORE_I96:
+                case BI_OPCODE_STORE_I128:
                         return (s == 1) ? 2 : 1;
                 case BI_OPCODE_LOAD_I8:
                 case BI_OPCODE_LOAD_I16:
