@@ -93,8 +93,31 @@ bi_count_read_registers(const bi_instr *ins, unsigned s)
                 return bi_count_staging_registers(ins);
         else if (s == 4 && ins->op == BI_OPCODE_BLEND)
                 return ins->sr_count_2; /* Dual source blending */
-        else
-                return 1;
+        else {
+                /* Handle instructions taking 64-bit sources. TODO: Make this a
+                 * property of the IR directly?
+                 */
+                switch (ins->op) {
+                case BI_OPCODE_BLEND:
+                case BI_OPCODE_TEX_FETCH:
+                case BI_OPCODE_TEX_GATHER:
+                case BI_OPCODE_TEX_SINGLE:
+                        return (s == 1) ? 2 : 1;
+                case BI_OPCODE_LOAD_I8:
+                case BI_OPCODE_LOAD_I16:
+                case BI_OPCODE_LOAD_I24:
+                case BI_OPCODE_LOAD_I32:
+                case BI_OPCODE_LOAD_I48:
+                case BI_OPCODE_LOAD_I64:
+                case BI_OPCODE_LOAD_I96:
+                case BI_OPCODE_LOAD_I128:
+                        return (s == 0 && ins->seg == BI_SEG_NONE) ? 2 : 1;
+                case BI_OPCODE_ATOM1_RETURN_I32:
+                        return (s == 0) ? 2 : 1;
+                default:
+                        return 1;
+                }
+        }
 }
 
 unsigned
