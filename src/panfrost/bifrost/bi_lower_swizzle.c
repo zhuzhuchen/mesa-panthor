@@ -248,7 +248,7 @@ bi_lower_swizzle(bi_context *ctx)
         }
 
         /* Now that we've lowered swizzles, clean up the mess */
-        BITSET_WORD *replicates_16 = calloc(sizeof(bi_index), ((ctx->ssa_alloc + 1) << 2));
+        BITSET_WORD *replicates_16 = calloc(sizeof(bi_index), ((ctx->ssa_alloc + 1) << 3));
 
         bi_foreach_instr_global(ctx, ins) {
                 if (bi_is_ssa(ins->dest[0]) && bi_instr_replicates(ins, replicates_16))

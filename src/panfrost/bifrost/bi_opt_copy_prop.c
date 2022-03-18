@@ -48,7 +48,7 @@ bi_reads_fau(bi_instr *ins)
 void
 bi_opt_copy_prop(bi_context *ctx)
 {
-        bi_index *replacement = calloc(sizeof(bi_index), ((ctx->ssa_alloc + 1) << 2));
+        bi_index *replacement = calloc(sizeof(bi_index), ((ctx->ssa_alloc + 1) << 3));
 
         bi_foreach_instr_global_safe(ctx, ins) {
                 if (bi_is_copy(ins)) {

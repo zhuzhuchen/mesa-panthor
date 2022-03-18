@@ -155,7 +155,7 @@ bi_fuse_discard_fcmp(bi_instr *I, bi_instr *mod, unsigned arch)
 void
 bi_opt_mod_prop_forward(bi_context *ctx)
 {
-        bi_instr **lut = calloc(sizeof(bi_instr *), ((ctx->ssa_alloc + 1) << 2));
+        bi_instr **lut = calloc(sizeof(bi_instr *), ((ctx->ssa_alloc + 1) << 3));
 
         bi_foreach_instr_global_safe(ctx, I) {
                 if (bi_is_ssa(I->dest[0]))
@@ -263,7 +263,7 @@ bi_optimizer_var_tex(bi_context *ctx, bi_instr *var, bi_instr *tex)
 void
 bi_opt_mod_prop_backward(bi_context *ctx)
 {
-        unsigned count = ((ctx->ssa_alloc + 1) << 2);
+        unsigned count = ((ctx->ssa_alloc + 1) << 3);
         bi_instr **uses = calloc(count, sizeof(*uses));
         BITSET_WORD *multiple = calloc(BITSET_WORDS(count), sizeof(*multiple));
 

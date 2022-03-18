@@ -4644,8 +4644,14 @@ bi_compile_variant_nir(nir_shader *nir,
         if (likely(optimize)) {
                 bi_opt_copy_prop(ctx);
 
+                if (bifrost_debug & BIFROST_DBG_SHADERS && !skip_internal)
+                        bi_print_shader(ctx, stdout);
+
                 while (bi_opt_constant_fold(ctx))
                         bi_opt_copy_prop(ctx);
+
+                if (bifrost_debug & BIFROST_DBG_SHADERS && !skip_internal)
+                        bi_print_shader(ctx, stdout);
 
                 bi_opt_mod_prop_forward(ctx);
                 bi_opt_mod_prop_backward(ctx);

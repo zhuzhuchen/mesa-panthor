@@ -130,12 +130,12 @@ typedef struct {
          * write mask. Identity for the full 32-bit, H00 for only caring about
          * the lower half, other values unused. */
         enum bi_swizzle swizzle : 4;
-        uint32_t offset : 2;
+        uint32_t offset : 3;
         bool reg : 1;
         enum bi_index_type type : 3;
 
         /* Must be zeroed so we can hash the whole 64-bits at a time */
-        unsigned padding : (32 - 13);
+        unsigned padding : (32 - 12);
 } bi_index;
 
 static inline bi_index
@@ -1323,7 +1323,7 @@ static inline unsigned
 bi_word_node(bi_index idx)
 {
         assert(idx.type == BI_INDEX_NORMAL && !idx.reg);
-        return (idx.value << 2) | idx.offset;
+        return (idx.value << 3) | idx.offset;
 }
 
 /*

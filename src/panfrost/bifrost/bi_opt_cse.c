@@ -157,7 +157,7 @@ bi_opt_cse(bi_context *ctx)
         struct set *instr_set = _mesa_set_create(NULL, hash_instr, instrs_equal);
 
         bi_foreach_block(ctx, block) {
-                bi_index *replacement = calloc(sizeof(bi_index), ((ctx->ssa_alloc + 1) << 2));
+                bi_index *replacement = calloc(sizeof(bi_index), ((ctx->ssa_alloc + 1) << 3));
                 _mesa_set_clear(instr_set, NULL);
 
                 bi_foreach_instr_in_block(block, instr) {

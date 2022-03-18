@@ -38,10 +38,10 @@ struct lcra_state {
          * Each element is itself a bit field denoting whether (c_j - c_i) bias
          * is present or not, including negative biases.
          *
-         * Note for Bifrost, there are 4 components so the bias is in range
-         * [-3, 3] so encoded by 8-bit field. */
-
-        uint8_t *linear;
+         * Note for Bifrost, there are 8 components so the bias is in range
+         * [-7, 7] so encoded by 16-bit field.
+         */
+        uint16_t *linear;
 
         /* Before solving, forced registers; after solving, solutions. */
         unsigned *solutions;
@@ -87,18 +87,18 @@ lcra_add_node_interference(struct lcra_state *l, unsigned i, unsigned cmask_i, u
         if (i == j)
                 return;
 
-        uint8_t constraint_fw = 0;
-        uint8_t constraint_bw = 0;
+        uint16_t constraint_fw = 0;
+        uint16_t constraint_bw = 0;
 
-        for (unsigned D = 0; D < 4; ++D) {
+        for (unsigned D = 0; D < 8; ++D) {
                 if (cmask_i & (cmask_j << D)) {
-                        constraint_bw |= (1 << (3 + D));
-                        constraint_fw |= (1 << (3 - D));
+                        constraint_bw |= (1 << (7 + D));
+                        constraint_fw |= (1 << (7 - D));
                 }
 
                 if (cmask_i & (cmask_j >> D)) {
-                        constraint_fw |= (1 << (3 + D));
-                        constraint_bw |= (1 << (3 - D));
+                        constraint_fw |= (1 << (7 + D));
+                        constraint_bw |= (1 << (7 - D));
                 }
         }
 
@@ -109,7 +109,7 @@ lcra_add_node_interference(struct lcra_state *l, unsigned i, unsigned cmask_i, u
 static bool
 lcra_test_linear(struct lcra_state *l, unsigned *solutions, unsigned i)
 {
-        uint8_t *row = &l->linear[i * l->node_count];
+        uint16_t *row = &l->linear[i * l->node_count];
         signed constant = solutions[i];
 
         for (unsigned j = 0; j < l->node_count; ++j) {
@@ -117,10 +117,10 @@ lcra_test_linear(struct lcra_state *l, unsigned *solutions, unsigned i)
 
                 signed lhs = solutions[j] - constant;
 
-                if (lhs < -3 || lhs > 3)
+                if (lhs < -7 || lhs > 7)
                         continue;
 
-                if (row[j] & (1 << (lhs + 3)))
+                if (row[j] & (1 << (lhs + 7)))
                         return false;
         }
 
@@ -162,7 +162,7 @@ static unsigned
 lcra_count_constraints(struct lcra_state *l, unsigned i)
 {
         unsigned count = 0;
-        uint8_t *constraints = &l->linear[i * l->node_count];
+        uint16_t *constraints = &l->linear[i * l->node_count];
 
         for (unsigned j = 0; j < l->node_count; ++j)
                 count += util_bitcount(constraints[j]);
