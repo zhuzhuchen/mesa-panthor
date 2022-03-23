@@ -101,12 +101,26 @@ unsigned
 bi_count_write_registers(const bi_instr *ins, unsigned d)
 {
         if (d == 0 && bi_opcode_props[ins->op].sr_write) {
-                /* TODO: this special case is even more special, TEXC has a
-                 * generic write mask stuffed in the desc... */
-                if (ins->op == BI_OPCODE_TEXC)
+                switch (ins->op) {
+                case BI_OPCODE_TEXC:
+                        /* TODO: write mask */
                         return 4;
-                else
+
+                case BI_OPCODE_TEX_SINGLE:
+                case BI_OPCODE_TEX_FETCH:
+                case BI_OPCODE_TEX_GATHER: {
+                        unsigned chans = util_bitcount(ins->write_mask);
+
+                        return bi_is_regfmt_16(ins->register_format) ?
+                                DIV_ROUND_UP(chans, 2) : chans;
+                }
+
+                case BI_OPCODE_ATOM1_RETURN_I32:
+                        /* Allow omitting the destination for plain ATOM1 */
+                        return bi_is_null(ins->dest[0]) ? 0 : 1;
+                default:
                         return bi_count_staging_registers(ins);
+                }
         } else if (ins->op == BI_OPCODE_SEG_ADD_I64) {
                 return 2;
         } else if (ins->op == BI_OPCODE_TEXC && d == 1) {
