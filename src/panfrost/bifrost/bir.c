@@ -110,6 +110,10 @@ bi_count_read_registers(const bi_instr *ins, unsigned s)
                 case BI_OPCODE_STORE_I64:
                 case BI_OPCODE_STORE_I96:
                 case BI_OPCODE_STORE_I128:
+                case BI_OPCODE_ATOM_I32:
+                case BI_OPCODE_ATOM_RETURN_I32:
+                case BI_OPCODE_ACMPXCHG_I32:
+                case BI_OPCODE_ACMPXCHG_I64:
                         return (s == 1) ? 2 : 1;
                 case BI_OPCODE_LOAD_I8:
                 case BI_OPCODE_LOAD_I16:
