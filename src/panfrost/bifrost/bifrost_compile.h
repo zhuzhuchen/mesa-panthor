@@ -88,6 +88,7 @@ static const nir_shader_compiler_options bifrost_nir_options = {
         .use_interpolated_input_intrinsics = true,
 
         .lower_uniforms_to_ubo = true,
+        .lower_io_variables = true,
 
         .has_cs_global_id = true,
         .lower_cs_local_index_to_id = true,

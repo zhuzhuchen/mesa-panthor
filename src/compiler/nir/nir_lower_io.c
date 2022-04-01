@@ -2982,6 +2982,9 @@ nir_lower_io_passes(nir_shader *nir, nir_xfb_info *xfb)
    if (!nir->options->lower_io_variables)
       return;
 
+   if (nir->info.stage == MESA_SHADER_FRAGMENT)
+      return;
+
    /* Ignore transform feedback for stages that can't have it. */
    if (nir->info.stage != MESA_SHADER_VERTEX &&
        nir->info.stage != MESA_SHADER_TESS_EVAL &&
@@ -3012,9 +3015,33 @@ nir_lower_io_passes(nir_shader *nir, nir_xfb_info *xfb)
        nir->options->lower_fs_color_inputs)
       NIR_PASS_V(nir, nir_lower_color_inputs);
 
+  if (nir->info.stage == MESA_SHADER_VERTEX) {
+          NIR_PASS_V(nir, nir_lower_viewport_transform);
+          NIR_PASS_V(nir, nir_lower_point_size, 1.0, 0.0);
+
+          nir_variable *psiz = nir_find_variable_with_location(nir,
+                                                               nir_var_shader_out,
+                                                               VARYING_SLOT_PSIZ);
+          if (psiz != NULL)
+                  psiz->data.precision = GLSL_PRECISION_MEDIUM;
+  }
+
+  /* Lower large arrays to scratch and small arrays to bcsel (TODO: tune
+   * threshold, but not until addresses / csel is optimized better) */
+  NIR_PASS_V(nir, nir_lower_vars_to_scratch, nir_var_function_temp, 16,
+                  glsl_get_natural_size_align_bytes);
+  NIR_PASS_V(nir, nir_lower_indirect_derefs, nir_var_function_temp, ~0);
+
+  NIR_PASS_V(nir, nir_split_var_copies);
+  NIR_PASS_V(nir, nir_lower_global_vars_to_local);
+  NIR_PASS_V(nir, nir_lower_var_copies);
+  NIR_PASS_V(nir, nir_lower_vars_to_ssa);
+
+
    NIR_PASS_V(nir, nir_lower_io, nir_var_shader_out | nir_var_shader_in,
               type_size_vec4, nir_lower_io_lower_64bit_to_32);
 
+#if 0
    /* nir_io_add_const_offset_to_base needs actual constants. */
    NIR_PASS_V(nir, nir_opt_constant_folding);
    NIR_PASS_V(nir, nir_io_add_const_offset_to_base, nir_var_shader_in |
@@ -3025,6 +3052,7 @@ nir_lower_io_passes(nir_shader *nir, nir_xfb_info *xfb)
    NIR_PASS_V(nir, nir_opt_dce);
    NIR_PASS_V(nir, nir_remove_dead_variables, nir_var_function_temp |
               nir_var_shader_in | nir_var_shader_out, NULL);
+#endif
 
    if (xfb)
       NIR_PASS_V(nir, nir_add_xfb_info, xfb);
