@@ -1494,10 +1494,12 @@ bi_emit_intrinsic(bi_builder *b, nir_intrinsic_instr *instr)
                 break;
 
         case nir_intrinsic_load_ssbo_address:
+        case nir_intrinsic_load_xfb_address:
                 bi_load_sysval_nir(b, instr, 2, 0);
                 break;
 
         case nir_intrinsic_load_work_dim:
+        case nir_intrinsic_load_num_vertices:
                 bi_load_sysval_nir(b, instr, 1, 0);
                 break;
 
