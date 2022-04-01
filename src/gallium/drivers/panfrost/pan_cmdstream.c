@@ -3408,6 +3408,62 @@ panfrost_draw_emit_tiler(struct panfrost_batch *batch,
 }
 #endif
 
+#if PAN_ARCH == 7
+static void
+panfrost_launch_xfb(struct panfrost_batch *batch,
+                    const struct pipe_draw_info *info,
+                    mali_ptr attribs, mali_ptr attrib_bufs,
+                    unsigned count)
+{
+        struct panfrost_context *ctx = batch->ctx;
+
+        struct panfrost_ptr t =
+                pan_pool_alloc_desc(&batch->pool.base, COMPUTE_JOB);
+
+        /* TODO: XFB with index buffers */
+        //assert(info->index_size == 0);
+        u_trim_pipe_prim(info->mode, &count);
+
+        if (count == 0)
+                return;
+
+        struct mali_invocation_packed invocation;
+
+        panfrost_pack_work_groups_compute(&invocation,
+                        1, count, info->instance_count,
+                        1, 1, 1, false, false);
+
+        struct panfrost_shader_state *vs = panfrost_get_shader_state(ctx, PIPE_SHADER_VERTEX);
+        struct panfrost_shader_variants v = { .variants = vs->xfb };
+
+        vs->xfb->stream_output = vs->stream_output;
+
+        struct panfrost_shader_variants *saved_vs = ctx->shader[PIPE_SHADER_VERTEX];
+        mali_ptr saved_rsd = batch->rsd[PIPE_SHADER_VERTEX];
+        mali_ptr saved_ubo = batch->uniform_buffers[PIPE_SHADER_VERTEX];
+        mali_ptr saved_push = batch->push_uniforms[PIPE_SHADER_VERTEX];
+
+        ctx->shader[PIPE_SHADER_VERTEX] = &v;
+        batch->rsd[PIPE_SHADER_VERTEX] = panfrost_emit_compute_shader_meta(batch, PIPE_SHADER_VERTEX);
+
+        batch->uniform_buffers[PIPE_SHADER_VERTEX] =
+                panfrost_emit_const_buf(batch, PIPE_SHADER_VERTEX, NULL,
+                                &batch->push_uniforms[PIPE_SHADER_VERTEX], NULL);
+
+        panfrost_draw_emit_vertex(batch, info, &invocation, 0, 0,
+                                  attribs, attrib_bufs, t.cpu);
+
+        panfrost_add_job(&batch->pool.base, &batch->scoreboard,
+                        MALI_JOB_TYPE_COMPUTE, true, false,
+                        0, 0, &t, false);
+
+        ctx->shader[PIPE_SHADER_VERTEX] = saved_vs;
+        batch->rsd[PIPE_SHADER_VERTEX] = saved_rsd;
+        batch->uniform_buffers[PIPE_SHADER_VERTEX] = saved_ubo;
+        batch->push_uniforms[PIPE_SHADER_VERTEX] = saved_push;
+}
+#endif
+
 static void
 panfrost_direct_draw(struct panfrost_batch *batch,
                      const struct pipe_draw_info *info,
@@ -3532,6 +3588,11 @@ panfrost_direct_draw(struct panfrost_batch *batch,
         panfrost_update_shader_state(batch, PIPE_SHADER_FRAGMENT);
         panfrost_clean_state_3d(ctx);
 
+#if PAN_ARCH == 7
+        if (vs->xfb)
+                panfrost_launch_xfb(batch, info, attribs, attrib_bufs, draw->count);
+#endif
+
 #if PAN_ARCH >= 9
         assert(idvs && "Memory allocated IDVS required on Valhall");
 
@@ -3542,6 +3603,7 @@ panfrost_direct_draw(struct panfrost_batch *batch,
                          MALI_JOB_TYPE_MALLOC_VERTEX, false, false, 0,
                          0, &tiler, false);
 #else
+        /* Fire off the draw itself */
         panfrost_draw_emit_tiler(batch, info, draw, &invocation, indices,
                                  fs_vary, varyings, pos, psiz, secondary_shader,
                                  tiler.cpu);
