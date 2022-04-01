@@ -32,8 +32,73 @@
 #include "pan_util.h"
 
 #include "compiler/nir/nir.h"
+#include "compiler/nir/nir_builder.h"
 #include "util/u_dynarray.h"
 #include "util/u_upload_mgr.h"
+
+static void
+panfrost_nir_lower_xfb_output(struct nir_builder *b, nir_intrinsic_instr *intr,
+                             unsigned start_component, unsigned num_components,
+                             unsigned buffer, unsigned offset_words)
+{
+        assert(buffer < MAX_XFB_BUFFERS);
+
+        assert(nir_intrinsic_component(intr) == 0); // TODO
+
+        /* Transform feedback info in units of words, convert to bytes. */
+        uint16_t stride = b->shader->info.xfb_stride[buffer] * 4;
+        assert(stride != 0);
+
+        uint16_t offset = offset_words * 4;
+
+        nir_ssa_def *index = nir_iadd(b,
+                nir_imul(b, nir_load_instance_id(b),
+                            nir_load_num_vertices(b)),
+                nir_load_vertex_id_zero_base(b));
+
+        nir_ssa_def *buf = nir_load_xfb_address(b, 1, 64, .base = buffer);
+        nir_ssa_def *addr =
+                nir_iadd(b, buf, nir_u2u64(b,
+                                    nir_iadd_imm(b,
+                                                 nir_imul_imm(b, index, stride),
+                                                 offset)));
+
+        assert(intr->src[0].is_ssa && "must lower XFB before lowering SSA");
+        nir_ssa_def *src = intr->src[0].ssa;
+        nir_ssa_def *value = nir_channels(b, src, BITFIELD_MASK(num_components) << start_component);
+        nir_store_global(b, addr, 4, value, BITFIELD_MASK(num_components));
+}
+
+static bool
+panfrost_nir_lower_xfb(struct nir_builder *b, nir_instr *instr, UNUSED void *data)
+{
+        if (instr->type != nir_instr_type_intrinsic)
+                return false;
+
+        nir_intrinsic_instr *intr = nir_instr_as_intrinsic(instr);
+        if (intr->intrinsic != nir_intrinsic_store_output)
+                return false;
+
+        bool progress = false;
+
+        b->cursor = nir_before_instr(&intr->instr);
+
+        for (unsigned i = 0; i < 2; ++i) {
+                nir_io_xfb xfb = i ? nir_intrinsic_io_xfb2(intr) : nir_intrinsic_io_xfb(intr);
+                for (unsigned j = 0; j < 2; ++j) {
+                        if (!xfb.out[j].num_components) continue;
+
+                        panfrost_nir_lower_xfb_output(b, intr, i*2 + j,
+                                                     xfb.out[j].num_components,
+                                                     xfb.out[j].buffer,
+                                                     xfb.out[j].offset);
+                        progress = true;
+                }
+        }
+
+        nir_instr_remove(instr);
+        return progress;
+}
 
 void
 panfrost_shader_compile(struct pipe_screen *pscreen,
@@ -46,6 +111,24 @@ panfrost_shader_compile(struct pipe_screen *pscreen,
         struct panfrost_device *dev = pan_device(pscreen);
 
         nir_shader *s = nir_shader_clone(NULL, ir);
+
+        if (s->info.stage == MESA_SHADER_VERTEX && s->info.has_transform_feedback_varyings) {
+                /* Create compute shader doing transform feedback */
+                nir_shader *xfb = nir_shader_clone(NULL, s);
+                xfb->info.name = ralloc_asprintf(xfb, "%s@xfb", xfb->info.name);
+
+                NIR_PASS_V(xfb, nir_shader_instructions_pass,
+                                panfrost_nir_lower_xfb,
+                                nir_metadata_block_index | nir_metadata_dominance,
+                                NULL);
+
+                /* XFB has been lowered to memory access */
+                xfb->info.has_transform_feedback_varyings = false;
+                xfb->info.outputs_written = 0;
+
+                state->xfb = rzalloc(NULL, struct panfrost_shader_state); // XXX: leaks
+                panfrost_shader_compile(pscreen, shader_pool, desc_pool, xfb, state->xfb);
+        }
 
         /* Lower this early so the backends don't have to worry about it */
         if (s->info.stage == MESA_SHADER_FRAGMENT) {
