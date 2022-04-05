@@ -102,6 +102,7 @@ bi_count_read_registers(const bi_instr *ins, unsigned s)
                 case BI_OPCODE_TEX_FETCH:
                 case BI_OPCODE_TEX_GATHER:
                 case BI_OPCODE_TEX_SINGLE:
+                        return (s == 1) ? 2 : 1;
                 case BI_OPCODE_STORE_I8:
                 case BI_OPCODE_STORE_I16:
                 case BI_OPCODE_STORE_I24:
@@ -114,7 +115,7 @@ bi_count_read_registers(const bi_instr *ins, unsigned s)
                 case BI_OPCODE_ATOM_RETURN_I32:
                 case BI_OPCODE_ACMPXCHG_I32:
                 case BI_OPCODE_ACMPXCHG_I64:
-                        return (s == 1) ? 2 : 1;
+                        return (s == 1 && ins->seg == BI_SEG_NONE) ? 2 : 1;
                 case BI_OPCODE_LOAD_I8:
                 case BI_OPCODE_LOAD_I16:
                 case BI_OPCODE_LOAD_I24:
