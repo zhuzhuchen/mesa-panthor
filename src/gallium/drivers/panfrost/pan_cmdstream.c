@@ -3409,7 +3409,6 @@ panfrost_draw_emit_tiler(struct panfrost_batch *batch,
 }
 #endif
 
-#if PAN_ARCH == 7
 static void
 panfrost_launch_xfb(struct panfrost_batch *batch,
                     const struct pipe_draw_info *info,
@@ -3421,18 +3420,16 @@ panfrost_launch_xfb(struct panfrost_batch *batch,
         struct panfrost_ptr t =
                 pan_pool_alloc_desc(&batch->pool.base, COMPUTE_JOB);
 
+        /* Nothing to do */
+        if (batch->ctx->streamout.num_targets == 0)
+                return;
+
         /* TODO: XFB with index buffers */
         //assert(info->index_size == 0);
         u_trim_pipe_prim(info->mode, &count);
 
         if (count == 0)
                 return;
-
-        struct mali_invocation_packed invocation;
-
-        panfrost_pack_work_groups_compute(&invocation,
-                        1, count, info->instance_count,
-                        1, 1, 1, false, false);
 
         struct panfrost_shader_state *vs = panfrost_get_shader_state(ctx, PIPE_SHADER_VERTEX);
         struct panfrost_shader_variants v = { .variants = vs->xfb };
@@ -3447,13 +3444,41 @@ panfrost_launch_xfb(struct panfrost_batch *batch,
         ctx->shader[PIPE_SHADER_VERTEX] = &v;
         batch->rsd[PIPE_SHADER_VERTEX] = panfrost_emit_compute_shader_meta(batch, PIPE_SHADER_VERTEX);
 
+#if PAN_ARCH >= 9
+        pan_section_pack(t.cpu, COMPUTE_JOB, PAYLOAD, cfg) {
+                cfg.workgroup_size_x = 1;
+                cfg.workgroup_size_y = 1;
+                cfg.workgroup_size_z = 1;
+
+                cfg.workgroup_count_x = count;
+                cfg.workgroup_count_y = info->instance_count;
+                cfg.workgroup_count_z = 1;
+
+                panfrost_emit_shader(batch, &cfg.compute, PIPE_SHADER_VERTEX,
+                                     batch->rsd[PIPE_SHADER_VERTEX],
+                                     batch->tls.gpu);
+
+                /* TODO: Indexing. Also, this is a legacy feature... */
+                cfg.compute.attribute_offset = batch->ctx->offset_start;
+
+                //cfg.allow_merging_workgroups = cs->info.cs.allow_merging_workgroups;
+                cfg.task_increment = 1;
+                cfg.task_axis = MALI_TASK_AXIS_Z;
+        }
+#else
+        struct mali_invocation_packed invocation;
+
+        panfrost_pack_work_groups_compute(&invocation,
+                        1, count, info->instance_count,
+                        1, 1, 1, false, false);
+
         batch->uniform_buffers[PIPE_SHADER_VERTEX] =
                 panfrost_emit_const_buf(batch, PIPE_SHADER_VERTEX, NULL,
                                 &batch->push_uniforms[PIPE_SHADER_VERTEX], NULL);
 
         panfrost_draw_emit_vertex(batch, info, &invocation, 0, 0,
                                   attribs, attrib_bufs, t.cpu);
-
+#endif
         panfrost_add_job(&batch->pool.base, &batch->scoreboard,
                         MALI_JOB_TYPE_COMPUTE, true, false,
                         0, 0, &t, false);
@@ -3463,7 +3488,6 @@ panfrost_launch_xfb(struct panfrost_batch *batch,
         batch->uniform_buffers[PIPE_SHADER_VERTEX] = saved_ubo;
         batch->push_uniforms[PIPE_SHADER_VERTEX] = saved_push;
 }
-#endif
 
 static void
 panfrost_direct_draw(struct panfrost_batch *batch,
@@ -3589,9 +3613,13 @@ panfrost_direct_draw(struct panfrost_batch *batch,
         panfrost_update_shader_state(batch, PIPE_SHADER_FRAGMENT);
         panfrost_clean_state_3d(ctx);
 
-#if PAN_ARCH == 7
-        if (vs->xfb)
+#if PAN_ARCH >= 7
+        if (vs->xfb) {
+#if PAN_ARCH >= 9
+                mali_ptr attribs = 0, attrib_bufs = 0;
+#endif
                 panfrost_launch_xfb(batch, info, attribs, attrib_bufs, draw->count);
+        }
 #endif
 
         /* Increment transform feedback offsets */
