@@ -4465,7 +4465,8 @@ static void
 bi_lower_terminal_block(bi_context *ctx, bi_block *block)
 {
         bi_builder b = bi_init_builder(ctx, bi_after_block(block));
-        bi_nop(&b);
+        bi_instr *I = bi_nop(&b);
+        I->flow = 0xF; /* .return */
 }
 
 static void
