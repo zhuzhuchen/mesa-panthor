@@ -1587,6 +1587,11 @@ bi_emit_intrinsic(bi_builder *b, nir_intrinsic_instr *instr)
 
                 break;
 
+        case nir_intrinsic_load_vertex_id_zero_base:
+//                assert(!b->shader->malloc_idvs);
+                bi_mov_i32_to(b, dst, bi_vertex_id(b));
+                break;
+
         case nir_intrinsic_load_instance_id:
                 bi_mov_i32_to(b, dst, bi_instance_id(b));
                 break;
