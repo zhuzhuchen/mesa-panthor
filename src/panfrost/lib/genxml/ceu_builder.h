@@ -258,8 +258,7 @@ ceu_alloc(ceu_builder *b)
 static inline void
 ceu_move32_to(ceu_builder *b, ceu_index dest, uint32_t imm)
 {
-   ceu_emit(b, MOVE32, I)
-   {
+   ceu_emit(b, MOVE32, I) {
       I.destination = ceu_to_reg32(dest);
       I.immediate = imm;
    }
@@ -268,8 +267,7 @@ ceu_move32_to(ceu_builder *b, ceu_index dest, uint32_t imm)
 static inline void
 ceu_move48_to(ceu_builder *b, ceu_index dest, uint64_t imm)
 {
-   ceu_emit(b, MOVE, I)
-   {
+   ceu_emit(b, MOVE, I) {
       I.destination = ceu_to_reg64(dest);
       I.immediate = imm;
    }
@@ -278,8 +276,7 @@ ceu_move48_to(ceu_builder *b, ceu_index dest, uint64_t imm)
 static inline void
 ceu_wait_slots(ceu_builder *b, uint8_t slots)
 {
-   ceu_emit(b, WAIT, I)
-   {
+   ceu_emit(b, WAIT, I) {
       I.slots = slots;
    }
 }
@@ -288,8 +285,7 @@ static inline void
 ceu_branch(ceu_builder *b, int16_t offset, enum mali_ceu_condition cond,
            ceu_index val)
 {
-   ceu_emit(b, BRANCH, I)
-   {
+   ceu_emit(b, BRANCH, I) {
       I.offset = offset;
       I.condition = cond;
       I.value = ceu_to_reg32(val);
@@ -300,8 +296,7 @@ static inline void
 ceu_run_compute(ceu_builder *b, unsigned task_increment,
                 enum mali_task_axis task_axis)
 {
-   ceu_emit(b, RUN_COMPUTE, I)
-   {
+   ceu_emit(b, RUN_COMPUTE, I) {
       I.task_increment = task_increment;
       I.task_axis = task_axis;
 
@@ -313,8 +308,7 @@ static inline void
 ceu_run_idvs(ceu_builder *b, enum mali_draw_mode draw_mode,
              enum mali_index_type index_type, bool secondary_shader)
 {
-   ceu_emit(b, RUN_IDVS, I)
-   {
+   ceu_emit(b, RUN_IDVS, I) {
       /* We do not have a use case for traditional IDVS */
       I.malloc_enable = true;
 
@@ -335,8 +329,7 @@ ceu_run_idvs(ceu_builder *b, enum mali_draw_mode draw_mode,
 static inline void
 ceu_run_fragment(ceu_builder *b, bool enable_tem)
 {
-   ceu_emit(b, RUN_FRAGMENT, I)
-   {
+   ceu_emit(b, RUN_FRAGMENT, I) {
       I.enable_tem = enable_tem;
    }
 }
@@ -344,7 +337,8 @@ ceu_run_fragment(ceu_builder *b, bool enable_tem)
 static inline void
 ceu_finish_tiling(ceu_builder *b)
 {
-   ceu_emit(b, FINISH_TILING, _);
+   ceu_emit(b, FINISH_TILING, _)
+      ;
 }
 
 static inline void
@@ -353,8 +347,7 @@ ceu_finish_fragment(ceu_builder *b, bool increment_frag_completed,
                     ceu_index last_free_heap_chunk, uint16_t scoreboard_mask,
                     uint8_t signal_slot)
 {
-   ceu_emit(b, FINISH_FRAGMENT, I)
-   {
+   ceu_emit(b, FINISH_FRAGMENT, I) {
       I.increment_fragment_completed = increment_frag_completed;
       I.wait_mask = scoreboard_mask;
       I.first_heap_chunk = ceu_to_reg64(first_free_heap_chunk);
@@ -366,8 +359,7 @@ ceu_finish_fragment(ceu_builder *b, bool increment_frag_completed,
 static inline void
 ceu_heap_set(ceu_builder *b, ceu_index address)
 {
-   ceu_emit(b, HEAP_SET, I)
-   {
+   ceu_emit(b, HEAP_SET, I) {
       I.address = ceu_to_reg64(address);
    }
 }
@@ -376,8 +368,7 @@ static inline void
 ceu_load_to(ceu_builder *b, ceu_index dest, ceu_index address, uint16_t mask,
             int16_t offset)
 {
-   ceu_emit(b, LOAD_MULTIPLE, I)
-   {
+   ceu_emit(b, LOAD_MULTIPLE, I) {
       I.base = ceu_to_reg_tuple(dest, util_bitcount(mask));
       I.address = ceu_to_reg64(address);
       I.mask = mask;
@@ -389,8 +380,7 @@ static inline void
 ceu_store(ceu_builder *b, ceu_index data, ceu_index address, uint16_t mask,
           int16_t offset)
 {
-   ceu_emit(b, STORE_MULTIPLE, I)
-   {
+   ceu_emit(b, STORE_MULTIPLE, I) {
       I.base = ceu_to_reg_tuple(data, util_bitcount(mask));
       I.address = ceu_to_reg64(address);
       I.mask = mask;
@@ -408,8 +398,7 @@ ceu_set_scoreboard_entry(ceu_builder *b, uint8_t ep, uint8_t other)
    assert(ep < 8 && "invalid slot");
    assert(other < 8 && "invalid slot");
 
-   ceu_emit(b, SET_SB_ENTRY, I)
-   {
+   ceu_emit(b, SET_SB_ENTRY, I) {
       I.endpoint_entry = ep;
       I.other_entry = other;
    }
@@ -418,8 +407,7 @@ ceu_set_scoreboard_entry(ceu_builder *b, uint8_t ep, uint8_t other)
 static inline void
 ceu_require_all(ceu_builder *b)
 {
-   ceu_emit(b, REQ_RESOURCE, I)
-   {
+   ceu_emit(b, REQ_RESOURCE, I) {
       I.compute = true;
       I.tiler = true;
       I.idvs = true;
@@ -430,20 +418,21 @@ ceu_require_all(ceu_builder *b)
 static inline void
 ceu_require_compute(ceu_builder *b)
 {
-   ceu_emit(b, REQ_RESOURCE, I) I.compute = true;
+   ceu_emit(b, REQ_RESOURCE, I)
+      I.compute = true;
 }
 
 static inline void
 ceu_require_fragment(ceu_builder *b)
 {
-   ceu_emit(b, REQ_RESOURCE, I) I.fragment = true;
+   ceu_emit(b, REQ_RESOURCE, I)
+      I.fragment = true;
 }
 
 static inline void
 ceu_require_idvs(ceu_builder *b)
 {
-   ceu_emit(b, REQ_RESOURCE, I)
-   {
+   ceu_emit(b, REQ_RESOURCE, I) {
       I.compute = true;
       I.tiler = true;
       I.idvs = true;
@@ -453,7 +442,8 @@ ceu_require_idvs(ceu_builder *b)
 static inline void
 ceu_heap_operation(ceu_builder *b, enum mali_ceu_heap_operation operation)
 {
-   ceu_emit(b, HEAP_OPERATION, I) I.operation = operation;
+   ceu_emit(b, HEAP_OPERATION, I)
+      I.operation = operation;
 }
 
 static inline void
@@ -480,8 +470,7 @@ ceu_flush_caches(ceu_builder *b, enum mali_ceu_flush_mode l2,
                  ceu_index flush_id, uint16_t scoreboard_mask,
                  uint8_t signal_slot)
 {
-   ceu_emit(b, FLUSH_CACHE2, I)
-   {
+   ceu_emit(b, FLUSH_CACHE2, I) {
       I.l2_flush_mode = l2;
       I.lsc_flush_mode = lsc;
       I.other_invalidate = other_inv;
@@ -541,8 +530,7 @@ static inline void
 ceu_store_state(ceu_builder *b, uint8_t signal_slot, ceu_index address,
                 enum mali_ceu_state state, uint16_t wait_mask, int16_t offset)
 {
-   ceu_emit(b, STORE_STATE, I)
-   {
+   ceu_emit(b, STORE_STATE, I) {
       I.offset = offset;
       I.wait_mask = wait_mask;
       I.state = state;
